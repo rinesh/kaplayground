@@ -2,7 +2,7 @@ import { type editor, type IRange, languages, Range } from "monaco-editor";
 import { CSS_COLOR_MAP } from "../../../../../kaplay/src/constants/colorMap";
 
 export const HEX_REGEX =
-    /"#?([0-9a-fA-F]{6}|[0-9a-fA-F]{3})"|0x([0-9a-fA-F]{6}|[0-9a-fA-F]{3})/g;
+    /"#?([0-9a-fA-F]{6})"|0x([0-9a-fA-F]{6}|[0-9a-fA-F]{3})(?![0-9A-Fa-f])/g;
 export const RGB_REGEX =
     /rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)/g;
 export const ARR_REGEX = /\[\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\]/g;
@@ -59,11 +59,9 @@ export class ColorProvider implements languages.DocumentColorProvider {
         parse(HEX_REGEX, (m) => {
             let hex = (m[1] ?? m[2]).replace(/^#/, "");
 
+            // supported in kaplay only by literal
             if (hex.length === 3) {
-                hex = hex
-                    .split("")
-                    .map(c => c + c)
-                    .join("");
+                hex = hex.padStart(6, "0");
             }
 
             return {
