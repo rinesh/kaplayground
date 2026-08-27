@@ -16,6 +16,21 @@ export type KaplaygroundWebMCPStatus =
     | "error"
     | "destroyed";
 
+export type KaplaygroundWebMCPInvocationStatus =
+    | "running"
+    | "succeeded"
+    | "failed";
+
+export interface KaplaygroundWebMCPInvocation {
+    id: string;
+    toolName: string;
+    input: Record<string, unknown>;
+    startedAt: number;
+    status: KaplaygroundWebMCPInvocationStatus;
+    durationMs?: number;
+    error?: string;
+}
+
 export interface KaplaygroundProjectInfo {
     name: string;
     version?: string;
@@ -91,6 +106,13 @@ export interface KaplaygroundWebMCPOptions {
     modelContext?: WebMCP.ModelContext;
     /** Receives asynchronous registration failures. */
     onError?: (error: unknown) => void;
+    /** Receives connection status and registered-tool changes for visible UI. */
+    onStatusChange?: (
+        status: KaplaygroundWebMCPStatus,
+        toolNames: readonly string[],
+    ) => void;
+    /** Receives bounded lifecycle events for visible WebMCP activity UI. */
+    onInvocation?: (invocation: KaplaygroundWebMCPInvocation) => void;
 }
 
 interface EditorTool {
@@ -115,9 +137,12 @@ export class KaplaygroundWebMCP {
     private readonly maxDiagnostics: number;
     private readonly maxConsoleEntries: number;
     private readonly exposedTo: string[] | undefined;
+    private readonly onStatusChange: KaplaygroundWebMCPOptions["onStatusChange"];
+    private readonly onInvocation: KaplaygroundWebMCPOptions["onInvocation"];
     private readonly registrationController = new AbortController();
     private readonly names = new Set<string>();
     private currentStatus: KaplaygroundWebMCPStatus;
+    private invocationSerial = 0;
 
     constructor(options: KaplaygroundWebMCPOptions) {
         this.adapter = options.adapter;
@@ -140,8 +165,11 @@ export class KaplaygroundWebMCP {
             DEFAULT_MAX_CONSOLE_ENTRIES,
         );
         this.exposedTo = options.exposedTo;
+        this.onStatusChange = options.onStatusChange;
+        this.onInvocation = options.onInvocation;
         this.supported = this.context !== undefined;
         this.currentStatus = this.supported ? "registering" : "unsupported";
+        this.emitStatus();
 
         if (!this.context) {
             this.ready = Promise.resolve();
@@ -165,7 +193,7 @@ export class KaplaygroundWebMCP {
         if (this.currentStatus === "destroyed") return;
         this.registrationController.abort();
         this.names.clear();
-        this.currentStatus = "destroyed";
+        this.setStatus("destroyed");
     }
 
     private async registerTools(): Promise<void> {
@@ -174,13 +202,13 @@ export class KaplaygroundWebMCP {
                 if (this.currentStatus === "destroyed") return;
                 await this.register(tool);
             }
-            if (this.currentStatus !== "destroyed") this.currentStatus = "ready";
+            if (this.currentStatus !== "destroyed") this.setStatus("ready");
         }
         catch (error) {
             if (this.currentStatus === "destroyed") return;
             this.registrationController.abort();
             this.names.clear();
-            this.currentStatus = "error";
+            this.setStatus("error");
             throw error;
         }
     }
@@ -197,10 +225,36 @@ export class KaplaygroundWebMCP {
             inputSchema: tool.inputSchema,
             execute: async (input, options) => {
                 const signal = options?.signal ?? NEVER_ABORTED_SIGNAL;
-                throwIfAborted(signal);
-                const result = await tool.execute(input, signal);
-                throwIfAborted(signal);
-                return result;
+                const startedAt = Date.now();
+                const invocation: KaplaygroundWebMCPInvocation = {
+                    id: `${startedAt}-${++this.invocationSerial}`,
+                    toolName: name,
+                    input: toSerializable(input) as Record<string, unknown>,
+                    startedAt,
+                    status: "running",
+                };
+                this.emitInvocation(invocation);
+
+                try {
+                    throwIfAborted(signal);
+                    const result = await tool.execute(input, signal);
+                    throwIfAborted(signal);
+                    this.emitInvocation({
+                        ...invocation,
+                        status: "succeeded",
+                        durationMs: Date.now() - startedAt,
+                    });
+                    return result;
+                }
+                catch (error) {
+                    this.emitInvocation({
+                        ...invocation,
+                        status: "failed",
+                        durationMs: Date.now() - startedAt,
+                        error: errorMessage(error),
+                    });
+                    throw error;
+                }
             },
         };
         if (tool.annotations !== undefined) definition.annotations = tool.annotations;
@@ -213,6 +267,30 @@ export class KaplaygroundWebMCP {
         await context.registerTool(definition, registrationOptions);
         if (!this.registrationController.signal.aborted && this.currentStatus !== "destroyed") {
             this.names.add(name);
+            this.emitStatus();
+        }
+    }
+
+    private setStatus(status: KaplaygroundWebMCPStatus): void {
+        this.currentStatus = status;
+        this.emitStatus();
+    }
+
+    private emitStatus(): void {
+        try {
+            this.onStatusChange?.(this.currentStatus, this.toolNames);
+        }
+        catch {
+            // UI observers must never interrupt registration or tool execution.
+        }
+    }
+
+    private emitInvocation(invocation: KaplaygroundWebMCPInvocation): void {
+        try {
+            this.onInvocation?.(invocation);
+        }
+        catch {
+            // UI observers must never interrupt registration or tool execution.
         }
     }
 
@@ -877,6 +955,11 @@ function throwIfAborted(signal: AbortSignal): void {
     if (!signal.aborted) return;
     if (signal.reason instanceof Error) throw signal.reason;
     throw new DOMException("The WebMCP tool call was aborted.", "AbortError");
+}
+
+function errorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    return String(error);
 }
 
 function toSerializable(value: unknown, depth = 0, seen = new WeakSet<object>()): unknown {

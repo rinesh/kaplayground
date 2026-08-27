@@ -158,4 +158,39 @@ describe("KAPLAYGROUND WebMCP", () => {
 
         assert.equal(files.has("scenes/level.js"), false);
     });
+
+    it("reports connection state and visible invocation lifecycles", async () => {
+        const context = new FakeModelContext();
+        const { adapter } = createAdapter();
+        const connections = [];
+        const invocations = [];
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+            onStatusChange: (status, toolNames) => {
+                connections.push({ status, toolNames: [...toolNames] });
+            },
+            onInvocation: (invocation) => invocations.push(invocation),
+        });
+        await bridge.ready;
+
+        assert.equal(connections.at(-1).status, "ready");
+        assert.equal(connections.at(-1).toolNames.length, 12);
+
+        await execute(context, "kaplayground_get_project");
+        assert.deepEqual(
+            invocations.slice(-2).map(({ status }) => status),
+            ["running", "succeeded"],
+        );
+
+        await assert.rejects(
+            execute(context, "kaplayground_read_file", { path: "missing.js" }),
+            /No project file exists/,
+        );
+        assert.deepEqual(
+            invocations.slice(-2).map(({ status }) => status),
+            ["running", "failed"],
+        );
+        assert.match(invocations.at(-1).error, /missing\.js/);
+    });
 });

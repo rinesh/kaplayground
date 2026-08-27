@@ -2,6 +2,7 @@ import { assets } from "@kaplayjs/crew";
 import type { FC, PropsWithChildren } from "react";
 import { useProject } from "../../features/Projects/stores/useProject";
 import { useEditor } from "../../hooks/useEditor";
+import { WebMCPButton } from "../WebMCP";
 import { ToolbarButton } from "./ToolbarButton";
 import { ToolbarMoreActionsDropdown } from "./ToolbarMoreActionsDropdown";
 import { ToolbarProjectDropdown } from "./ToolbarProjectDropdown";
@@ -40,6 +41,10 @@ const ToolbarToolsMenu: FC = () => {
 
             <ToolbarToolItem>
                 <ToolbarSeparator className="hidden md:flex -mx-1 px-0" />
+            </ToolbarToolItem>
+
+            <ToolbarToolItem>
+                <WebMCPButton />
             </ToolbarToolItem>
 
             {projectMode == "ex" && (

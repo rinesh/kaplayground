@@ -5,6 +5,7 @@ import {
     type KaplaygroundConsoleEntry,
     type KaplaygroundDiagnostic,
 } from "./kaplaygroundWebMCP";
+import { useWebMCPActivity } from "./webMCPActivity";
 import { SANDBOX_ORIGIN } from "../../config/common";
 import type { FileKind } from "../../features/Projects/models/FileKind";
 import { useProject } from "../../features/Projects/stores/useProject";
@@ -51,6 +52,12 @@ export function registerKaplaygroundWebMCP(): () => void {
     });
 
     const bridge = createKaplaygroundWebMCP({
+        onStatusChange(status, toolNames) {
+            useWebMCPActivity.getState().setConnection(status, toolNames);
+        },
+        onInvocation(invocation) {
+            useWebMCPActivity.getState().recordInvocation(invocation);
+        },
         adapter: {
             getProject() {
                 const { project } = useProject.getState();

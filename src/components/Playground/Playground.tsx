@@ -17,6 +17,7 @@ import ProjectPreferences from "../Project/ProjectPreferences";
 import { ProjectBrowser } from "../ProjectBrowser";
 import ExampleList from "../Toolbar/ExampleList";
 import { ConfirmDialog } from "../UI/ConfirmDialog";
+import { WebMCPDialog } from "../WebMCP";
 import { LoadingPlayground } from "./LoadingPlayground";
 import { WelcomeDialog } from "./WelcomeDialog";
 import { WorkspaceExample } from "./WorkspaceExample";
@@ -173,6 +174,7 @@ const Playground = () => {
                         <ProjectBrowser />
                         <ProjectPreferences />
                         <WelcomeDialog isLoading={loadingEditor} />
+                        <WebMCPDialog />
                     </>
                 )}
 
