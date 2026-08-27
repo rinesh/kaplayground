@@ -25,6 +25,13 @@
 - 🛠️ **Code Editor**\
   Use a modern, powerful code editor based in VS Code, with features like auto-completion, syntax highlighting and special KAPLAY snippets and autocompletion.
 
+- 🤖 **WebMCP Agent Tools**\
+  Let compatible browser agents inspect the current project, read and safely replace files, select files, run or stop the preview, and inspect diagnostics and console output.
+
+## WebMCP
+
+This fork registers twelve `kaplayground_*` tools through the browser's WebMCP API. File replacement and removal use the revision returned by `kaplayground_read_file`, so an agent cannot silently overwrite or delete a newer editor change.
+
 ## 📚 Resources
 
 - [Roadmap](https://github.com/orgs/kaplayjs/projects/14/views/1) -

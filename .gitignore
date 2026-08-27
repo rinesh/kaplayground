@@ -27,6 +27,7 @@ public/kaboom.js
 public/kaboom.js.map
 lib.d.ts
 vite.config.ts.timestamp-*
+*.tsbuildinfo
 
 # Neutralino.JS
 bin/
