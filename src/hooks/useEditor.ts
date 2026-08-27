@@ -248,21 +248,61 @@ export const useEditor = create<EditorStore>((set, get) => ({
             "#game-view",
         );
 
-        const updateCode = (iframeContentWindow: Window | null) => {
+        const waitForIframeLayout = async (
+            iframeContentWindow: Window,
+        ): Promise<HTMLIFrameElement | null> => {
+            const timeoutAt = performance.now() + 10_000;
+
+            while (performance.now() < timeoutAt) {
+                const gameIframe = get().runtime.iframe
+                    ?? document.querySelector<HTMLIFrameElement>("#game-view");
+                const rect = gameIframe?.getBoundingClientRect();
+
+                if (
+                    gameIframe?.contentWindow === iframeContentWindow
+                    && rect
+                    && rect.width > 0
+                    && rect.height > 0
+                ) {
+                    // Let the sandbox complete layout before KAPLAY measures its canvas.
+                    await new Promise<void>(resolve =>
+                        requestAnimationFrame(() => resolve())
+                    );
+                    await new Promise<void>(resolve =>
+                        requestAnimationFrame(() => resolve())
+                    );
+                    return gameIframe;
+                }
+
+                await new Promise<void>(resolve =>
+                    requestAnimationFrame(() => resolve())
+                );
+            }
+
+            return null;
+        };
+
+        const updateCode = async (iframeContentWindow: Window | null) => {
             if (!iframeContentWindow) return;
 
-            console.log("[game] iframe loaded");
-            const code = wrapGame();
+            const gameIframe = await waitForIframeLayout(iframeContentWindow);
+            if (!gameIframe) {
+                console.warn("[game] iframe did not become visible in time");
+                return;
+            }
 
-            code.then((d) => {
-                iframeContentWindow?.postMessage(
-                    {
-                        type: "UPDATE_CODE",
-                        code: d,
-                    },
-                    SANDBOX_ORIGIN,
-                );
-            });
+            console.log("[game] iframe loaded");
+            const code = await wrapGame();
+
+            if (gameIframe.contentWindow !== iframeContentWindow) return;
+
+            iframeContentWindow.postMessage(
+                {
+                    type: "UPDATE_CODE",
+                    code,
+                },
+                SANDBOX_ORIGIN,
+            );
         };
 
         const iframeReadyListener = (
