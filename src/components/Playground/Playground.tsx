@@ -17,7 +17,7 @@ import ProjectPreferences from "../Project/ProjectPreferences";
 import { ProjectBrowser } from "../ProjectBrowser";
 import ExampleList from "../Toolbar/ExampleList";
 import { ConfirmDialog } from "../UI/ConfirmDialog";
-import { WebMCPDialog } from "../WebMCP";
+import { WebMCPButton, WebMCPDialog } from "../WebMCP";
 import { LoadingPlayground } from "./LoadingPlayground";
 import { WelcomeDialog } from "./WelcomeDialog";
 import { WorkspaceExample } from "./WorkspaceExample";
@@ -140,6 +140,20 @@ const Playground = () => {
                                 still view demos.
                             </p>
 
+                            <div
+                                className={"flex flex-col items-center gap-2 rounded-xl "
+                                    + "border border-base-content/10 bg-base-200 px-4 py-3"}
+                            >
+                                <p className="max-w-sm text-center text-sm text-base-content/65">
+                                    WebMCP remains available in this layout.
+                                    Open its activity panel to inspect the
+                                    registered tools and agent calls.
+                                </p>
+                                <div className="h-9">
+                                    <WebMCPButton />
+                                </div>
+                            </div>
+
                             <ExampleList />
                             <ProjectBrowser />
                         </div>
@@ -174,10 +188,10 @@ const Playground = () => {
                         <ProjectBrowser />
                         <ProjectPreferences />
                         <WelcomeDialog isLoading={loadingEditor} />
-                        <WebMCPDialog />
                     </>
                 )}
 
+            <WebMCPDialog />
             <ConfirmDialog />
         </>
     );
