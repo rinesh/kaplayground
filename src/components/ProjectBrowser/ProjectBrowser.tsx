@@ -272,10 +272,19 @@ export const ProjectBrowser = () => {
                     className="grow-0 space-y-4 bg-base-200 p-4 border border-b-0 border-px border-base-100 rounded-t-2xl"
                     tabIndex={0}
                 >
-                    <div className="flex flex-wrap items-baseline justify-between gap-3">
-                        <h2 className="shrink-0 text-2xl sm:text-3xl text-white font-semibold">
-                            Projects Browser
-                        </h2>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <h2 className="shrink-0 text-2xl sm:text-3xl text-white font-semibold">
+                                {tab === "Examples"
+                                    ? "Pick a starting point"
+                                    : "Your games"}
+                            </h2>
+                            <p className="mt-1 text-sm text-base-content/70">
+                                {tab === "Examples"
+                                    ? "Open one, play it, then ask Codex to turn it into your game."
+                                    : "Open something you saved or start a new game."}
+                            </p>
+                        </div>
 
                         <div className="flex gap-3">
                             <GroupBy
@@ -319,7 +328,9 @@ export const ProjectBrowser = () => {
                             <input
                                 type="text"
                                 className="peer grow w-full h-full"
-                                placeholder="Search for examples/projects"
+                                placeholder={tab === "Examples"
+                                    ? "Search starting points"
+                                    : "Search your games"}
                                 autoComplete="off"
                                 onChange={(e) => setFilter(e.target.value)}
                             />
@@ -377,13 +388,13 @@ export const ProjectBrowser = () => {
                 >
                     <TabsList className="sm:auto-cols-fr -mx-px w-auto mb-[2px]">
                         <TabTrigger
-                            label="My Projects & Examples"
+                            label="My games"
                             value="Projects"
                             icon={assets.api_book.outlined}
                             count={entriesCount(filteredProjects)}
                         />
                         <TabTrigger
-                            label="KAPLAY Demos"
+                            label="Game starting points"
                             value="Examples"
                             icon={assets.apple.outlined}
                             count={entriesCount(filteredExamples)}
@@ -521,7 +532,7 @@ export const ProjectBrowser = () => {
                                             aria-hidden="true"
                                         />
 
-                                        Check out KAPLAY Demos
+                                        Browse game starting points
 
                                         {!!entriesCount(filteredExamples) && (
                                             <span className="badge badge-xs font-medium py-1 px-1.5 min-w-5 h-auto bg-base-content/15 border-0">

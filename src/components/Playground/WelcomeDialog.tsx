@@ -44,10 +44,11 @@ export const WelcomeDialog = ({ isLoading }: WelcomeDialogProps) => {
     const openCodexIdeas = () => {
         closeWelcome();
 
-        const showIdeas = () => requestAnimationFrame(() => {
-            document.querySelector<HTMLDialogElement>("#webmcp-panel")
-                ?.showModal();
-        });
+        const showIdeas = () =>
+            requestAnimationFrame(() => {
+                document.querySelector<HTMLDialogElement>("#webmcp-panel")
+                    ?.showModal();
+            });
 
         if (isStarterReady) {
             showIdeas();
@@ -172,8 +173,8 @@ export const WelcomeDialog = ({ isLoading }: WelcomeDialogProps) => {
                                     Play Bean's Snack Dash
                                 </span>
                                 <span className="text-sm">
-                                    Move the bean, grab five apples, and see what
-                                    you want to change.
+                                    Move the bean, grab five apples, and see
+                                    what you want to change.
                                 </span>
                             </button>
 
@@ -211,10 +212,11 @@ export const WelcomeDialog = ({ isLoading }: WelcomeDialogProps) => {
                                         aria-hidden="true"
                                     />
                                     <span className="pr-8 font-medium text-lg leading-tight text-white">
-                                        Try another game
+                                        Pick another starting point
                                     </span>
                                     <span className="text-sm">
-                                        Browse more games when you're ready.
+                                        Open any example, play it, and remix it
+                                        with Codex.
                                     </span>
                                 </button>
                             </div>
@@ -233,8 +235,16 @@ export const WelcomeDialog = ({ isLoading }: WelcomeDialogProps) => {
                             <ol className="flex flex-col gap-2">
                                 {[
                                     ["1", "Play", "Grab an apple or two."],
-                                    ["2", "Change", "Copy one idea into Codex."],
-                                    ["3", "Play again", "Try the new version here."],
+                                    [
+                                        "2",
+                                        "Change",
+                                        "Copy one idea into Codex.",
+                                    ],
+                                    [
+                                        "3",
+                                        "Play again",
+                                        "Try the new version here.",
+                                    ],
                                 ].map(([number, title, description]) => (
                                     <li
                                         key={number}

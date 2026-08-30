@@ -1,9 +1,17 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import { createPreviewRunCoordinator } from "../src/hooks/previewRunCoordinator.ts";
 import { createActiveProjectPersister } from "../src/features/Projects/stores/activeProjectPersistence.ts";
+import { createPreviewRunCoordinator } from "../src/hooks/previewRunCoordinator.ts";
 import { createBoundedConsoleCapture } from "../src/integrations/webmcp/boundedConsoleCapture.ts";
+import {
+    createCodexPlayGuide,
+    createCodexPlayGuideKey,
+} from "../src/integrations/webmcp/codexPlayGuide.ts";
+import {
+    readCodexPlayStepIndex,
+    writeCodexPlayStepIndex,
+} from "../src/integrations/webmcp/codexPlayProgress.ts";
 import {
     createKaplaygroundWebMCP,
     kaplaygroundContentRevision,
@@ -101,6 +109,25 @@ function createAdapter() {
         storageState: "transient",
         paused: false,
         activeRunId: "run-latest",
+        hasUnsavedChanges: false,
+        example: {
+            key: "basicsStart",
+            title: "Starting a Game",
+            description: "Learn the smallest playable KAPLAY scene.",
+            tags: ["basics"],
+        },
+        codexGuide: {
+            key: "basicsStart:project-1",
+            subjectTitle: "Starting a Game",
+            activeStepIndex: 2,
+            activeStep: {
+                id: "remix",
+                eyebrow: "FIRST REMIX",
+                title: "Give it your own look",
+                description: "Choose the feeling.",
+                prompt: "Use @Browser to remix this game.",
+            },
+        },
     };
     const calls = {
         selected: [],
@@ -108,7 +135,17 @@ function createAdapter() {
         saves: 0,
         pauseStates: [],
         inspections: [],
+        openedExamples: [],
     };
+    const examples = [
+        state.example,
+        {
+            key: "platformer",
+            title: "Tiny Platformer",
+            description: "Jump across a small level.",
+            tags: ["game", "movement"],
+        },
+    ];
 
     const assertProjectRevision = (expectedProjectRevision) => {
         assert.equal(
@@ -135,8 +172,28 @@ function createAdapter() {
                 assetCount: assets.length,
                 currentFile: "main.js",
                 previewState: state.paused ? "paused" : "running",
+                hasUnsavedChanges: state.hasUnsavedChanges,
+                example: state.example,
+                codexGuide: state.codexGuide,
             }),
             getProjectRevision: () => state.projectRevision,
+            listExamples: () => examples,
+            openExample: (
+                key,
+                expectedProjectRevision,
+                discardUnsavedChanges,
+            ) => {
+                assertProjectRevision(expectedProjectRevision);
+                if (
+                    state.hasUnsavedChanges
+                    && !discardUnsavedChanges
+                ) {
+                    throw new Error("The active project has unsaved changes.");
+                }
+                calls.openedExamples.push(key);
+                state.example = examples.find((example) => example.key === key);
+                state.projectRevision = `${PROJECT_REVISION}-opened`;
+            },
             listFiles: () => [...files.values()],
             listAssets: () => assets,
             readFile: (path) => files.get(path) ?? null,
@@ -229,6 +286,147 @@ function deferred() {
     return { promise, resolve, reject };
 }
 
+describe("coding-agent play guides", () => {
+    it("keeps one guide identity across save without leaking between projects", () => {
+        const createdAt = "2026-08-30T10:00:00.000Z";
+        const transientKey = createCodexPlayGuideKey(
+            "basicsStart",
+            createdAt,
+            null,
+        );
+        const savedKey = createCodexPlayGuideKey(
+            "basicsStart",
+            createdAt,
+            "saved-project-id",
+        );
+
+        assert.equal(savedKey, transientKey);
+        assert.notEqual(
+            transientKey,
+            createCodexPlayGuideKey(
+                "basicsStart",
+                "2026-08-30T10:01:00.000Z",
+                null,
+            ),
+        );
+    });
+
+    it("stores and bounds each guide's visible idea independently", () => {
+        const values = new Map();
+        const storage = {
+            getItem: (key) => values.get(key) ?? null,
+            setItem: (key, value) => values.set(key, value),
+        };
+
+        writeCodexPlayStepIndex("guide-a", 3, storage);
+        writeCodexPlayStepIndex("guide-b", 1, storage);
+        assert.equal(readCodexPlayStepIndex("guide-a", 5, storage), 3);
+        assert.equal(readCodexPlayStepIndex("guide-b", 5, storage), 1);
+        assert.equal(readCodexPlayStepIndex("guide-a", 2, storage), 1);
+    });
+
+    it("keeps the hand-authored starter path for the Codex game", () => {
+        const guide = createCodexPlayGuide({
+            key: "webmcpAgent",
+            title: "Play & Remix with Codex",
+            isStarter: true,
+        });
+
+        assert.equal(guide.steps.length, 5);
+        assert.equal(guide.steps[0].title, "Play the tiny game");
+        for (const step of guide.steps.filter((step) => step.prompt)) {
+            assert.match(step.prompt, /@Browser/);
+        }
+    });
+
+    it("creates a complete, example-specific prompt path for every generated example", () => {
+        const examples = JSON.parse(
+            readFileSync(
+                new URL("../src/data/exampleList.json", import.meta.url),
+                "utf8",
+            ),
+        );
+
+        assert.ok(examples.length > 100);
+        const presentations = new Set();
+        const presentationsByName = new Map();
+        for (const example of examples) {
+            const guide = createCodexPlayGuide({
+                key: example.name,
+                title: example.formattedName,
+                source: example.code,
+            });
+            presentations.add(guide.presentation);
+            presentationsByName.set(example.name, guide.presentation);
+
+            assert.equal(guide.steps.length, 5, example.name);
+            assert.equal(guide.subjectTitle, example.formattedName);
+            for (const step of guide.steps) {
+                assert.ok(step.title.trim(), `${example.name}:${step.id}`);
+                assert.ok(
+                    step.description.trim(),
+                    `${example.name}:${step.id}`,
+                );
+                if (!step.prompt) continue;
+                assert.match(step.prompt, /@Browser/, example.name);
+                assert.ok(
+                    step.prompt.includes(example.formattedName),
+                    `${example.name}:${step.id}`,
+                );
+                assert.doesNotMatch(step.prompt, /\b(?:undefined|null)\b/);
+            }
+
+            for (const stepId of ["remix", "build", "invent"]) {
+                const prompt = guide.steps.find((step) => step.id === stepId)
+                    ?.prompt;
+                assert.match(prompt, /run/i, `${example.name}:${stepId}`);
+                assert.match(prompt, /fix/i, `${example.name}:${stepId}`);
+            }
+        }
+        assert.deepEqual(
+            [...presentations].sort(),
+            ["interactive", "output", "visual"],
+        );
+        for (const name of ["button", "clicktopmost", "hover"]) {
+            assert.equal(presentationsByName.get(name), "interactive", name);
+        }
+        assert.equal(presentationsByName.get("kaboom"), "interactive");
+        assert.equal(presentationsByName.get("onLoadError"), "output");
+        assert.equal(presentationsByName.get("basicsStart"), "visual");
+    });
+
+    it("uses friendly output copy when an example has no visible scene", () => {
+        const guide = createCodexPlayGuide({
+            key: "blank-example",
+            title: "  Blank   Example  ",
+            source: "kaplay(); console.log('done');",
+        });
+
+        assert.equal(guide.subjectTitle, "Blank Example");
+        assert.equal(guide.presentation, "output");
+        assert.match(guide.steps[0].description, /game area may be blank/i);
+        assert.match(guide.steps[1].prompt, /live output/i);
+    });
+
+    it("classifies combined executable source without trusting comments or strings", () => {
+        const combined = createCodexPlayGuide({
+            key: "project",
+            title: "Project",
+            source:
+                "import './scenes/game.js'; go('game');\nadd([rect(32, 32)]); onKeyPress('space', jump);",
+        });
+        const commentsOnly = createCodexPlayGuide({
+            key: "comments",
+            title: "Comments",
+            source:
+                "kaplay(); // addKaboom(vec2(10, 10))\nconsole.log('onClick addSprite');",
+        });
+
+        assert.equal(combined.presentation, "interactive");
+        assert.equal(commentsOnly.presentation, "output");
+    });
+});
+
 describe("KAPLAYGROUND WebMCP", () => {
     it("keeps the sandbox side of the preview protocol in the repository", () => {
         const sandbox = readFileSync(
@@ -280,6 +478,7 @@ describe("KAPLAYGROUND WebMCP", () => {
             revision: 1,
             project: {
                 name: "Project A",
+                sourceDemoKey: "basicsStart",
                 files: new Map([["main.js", { value: "A" }]]),
             },
         };
@@ -339,6 +538,7 @@ describe("KAPLAYGROUND WebMCP", () => {
         }
         assert.equal(writes.length, 1);
         assert.equal(writes[0].snapshot.name, "Project A");
+        assert.equal(writes[0].snapshot.sourceDemoKey, "basicsStart");
         assert.equal(writes[0].snapshot.files.get("main.js").value, "A");
         assert.deepEqual(deleted, ["project-a-1"]);
         assert.deepEqual(committed, []);
@@ -428,6 +628,8 @@ describe("KAPLAYGROUND WebMCP", () => {
 
         assert.deepEqual(bridge.toolNames, [
             "kaplayground_get_agent_guide",
+            "kaplayground_list_examples",
+            "kaplayground_open_example",
             "kaplayground_get_project",
             "kaplayground_list_files",
             "kaplayground_list_assets",
@@ -451,6 +653,7 @@ describe("KAPLAYGROUND WebMCP", () => {
         );
         assert.equal(guide.title, "KAPLAYGROUND coding-agent workflow");
         assert.match(guide.starterPrompt, /kaplayground_get_project/);
+        assert.doesNotMatch(guide.starterPrompt, /gameSettings/);
         assert.ok(guide.workflow.length >= 9);
     });
 
@@ -477,7 +680,112 @@ describe("KAPLAYGROUND WebMCP", () => {
         applicationReady.resolve();
         await bridge.ready;
         assert.equal(bridge.status, "ready");
-        assert.equal(context.registered.length, 16);
+        assert.equal(context.registered.length, 18);
+    });
+
+    it("lets the agent find and open an exact game starting point", async () => {
+        const context = new FakeModelContext();
+        const { adapter, calls, state } = createAdapter();
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+        await bridge.ready;
+
+        const result = await execute(
+            context,
+            "kaplayground_list_examples",
+            { query: "platform", tag: "game" },
+        );
+        assert.equal(result.total, 1);
+        assert.equal(result.examples[0].key, "platformer");
+        assert.equal(result.projectRevision, PROJECT_REVISION);
+
+        state.hasUnsavedChanges = true;
+        await assert.rejects(
+            execute(context, "kaplayground_open_example", {
+                key: "platformer",
+                expectedProjectRevision: result.projectRevision,
+            }),
+            /unsaved changes/i,
+        );
+        assert.deepEqual(calls.openedExamples, []);
+        state.hasUnsavedChanges = false;
+
+        const opened = await execute(
+            context,
+            "kaplayground_open_example",
+            {
+                key: "platformer",
+                expectedProjectRevision: result.projectRevision,
+            },
+        );
+        assert.deepEqual(calls.openedExamples, ["platformer"]);
+        assert.deepEqual(opened, {
+            openedExample: "platformer",
+            projectRevision: `${PROJECT_REVISION}-opened`,
+        });
+    });
+
+    it("serializes concurrent starting-point replacements", async () => {
+        const context = new FakeModelContext();
+        const { adapter, calls, state } = createAdapter();
+        const firstStarted = deferred();
+        const releaseFirst = deferred();
+        adapter.openExample = async (
+            key,
+            expectedProjectRevision,
+        ) => {
+            assert.equal(expectedProjectRevision, state.projectRevision);
+            firstStarted.resolve();
+            await releaseFirst.promise;
+            calls.openedExamples.push(key);
+            state.projectRevision = `${PROJECT_REVISION}-${key}`;
+        };
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+        await bridge.ready;
+
+        const first = execute(context, "kaplayground_open_example", {
+            key: "platformer",
+            expectedProjectRevision: PROJECT_REVISION,
+        });
+        await firstStarted.promise;
+        const second = execute(context, "kaplayground_open_example", {
+            key: "basicsStart",
+            expectedProjectRevision: PROJECT_REVISION,
+        });
+        releaseFirst.resolve();
+
+        assert.equal((await first).openedExample, "platformer");
+        await assert.rejects(second, /Project changed/i);
+        assert.deepEqual(calls.openedExamples, ["platformer"]);
+    });
+
+    it("rechecks unsaved state at the example adapter boundary", async () => {
+        const context = new FakeModelContext();
+        const { adapter, calls, state } = createAdapter();
+        const listExamples = adapter.listExamples;
+        adapter.listExamples = () => {
+            state.hasUnsavedChanges = true;
+            return listExamples();
+        };
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+        await bridge.ready;
+
+        await assert.rejects(
+            execute(context, "kaplayground_open_example", {
+                key: "platformer",
+                expectedProjectRevision: PROJECT_REVISION,
+            }),
+            /unsaved changes/i,
+        );
+        assert.deepEqual(calls.openedExamples, []);
     });
 
     it("waits for the preview to acknowledge that its run loaded", async () => {
@@ -851,6 +1159,15 @@ describe("KAPLAYGROUND WebMCP", () => {
         const project = await execute(context, "kaplayground_get_project");
         assert.equal(project.projectRevision, PROJECT_REVISION);
         assert.equal(project.storageState, "transient");
+        assert.deepEqual(project.example, {
+            key: "basicsStart",
+            title: "Starting a Game",
+            description: "Learn the smallest playable KAPLAY scene.",
+            tags: ["basics"],
+        });
+        assert.equal(project.codexGuide.activeStepIndex, 2);
+        assert.equal(project.codexGuide.activeStep.id, "remix");
+        assert.match(project.codexGuide.activeStep.prompt, /@Browser/);
 
         const result = await execute(context, "kaplayground_save_project", {
             expectedProjectRevision: project.projectRevision,
@@ -1138,7 +1455,7 @@ describe("KAPLAYGROUND WebMCP", () => {
         await bridge.ready;
 
         assert.equal(connections.at(-1).status, "ready");
-        assert.equal(connections.at(-1).toolNames.length, 16);
+        assert.equal(connections.at(-1).toolNames.length, 18);
 
         await execute(context, "kaplayground_get_project");
         assert.deepEqual(

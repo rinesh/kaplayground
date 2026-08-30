@@ -12,6 +12,8 @@ export type Project = {
     mode: ProjectMode;
     buildMode: ProjectBuildMode;
     favicon: string;
+    /** Demo this project started from, retained after the project is saved. */
+    sourceDemoKey?: string;
     createdAt: string;
     updatedAt: string;
 };

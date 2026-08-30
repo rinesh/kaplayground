@@ -1,6 +1,6 @@
 /// <reference types="webmcp-types" preserve="true" />
 
-import { WEBMCP_AGENT_GUIDE } from "./agentGuide.ts";
+import { type CodexPlayStep, WEBMCP_AGENT_GUIDE } from "./agentGuide.ts";
 
 const DEFAULT_PREFIX = "kaplayground";
 const DEFAULT_MAX_FILE_BYTES = 512 * 1024;
@@ -53,6 +53,26 @@ export interface KaplaygroundProjectInfo {
     currentFile?: string | null;
     previewState?: "running" | "paused" | "stopped" | "unknown";
     hasUnsavedChanges?: boolean;
+    example?: {
+        key: string;
+        title: string;
+        description: string | null;
+        tags: string[];
+    } | null;
+    codexGuide?: {
+        key: string;
+        subjectTitle: string;
+        activeStepIndex: number;
+        activeStep: CodexPlayStep | null;
+    } | null;
+}
+
+export interface KaplaygroundExampleSummary {
+    /** Stable 1-128 character key using letters, numbers, dots, underscores, or hyphens. */
+    key: string;
+    title: string;
+    description: string | null;
+    tags: readonly string[];
 }
 
 export interface KaplaygroundFileSummary {
@@ -148,6 +168,14 @@ export interface KaplaygroundAdapter {
     waitUntilReady?(signal: AbortSignal): WebMCP.MaybePromise<void>;
     getProject(): WebMCP.MaybePromise<KaplaygroundProjectInfo>;
     getProjectRevision(): WebMCP.MaybePromise<string>;
+    listExamples?(): WebMCP.MaybePromise<
+        readonly KaplaygroundExampleSummary[]
+    >;
+    openExample?(
+        key: string,
+        expectedProjectRevision: string,
+        discardUnsavedChanges: boolean,
+    ): WebMCP.MaybePromise<void>;
     listFiles(): WebMCP.MaybePromise<readonly KaplaygroundFileSummary[]>;
     listAssets?(): WebMCP.MaybePromise<readonly KaplaygroundAssetSummary[]>;
     readFile(path: string): WebMCP.MaybePromise<KaplaygroundFile | null>;
@@ -249,6 +277,7 @@ export class KaplaygroundWebMCP {
     private readonly registrationController = new AbortController();
     private readonly names = new Set<string>();
     private readonly fileMutationTails = new Map<string, Promise<void>>();
+    private projectReplacementTail: Promise<void> = Promise.resolve();
     private currentStatus: KaplaygroundWebMCPStatus;
     private invocationSerial = 0;
 
@@ -449,6 +478,24 @@ export class KaplaygroundWebMCP {
         }
     }
 
+    private async serializeProjectReplacement<T>(
+        mutation: () => Promise<T>,
+    ): Promise<T> {
+        const previous = this.projectReplacementTail;
+        let release = () => {};
+        const held = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        this.projectReplacementTail = previous.then(() => held);
+
+        await previous;
+        try {
+            return await mutation();
+        } finally {
+            release();
+        }
+    }
+
     private async getCurrentProjectRevision(
         signal: AbortSignal,
     ): Promise<string> {
@@ -497,8 +544,17 @@ export class KaplaygroundWebMCP {
             this.createReplaceFileTool(),
         ];
 
+        if (this.adapter.listExamples) {
+            tools.splice(1, 0, this.createListExamplesTool());
+        }
+        if (this.adapter.listExamples && this.adapter.openExample) {
+            tools.splice(2, 0, this.createOpenExampleTool());
+        }
         if (this.adapter.listAssets) {
-            tools.splice(3, 0, this.createListAssetsTool());
+            const listFilesIndex = tools.findIndex((tool) =>
+                tool.name === "list_files"
+            );
+            tools.splice(listFilesIndex + 1, 0, this.createListAssetsTool());
         }
         if (this.adapter.createFile) tools.push(this.createFileTool());
         if (this.adapter.removeFile) tools.push(this.createRemoveFileTool());
@@ -520,6 +576,172 @@ export class KaplaygroundWebMCP {
         }
 
         return tools;
+    }
+
+    private createListExamplesTool(): EditorTool {
+        return {
+            name: "list_examples",
+            title: "Find KAPLAYGROUND game starting points",
+            description:
+                "Find ready-made starting points by title, description, or tag before opening one to remix.",
+            inputSchema: {
+                type: "object",
+                properties: {
+                    query: {
+                        type: "string",
+                        maxLength: 120,
+                        description:
+                            "Optional words to match in the title or description.",
+                    },
+                    tag: {
+                        type: "string",
+                        maxLength: 64,
+                        description: "Optional exact tag to match.",
+                    },
+                    offset: { type: "integer", minimum: 0, default: 0 },
+                    limit: {
+                        type: "integer",
+                        minimum: 1,
+                        maximum: 200,
+                        default: 50,
+                    },
+                },
+                additionalProperties: false,
+            },
+            annotations: readAnnotations(),
+            execute: async (input, signal) => {
+                const query = optionalBoundedString(input.query, "query", 120)
+                    ?.toLowerCase() ?? "";
+                const tag = optionalBoundedString(input.tag, "tag", 64);
+                const offset = boundedInteger(
+                    input.offset,
+                    "offset",
+                    0,
+                    Number.MAX_SAFE_INTEGER,
+                    0,
+                );
+                const limit = boundedInteger(
+                    input.limit,
+                    "limit",
+                    1,
+                    200,
+                    50,
+                );
+                const projectRevision = await this.getCurrentProjectRevision(
+                    signal,
+                );
+                const examples = [...await this.adapter.listExamples?.() ?? []]
+                    .map(normalizeExampleSummary)
+                    .filter((example) =>
+                        (!tag || example.tags.includes(tag))
+                        && (
+                            !query
+                            || `${example.key} ${example.title} ${
+                                example.description ?? ""
+                            }`
+                                .toLowerCase()
+                                .includes(query)
+                        )
+                    )
+                    .sort((left, right) =>
+                        left.title.localeCompare(right.title)
+                    );
+                throwIfAborted(signal);
+                await this.assertProjectRevision(projectRevision, signal);
+
+                return {
+                    projectRevision,
+                    total: examples.length,
+                    offset,
+                    limit,
+                    examples: examples.slice(offset, offset + limit),
+                };
+            },
+        };
+    }
+
+    private createOpenExampleTool(): EditorTool {
+        return {
+            name: "open_example",
+            title: "Open a KAPLAYGROUND game starting point",
+            description:
+                "Replace the active project with one exact starting point returned by list_examples.",
+            inputSchema: {
+                type: "object",
+                properties: {
+                    key: {
+                        type: "string",
+                        minLength: 1,
+                        maxLength: 128,
+                        pattern: "^[A-Za-z0-9_.-]{1,128}$",
+                        description:
+                            "Exact starting-point key returned by list_examples.",
+                    },
+                    expectedProjectRevision: projectRevisionProperty(),
+                    discardUnsavedChanges: {
+                        type: "boolean",
+                        default: false,
+                        description:
+                            "Set true only after the user explicitly approves replacing unsaved changes.",
+                    },
+                },
+                required: ["key", "expectedProjectRevision"],
+                additionalProperties: false,
+            },
+            annotations: {
+                untrustedContentHint: true,
+            },
+            execute: async (input, signal) => {
+                const key = exampleKey(input.key);
+                const expectedProjectRevision = stringValue(
+                    input.expectedProjectRevision,
+                    "expectedProjectRevision",
+                );
+                const discardUnsavedChanges = booleanValue(
+                    input.discardUnsavedChanges,
+                    "discardUnsavedChanges",
+                    false,
+                );
+                return this.serializeProjectReplacement(async () => {
+                    await this.assertProjectRevision(
+                        expectedProjectRevision,
+                        signal,
+                    );
+                    const currentProject = await this.adapter.getProject();
+                    throwIfAborted(signal);
+                    if (
+                        currentProject.hasUnsavedChanges
+                        && !discardUnsavedChanges
+                    ) {
+                        throw new Error(
+                            "The active project has unsaved changes. Save it first, or retry with discardUnsavedChanges only after the user explicitly approves replacing them.",
+                        );
+                    }
+                    const examples = [
+                        ...await this.adapter.listExamples?.() ?? [],
+                    ].map(normalizeExampleSummary);
+                    throwIfAborted(signal);
+                    if (!examples.some((example) => example.key === key)) {
+                        throw new RangeError(
+                            `No starting point exists with key "${key}". Call list_examples again.`,
+                        );
+                    }
+                    await this.assertProjectRevision(
+                        expectedProjectRevision,
+                        signal,
+                    );
+                    await this.adapter.openExample?.(
+                        key,
+                        expectedProjectRevision,
+                        discardUnsavedChanges,
+                    );
+                    throwIfAborted(signal);
+                    const projectRevision = await this
+                        .getCurrentProjectRevision(signal);
+                    return { openedExample: key, projectRevision };
+                });
+            },
+        };
     }
 
     private createGetAgentGuideTool(): EditorTool {
@@ -1546,12 +1768,59 @@ function projectRevisionProperty(): object {
         minLength: 1,
         maxLength: 128,
         description:
-            "Opaque projectRevision returned by get_project, list_files, list_assets, or read_file.",
+            "Opaque projectRevision returned by get_project, list_examples, list_files, list_assets, or read_file.",
     };
 }
 
 function readAnnotations(): WebMCP.ToolAnnotations {
     return { readOnlyHint: true, untrustedContentHint: true };
+}
+
+function optionalBoundedString(
+    value: unknown,
+    name: string,
+    maxLength: number,
+): string | undefined {
+    if (value === undefined) return undefined;
+    const result = stringValue(value, name, true).trim();
+    if (result.length > maxLength) {
+        throw new RangeError(
+            `${name} must contain at most ${maxLength} characters.`,
+        );
+    }
+    return result;
+}
+
+function exampleKey(value: unknown): string {
+    const key = stringValue(value, "key");
+    if (!TOOL_NAME_PATTERN.test(key)) {
+        throw new RangeError(
+            "key must contain 1-128 letters, numbers, dots, underscores, or hyphens.",
+        );
+    }
+    return key;
+}
+
+function normalizeExampleSummary(
+    example: KaplaygroundExampleSummary,
+): KaplaygroundExampleSummary {
+    const title = stringValue(example.title, "example.title").slice(0, 256);
+    const description = example.description === null
+        ? null
+        : stringValue(
+            example.description,
+            "example.description",
+            true,
+        ).slice(0, 2_000);
+    const tags = [...example.tags].slice(0, 50).map((tag, index) =>
+        stringValue(tag, `example.tags[${index}]`).slice(0, 64)
+    );
+    return {
+        key: exampleKey(example.key),
+        title,
+        description,
+        tags,
+    };
 }
 
 function projectPath(value: unknown): string {

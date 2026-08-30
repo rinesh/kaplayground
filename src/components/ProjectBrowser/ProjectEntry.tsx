@@ -58,6 +58,7 @@ export const ProjectEntry: FC<ProjectEntryProps> = (
     const projectKey = useProject((s) => s.projectKey);
     const demoKey = useProject((s) => s.demoKey);
     const isCurrent = projectKey == project.key || demoKey == project.key;
+    const description = project.description?.trim();
 
     const isRecent = (timestamp: string, withinDays = 5) =>
         Math.floor(
@@ -240,9 +241,10 @@ export const ProjectEntry: FC<ProjectEntryProps> = (
                         {project.formattedName}
                     </h2>
 
-                    {project.description && (
+                    {(description || !isProject) && (
                         <p className="text-[0.94rem] leading-snug -mt-0.5">
-                            {project.description}
+                            {description
+                                || "A ready-made building block you can play with and remix using Codex."}
                         </p>
                     )}
 

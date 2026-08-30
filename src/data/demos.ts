@@ -320,6 +320,9 @@ export const demos = [webMCPExample, ...examplesList].map((example) => {
     return obj;
 });
 
+export const getDemo = (key: string | null | undefined) =>
+    key ? demos.find((demo) => demo.key === key) : undefined;
+
 export const demoVersions = Object.fromEntries(
     [...new Set(demos.map(d => d.minVersion))].filter(Boolean)
         .sort((a, b) => parseFloat(b) - parseFloat(a))

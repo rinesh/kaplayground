@@ -1,28 +1,57 @@
 import { useEffect, useRef, useState } from "react";
-import { CODEX_PLAY_STEPS } from "../../integrations/webmcp/agentGuide";
+import type { CodexPlayGuide } from "../../integrations/webmcp/codexPlayGuide";
+import {
+    clampCodexPlayStep,
+    readCodexPlayStepIndex,
+    writeCodexPlayStepIndex,
+} from "../../integrations/webmcp/codexPlayProgress";
 import { cn } from "../../util/cn";
 import { copyText } from "../../util/copyText";
 
-const STORAGE_KEY = "kaplayground-codex-play-step-v1";
 const STEP_EVENT = "kaplayground-codex-play-step";
 
 type Props = {
+    guide: CodexPlayGuide;
     className?: string;
     condensed?: boolean;
 };
 
-export const WebMCPTutorial = ({ className, condensed = false }: Props) => {
-    const [stepIndex, setStepIndex] = useState(readStepIndex);
+type StepChangeDetail = {
+    guideKey: string;
+    stepIndex: number;
+};
+
+export const WebMCPTutorial = ({
+    guide,
+    className,
+    condensed = false,
+}: Props) => {
+    const steps = guide.steps;
+    const [stepIndex, setStepIndex] = useState(() =>
+        readCodexPlayStepIndex(guide.key, steps.length)
+    );
     const [copied, setCopied] = useState(false);
     const [copyFailed, setCopyFailed] = useState(false);
     const resetTimer = useRef<number | undefined>();
-    const step = CODEX_PLAY_STEPS[stepIndex];
+    const step = steps[stepIndex] ?? steps[0];
+
+    useEffect(() => {
+        setStepIndex(readCodexPlayStepIndex(guide.key, steps.length));
+        setCopied(false);
+        setCopyFailed(false);
+        window.clearTimeout(resetTimer.current);
+    }, [guide.key, steps.length]);
 
     useEffect(() => {
         const handleStepChange = (event: Event) => {
-            const nextIndex = (event as CustomEvent<number>).detail;
-            if (Number.isInteger(nextIndex)) {
-                setStepIndex(clampStep(nextIndex));
+            const detail = (event as CustomEvent<StepChangeDetail>).detail;
+            if (
+                detail?.guideKey === guide.key
+                && Number.isInteger(detail.stepIndex)
+            ) {
+                setStepIndex(
+                    clampCodexPlayStep(detail.stepIndex, steps.length),
+                );
                 setCopied(false);
                 setCopyFailed(false);
                 window.clearTimeout(resetTimer.current);
@@ -34,16 +63,18 @@ export const WebMCPTutorial = ({ className, condensed = false }: Props) => {
             window.removeEventListener(STEP_EVENT, handleStepChange);
             window.clearTimeout(resetTimer.current);
         };
-    }, []);
+    }, [guide.key, steps.length]);
 
     const goToStep = (nextIndex: number) => {
-        const clampedIndex = clampStep(nextIndex);
+        const clampedIndex = clampCodexPlayStep(nextIndex, steps.length);
         setStepIndex(clampedIndex);
         setCopied(false);
         setCopyFailed(false);
-        localStorage.setItem(STORAGE_KEY, String(clampedIndex));
+        writeCodexPlayStepIndex(guide.key, clampedIndex);
         window.dispatchEvent(
-            new CustomEvent<number>(STEP_EVENT, { detail: clampedIndex }),
+            new CustomEvent<StepChangeDetail>(STEP_EVENT, {
+                detail: { guideKey: guide.key, stepIndex: clampedIndex },
+            }),
         );
     };
 
@@ -75,16 +106,17 @@ export const WebMCPTutorial = ({ className, condensed = false }: Props) => {
             <div
                 className={cn(
                     "grid items-center gap-4",
-                    condensed && "lg:grid-cols-[minmax(15rem,0.8fr)_minmax(21rem,1.2fr)]",
+                    condensed
+                        && "@2xl:grid-cols-[minmax(15rem,0.8fr)_minmax(21rem,1.2fr)]",
                 )}
             >
                 <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                         <span className="rounded-full bg-fuchsia-300/15 px-2.5 py-1 text-[10px] font-bold tracking-[0.16em] text-fuchsia-200">
-                            {step.eyebrow}
+                            {step?.eyebrow}
                         </span>
                         <span className="text-[11px] font-semibold text-white/45">
-                            {stepIndex + 1} of {CODEX_PLAY_STEPS.length}
+                            {stepIndex + 1} of {steps.length}
                         </span>
                     </div>
                     <h2
@@ -93,7 +125,7 @@ export const WebMCPTutorial = ({ className, condensed = false }: Props) => {
                             condensed ? "text-base sm:text-lg" : "text-2xl",
                         )}
                     >
-                        {step.title}
+                        {step?.title}
                     </h2>
                     <p
                         className={cn(
@@ -101,12 +133,12 @@ export const WebMCPTutorial = ({ className, condensed = false }: Props) => {
                             condensed ? "text-xs sm:text-sm" : "text-sm",
                         )}
                     >
-                        {step.description}
+                        {step?.description}
                     </p>
                 </div>
 
                 <div className="min-w-0 rounded-xl border border-white/10 bg-black/20 p-3">
-                    {step.prompt
+                    {step?.prompt
                         ? (
                             <>
                                 <p
@@ -142,10 +174,12 @@ export const WebMCPTutorial = ({ className, condensed = false }: Props) => {
                                 </span>
                                 <div>
                                     <p className="text-sm font-semibold text-white">
-                                        Chase the apples
+                                        {step?.calloutTitle
+                                            ?? `Try ${guide.subjectTitle}`}
                                     </p>
                                     <p className="text-xs text-slate-400">
-                                        There is no wrong way to play.
+                                        {step?.calloutDescription
+                                            ?? "Click the game and see what happens."}
                                     </p>
                                 </div>
                             </div>
@@ -155,7 +189,7 @@ export const WebMCPTutorial = ({ className, condensed = false }: Props) => {
 
             <footer className="mt-3 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
                 <div className="flex gap-1.5" aria-label="Remix progress">
-                    {CODEX_PLAY_STEPS.map((playStep, index) => (
+                    {steps.map((playStep, index) => (
                         <button
                             key={playStep.id}
                             type="button"
@@ -165,8 +199,12 @@ export const WebMCPTutorial = ({ className, condensed = false }: Props) => {
                                     ? "w-6 bg-fuchsia-300"
                                     : "w-2 bg-white/20 hover:bg-white/35",
                             )}
-                            aria-label={`Go to idea ${index + 1}: ${playStep.title}`}
-                            aria-current={index === stepIndex ? "step" : undefined}
+                            aria-label={`Go to idea ${
+                                index + 1
+                            }: ${playStep.title}`}
+                            aria-current={index === stepIndex
+                                ? "step"
+                                : undefined}
                             onClick={() => goToStep(index)}
                         />
                     ))}
@@ -187,14 +225,14 @@ export const WebMCPTutorial = ({ className, condensed = false }: Props) => {
                         className="btn btn-xs border-white/10 bg-white/10 text-white hover:bg-white/15"
                         onClick={() =>
                             goToStep(
-                                stepIndex === CODEX_PLAY_STEPS.length - 1
+                                stepIndex === steps.length - 1
                                     ? 0
                                     : stepIndex + 1,
                             )}
                     >
                         {stepIndex === 0
                             ? "Give me an idea"
-                            : stepIndex === CODEX_PLAY_STEPS.length - 1
+                            : stepIndex === steps.length - 1
                             ? "Start again"
                             : "Next idea"}
                     </button>
@@ -203,12 +241,3 @@ export const WebMCPTutorial = ({ className, condensed = false }: Props) => {
         </section>
     );
 };
-
-function readStepIndex(): number {
-    return clampStep(Number(localStorage.getItem(STORAGE_KEY) ?? 0));
-}
-
-function clampStep(value: number): number {
-    if (!Number.isInteger(value)) return 0;
-    return Math.max(0, Math.min(CODEX_PLAY_STEPS.length - 1, value));
-}
