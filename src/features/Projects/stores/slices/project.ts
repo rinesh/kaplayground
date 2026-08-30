@@ -434,7 +434,7 @@ export const createProjectSlice: StateCreator<
             loadDefaultFiles = !replace?.files;
         }
 
-        if (lastVersion !== version) {
+        if (!isInitialLoad && lastVersion !== version) {
             toast(
                 `KAPLAY version updated to ${version} for this ${
                     mode === "ex" ? "example" : "project"

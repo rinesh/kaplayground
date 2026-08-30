@@ -33,6 +33,11 @@ export type ExamplesData = {
 };
 
 const examplesData = examplesJson as ExamplesData;
+const OPEN_DEMO_BROWSER_EVENT = "kaplayground-open-demo-browser";
+
+export const openDemoBrowser = () => {
+    window.dispatchEvent(new Event(OPEN_DEMO_BROWSER_EVENT));
+};
 
 export const ProjectBrowser = () => {
     const projectName = useProject((s) => s.project.name);
@@ -233,6 +238,24 @@ export const ProjectBrowser = () => {
             url.searchParams.delete("browse");
             window.history.replaceState({}, "", url);
         }
+    }, []);
+
+    useEffect(() => {
+        const handleOpenDemoBrowser = () => {
+            setTab("Examples");
+            dialogRef.current?.showModal();
+        };
+
+        window.addEventListener(
+            OPEN_DEMO_BROWSER_EVENT,
+            handleOpenDemoBrowser,
+        );
+        return () => {
+            window.removeEventListener(
+                OPEN_DEMO_BROWSER_EVENT,
+                handleOpenDemoBrowser,
+            );
+        };
     }, []);
 
     return (

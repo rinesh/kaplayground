@@ -11,7 +11,7 @@ export const Toolbar = () => {
         >
             <a
                 className="hidden lg:flex btn btn-sm btn-ghost px-2 rounded-sm items-center justify-center h-full rounded-bl-xl"
-                href="/"
+                href="/?example=webmcpAgent"
             >
                 <figure>
                     <img

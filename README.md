@@ -6,9 +6,20 @@
 
 ---
 
-**KAPLAYGROUND** is a powerful, web-based editor designed specifically for creating, editing, and sharing KAPLAY game projects — all from your browser.
+**KAPLAYGROUND** lets anyone play a small game, ask Codex to change it, and try the new version immediately. You do not need to know a game engine or understand the code to start remixing.
+
+## Play, change, repeat
+
+Open KAPLAYGROUND in Codex Browser and start with **Bean's Snack Dash**. Move the bean with the arrow keys or WASD, collect the apples, then use the small Codex coach below the game.
+
+The coach shows one playful idea at a time. Copy the idea into Codex, keep the game open, and watch Codex update and run it. Play the result, move to the next idea, or write your own request in ordinary language.
+
+The full code editor stays beside the game for anyone who wants it, while technical activity is tucked under advanced details.
 
 ## 🚀 Features
+
+- 🤖 **Play-first Codex coach**\
+  Start inside a real mini-game and remix it through one friendly idea at a time.
 
 - 🎯 **Multi-file Editing**\
   Work on full projects with **multiple files** or quickly prototype with a **single script**.
@@ -30,11 +41,15 @@
 
 ## WebMCP
 
-This fork registers fifteen `kaplayground_*` tools through the browser's WebMCP
+This fork registers sixteen `kaplayground_*` tools through the browser's WebMCP
 API after IndexedDB, esbuild, and the active project are ready. File mutations
 require the opaque project revision and, where applicable, the content revision
 returned by the read tools, so an agent cannot write through a project switch or
 silently overwrite a newer editor change.
+
+`kaplayground_get_agent_guide` gives the agent a private inspect → edit → run →
+verify workflow, so the user-facing coach can stay simple while the tool contract
+remains safe and explicit.
 
 KAPLAYGROUND-specific tools can persist a transient project, list bounded asset
 metadata, and inspect a bounded shallow snapshot of the running game. Preview

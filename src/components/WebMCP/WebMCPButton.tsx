@@ -1,3 +1,4 @@
+import { assets } from "@kaplayjs/crew";
 import { cn } from "../../util/cn";
 import { useWebMCPActivity } from "../../integrations/webmcp/webMCPActivity";
 
@@ -11,34 +12,44 @@ const statusClasses = {
 
 export const WebMCPButton = () => {
     const status = useWebMCPActivity((state) => state.status);
-    const entryCount = useWebMCPActivity((state) => state.entries.length);
-    const toolCount = useWebMCPActivity((state) => state.toolNames.length);
 
     return (
         <button
             type="button"
             className={cn(
-                "btn btn-xs btn-ghost h-full rounded-sm gap-1.5 px-2",
+                "btn btn-sm h-full min-h-0 rounded-sm gap-1.5 px-2.5",
+                "border-x border-y-0 border-primary/20 bg-primary/[0.09]",
+                "text-base-content hover:border-primary/30 hover:bg-primary/[0.15]",
                 "focus-visible:-outline-offset-2",
             )}
-            aria-label={`Open WebMCP activity. ${toolCount} tools, ${entryCount} invocations.`}
+            aria-label="Open playful ideas for changing this game with Codex"
             onClick={() =>
                 document.querySelector<HTMLDialogElement>("#webmcp-panel")
                     ?.showModal()}
             data-tooltip-id="global"
-            data-tooltip-content={`${toolCount} WebMCP tools · ${entryCount} invocations`}
+            data-tooltip-content="Get a playful idea to try with Codex"
             data-tooltip-place="bottom-end"
         >
+            <span className="relative grid size-5 place-items-center">
+                <img
+                    src={assets.sparkles.outlined}
+                    className="size-4 object-contain"
+                    aria-hidden="true"
+                />
+                <span
+                    className={cn(
+                        "absolute -bottom-0.5 -right-0.5 size-2 rounded-full ring-2 ring-base-300",
+                        statusClasses[status],
+                    )}
+                />
+            </span>
+            <span className="font-semibold tracking-wide">Codex ideas</span>
             <span
-                className={cn("size-2 rounded-full", statusClasses[status])}
+                className="hidden text-[10px] font-semibold uppercase tracking-wider text-primary/80 xl:inline"
                 aria-hidden="true"
-            />
-            <span className="font-semibold tracking-wide">WebMCP</span>
-            {entryCount > 0 && (
-                <span className="badge badge-xs border-0 bg-base-content/15 min-w-5">
-                    {entryCount}
-                </span>
-            )}
+            >
+                Play · change · repeat
+            </span>
         </button>
     );
 };
