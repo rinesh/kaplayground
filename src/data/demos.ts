@@ -215,6 +215,7 @@ function celebrate() {
         }),
         anchor("center"),
         color("#ffffff"),
+        z(51),
     ]);
 }
 
