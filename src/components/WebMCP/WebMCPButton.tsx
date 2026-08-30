@@ -1,6 +1,6 @@
 import { assets } from "@kaplayjs/crew";
-import { cn } from "../../util/cn";
 import { useWebMCPActivity } from "../../integrations/webmcp/webMCPActivity";
+import { cn } from "../../util/cn";
 
 const statusClasses = {
     ready: "bg-success",
@@ -22,12 +22,12 @@ export const WebMCPButton = () => {
                 "text-base-content hover:border-primary/30 hover:bg-primary/[0.15]",
                 "focus-visible:-outline-offset-2",
             )}
-            aria-label="Open playful ideas for changing this game with Codex"
+            aria-label="Remix this game with Codex"
             onClick={() =>
                 document.querySelector<HTMLDialogElement>("#webmcp-panel")
                     ?.showModal()}
             data-tooltip-id="global"
-            data-tooltip-content="Get a playful idea to try with Codex"
+            data-tooltip-content="Copy an idea and remix this game with Codex"
             data-tooltip-place="bottom-end"
         >
             <span className="relative grid size-5 place-items-center">
@@ -43,7 +43,9 @@ export const WebMCPButton = () => {
                     )}
                 />
             </span>
-            <span className="font-semibold tracking-wide">Codex ideas</span>
+            <span className="font-semibold tracking-wide">
+                Remix with Codex
+            </span>
             <span
                 className="hidden text-[10px] font-semibold uppercase tracking-wider text-primary/80 xl:inline"
                 aria-hidden="true"

@@ -401,6 +401,7 @@ export const createProjectSlice: StateCreator<
         const prevMode = get().project.mode;
         const isInitialLoad = !get().project.createdAt;
         let loadDefaultFiles = false;
+        let demoProjectName: string | undefined;
 
         let version = preferredVersion();
 
@@ -423,6 +424,7 @@ export const createProjectSlice: StateCreator<
                 });
 
                 version = foundDemo.version;
+                demoProjectName = foundDemo.formattedName;
 
                 debug(0, "[project] Demo loaded", foundDemo.name);
             } else {
@@ -442,7 +444,8 @@ export const createProjectSlice: StateCreator<
             );
         }
 
-        const name = await get().generateName(mode, isShared);
+        const name = demoProjectName
+            ?? await get().generateName(mode, isShared);
 
         set((state) => ({
             projectGeneration: state.projectGeneration + 1,
@@ -459,6 +462,7 @@ export const createProjectSlice: StateCreator<
                 updatedAt: new Date().toISOString(),
                 favicon: "",
                 ...replace,
+                sourceDemoKey: demoName ?? replace?.sourceDemoKey,
             },
             projectKey: null,
             demoKey: demoName ?? null,

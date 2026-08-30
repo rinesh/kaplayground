@@ -1,8 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { CodexPlayGuide } from "../../integrations/webmcp/codexPlayGuide";
 import { WebMCPTutorial } from "./WebMCPTutorial";
 
-export const CodexCoach = () => {
+type Props = {
+    guide: CodexPlayGuide;
+};
+
+export const CodexCoach = ({ guide }: Props) => {
     const [collapsed, setCollapsed] = useState(false);
+
+    useEffect(() => setCollapsed(false), [guide.key]);
 
     if (collapsed) {
         return (
@@ -19,8 +26,8 @@ export const CodexCoach = () => {
     }
 
     return (
-        <div className="relative shrink-0">
-            <WebMCPTutorial condensed />
+        <div className="@container relative shrink-0">
+            <WebMCPTutorial key={guide.key} guide={guide} condensed />
             <button
                 type="button"
                 className="btn btn-circle btn-ghost btn-xs absolute right-2 top-2 text-white/55 hover:text-white"

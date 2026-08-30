@@ -1,8 +1,6 @@
-import { WEBMCP_EXAMPLE_NAME } from "../../data/demos";
-import { useProject } from "../../features/Projects/stores/useProject";
+import { useCodexPlayGuide } from "../../integrations/webmcp/useCodexPlayGuide";
 import { useWebMCPActivity } from "../../integrations/webmcp/webMCPActivity";
 import { cn } from "../../util/cn";
-import { confirmNavigate } from "../../util/confirmNavigate";
 import { Dialog } from "../UI/Dialog";
 import { WebMCPInvocationList } from "./WebMCPInvocationList";
 import { WebMCPTutorial } from "./WebMCPTutorial";
@@ -38,21 +36,11 @@ const statusDetails = {
 export const WebMCPDialog = () => {
     const status = useWebMCPActivity((state) => state.status);
     const entries = useWebMCPActivity((state) => state.entries);
-    const clearInvocations = useWebMCPActivity((state) => state.clearInvocations);
-    const demoKey = useProject((state) => state.demoKey);
+    const clearInvocations = useWebMCPActivity((state) =>
+        state.clearInvocations
+    );
     const details = statusDetails[status];
-    const isStarter = demoKey === WEBMCP_EXAMPLE_NAME;
-
-    const openStarter = () => {
-        void confirmNavigate(() => {
-            document.querySelector<HTMLDialogElement>("#webmcp-panel")?.close();
-            void useProject.getState().createNewProject(
-                "ex",
-                {},
-                WEBMCP_EXAMPLE_NAME,
-            );
-        });
-    };
+    const guide = useCodexPlayGuide();
 
     return (
         <Dialog
@@ -69,8 +57,8 @@ export const WebMCPDialog = () => {
                         ✦
                     </span>
                     <div>
-                        <h2 className="text-xl font-bold text-white sm:text-2xl">
-                            Make this game your own
+                        <h2 className="break-words text-xl font-bold text-white sm:text-2xl">
+                            Remix {guide.subjectTitle} with Codex
                         </h2>
                         <p className="mt-1 text-sm leading-relaxed text-slate-300">
                             Pick one idea, copy it into Codex, then play the
@@ -100,24 +88,15 @@ export const WebMCPDialog = () => {
                             </p>
                         </div>
                     </div>
-
-                    {!isStarter && (
-                        <button
-                            type="button"
-                            className="btn btn-xs border-fuchsia-300/20 bg-fuchsia-300/10 text-fuchsia-100 hover:bg-fuchsia-300/15"
-                            onClick={openStarter}
-                        >
-                            Open the starter game
-                        </button>
-                    )}
                 </div>
 
-                <WebMCPTutorial />
+                <WebMCPTutorial key={guide.key} guide={guide} />
             </div>
 
             <details className="border-t border-white/10 bg-black/15">
                 <summary className="cursor-pointer px-5 py-3 text-xs font-semibold text-white/45 sm:px-7">
-                    Advanced details {entries.length > 0 && `(${entries.length})`}
+                    Advanced details{" "}
+                    {entries.length > 0 && `(${entries.length})`}
                 </summary>
                 <div className="border-t border-white/10">
                     <div className="flex items-center justify-between gap-3 px-5 py-2 sm:px-7">

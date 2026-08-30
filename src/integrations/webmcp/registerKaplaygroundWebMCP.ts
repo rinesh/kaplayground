@@ -1,15 +1,18 @@
 /** Connects browser WebMCP tools to KAPLAYGROUND's live editor stores. */
 import { Decode } from "console-feed";
 import { SANDBOX_ORIGIN } from "../../config/common";
+import { demos, getDemo } from "../../data/demos.ts";
 import { waitForPlaygroundReady } from "../../features/Projects/application/playgroundReadiness";
 import type { FileKind } from "../../features/Projects/models/FileKind";
 import { useProject } from "../../features/Projects/stores/useProject";
 import { useEditor } from "../../hooks/useEditor";
+import { createBoundedConsoleCapture } from "./boundedConsoleCapture";
+import { createCodexPlayGuideForContext } from "./codexPlayContext.ts";
+import { readCodexPlayStepIndex } from "./codexPlayProgress.ts";
 import {
     createKaplaygroundWebMCP,
     type KaplaygroundConsoleEntry,
 } from "./kaplaygroundWebMCP";
-import { createBoundedConsoleCapture } from "./boundedConsoleCapture";
 import { collectMonacoDiagnostics } from "./monacoDiagnostics";
 import {
     resetWebMCPActivityOnProjectReplacement,
@@ -25,6 +28,16 @@ const FILE_KIND_BY_FOLDER: Record<string, FileKind> = {
 
 export function registerKaplaygroundWebMCP(): () => void {
     const consoleCapture = createBoundedConsoleCapture(MAX_RETAINED_LOGS);
+    let transientBaselineRevision = useProject.getState().projectRevision;
+
+    const hasUnsavedProjectChanges = () => {
+        const projectStore = useProject.getState();
+        return useEditor.getState().runtime.hasUnsavedChanges
+            || (
+                projectStore.projectKey === null
+                && projectStore.projectRevision !== transientBaselineRevision
+            );
+    };
 
     const handleMessage = (event: MessageEvent<unknown>) => {
         const iframeWindow = useEditor.getState().runtime.iframe?.contentWindow;
@@ -55,6 +68,15 @@ export function registerKaplaygroundWebMCP(): () => void {
 
     window.addEventListener("message", handleMessage);
     const unsubscribeProject = useProject.subscribe((state, previous) => {
+        if (state.projectGeneration !== previous.projectGeneration) {
+            const generation = state.projectGeneration;
+            queueMicrotask(() => {
+                const current = useProject.getState();
+                if (current.projectGeneration === generation) {
+                    transientBaselineRevision = current.projectRevision;
+                }
+            });
+        }
         resetWebMCPActivityOnProjectReplacement(
             state,
             previous,
@@ -77,6 +99,23 @@ export function registerKaplaygroundWebMCP(): () => void {
             getProject() {
                 const projectStore = useProject.getState();
                 const { project } = projectStore;
+                const example = getDemo(
+                    projectStore.demoKey ?? project.sourceDemoKey,
+                );
+                const codexGuide = createCodexPlayGuideForContext({
+                    demoKey: projectStore.demoKey,
+                    sourceDemoKey: project.sourceDemoKey,
+                    projectKey: projectStore.projectKey,
+                    projectName: project.name,
+                    projectCreatedAt: project.createdAt,
+                    projectSource: [...project.files.values()]
+                        .map((file) => file.value)
+                        .join("\n"),
+                });
+                const activeStepIndex = readCodexPlayStepIndex(
+                    codexGuide.key,
+                    codexGuide.steps.length,
+                );
                 const editor = useEditor.getState();
                 const previewAvailable =
                     editor.runtime.iframe?.isConnected === true
@@ -100,11 +139,51 @@ export function registerKaplaygroundWebMCP(): () => void {
                         : editor.paused
                         ? "paused"
                         : "running",
-                    hasUnsavedChanges: editor.runtime.hasUnsavedChanges,
+                    hasUnsavedChanges: hasUnsavedProjectChanges(),
+                    example: example
+                        ? {
+                            key: example.key,
+                            title: example.formattedName,
+                            description: example.description,
+                            tags: example.tags.map((tag) => tag.name),
+                        }
+                        : null,
+                    codexGuide: {
+                        key: codexGuide.key,
+                        subjectTitle: codexGuide.subjectTitle,
+                        activeStepIndex,
+                        activeStep: codexGuide.steps[activeStepIndex] ?? null,
+                    },
                 };
             },
 
             getProjectRevision,
+
+            listExamples() {
+                return demos.map((example) => ({
+                    key: example.key,
+                    title: example.formattedName,
+                    description: example.description,
+                    tags: example.tags.map((tag) => tag.name),
+                }));
+            },
+
+            async openExample(
+                key,
+                expectedProjectRevision,
+                discardUnsavedChanges,
+            ) {
+                assertProjectRevision(expectedProjectRevision);
+                if (
+                    hasUnsavedProjectChanges()
+                    && !discardUnsavedChanges
+                ) {
+                    throw new Error(
+                        "The active project has unsaved changes. Save it first or explicitly approve replacing them.",
+                    );
+                }
+                await useProject.getState().createNewProject("ex", {}, key);
+            },
 
             listFiles() {
                 return [...useProject.getState().project.files.values()].map((

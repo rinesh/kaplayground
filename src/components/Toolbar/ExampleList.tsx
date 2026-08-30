@@ -106,7 +106,9 @@ const ExampleList: FC = () => {
                     </option>
                 ))}
 
-                <option className="text-md" disabled>KAPLAY Demos</option>
+                <option className="text-md" disabled>
+                    Game starting points
+                </option>
 
                 {demos.sort((a, b) => sortEntries("topic", "Examples", a, b))
                     .map((demo) => (
