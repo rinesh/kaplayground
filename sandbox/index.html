@@ -38,8 +38,6 @@
             ? new URL(document.referrer).origin
             : null;
 
-        const params = new URLSearchParams(window.location.search);
-        const isConsoleEnabled = (params.get("console") ?? "true") == "true";
         const MAX_INSPECTION_OBJECTS = 50;
         const MAX_INSPECTION_TAG_LENGTH = 128;
         const MAX_TAGS_PER_OBJECT = 20;
@@ -48,7 +46,7 @@
         const RUN_LOADED_CALLBACK = "__kaplaygroundModuleLoaded";
 
         let activeRunId = null;
-        let hookedConsole = consoleHook(isConsoleEnabled);
+        consoleHook(true);
         window.addEventListener("error", event => {
             const message = event?.error?.message ?? event?.message;
             if (message) console.error(message);
@@ -229,14 +227,9 @@
                 document.querySelector("canvas")?.focus();
             },
 
-            TOGGLE_CONSOLE({ enabled }) {
-                if (enabled) {
-                    console.log("[sandbox] Hooking the console");
-                    hookedConsole.hook();
-                } else {
-                    console.log("[sandbox] Unhooking the console");
-                    hookedConsole.unhook();
-                }
+            TOGGLE_CONSOLE() {
+                // The preference controls parent-side presentation only.
+                // WebMCP capture remains active for agent verification.
             },
         };
 

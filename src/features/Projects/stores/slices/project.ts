@@ -14,24 +14,12 @@ import type { Asset } from "../../models/Asset.ts";
 import type { File } from "../../models/File";
 import type { Project } from "../../models/Project";
 import type { ProjectMode } from "../../models/ProjectMode";
+import { createActiveProjectPersister } from "../activeProjectPersistence";
 import { type ProjectStore } from "../useProject.ts";
 
 export type ProjectStorageState = "transient" | "autosaved";
 
 const pendingProjectPersistence = new Map<string, Promise<void>>();
-let activeProjectPersistenceTail: Promise<void> = Promise.resolve();
-
-function queueActiveProjectPersistence<T>(
-    operation: () => Promise<T>,
-): Promise<T> {
-    const result = activeProjectPersistenceTail.then(operation, operation);
-    activeProjectPersistenceTail = result.then(
-        () => undefined,
-        () => undefined,
-    );
-    return result;
-}
-
 function queueProjectWrite(id: string, project: Project): Promise<void> {
     const projectSnapshot = {
         ...project,
@@ -566,42 +554,42 @@ export const createProjectSlice: StateCreator<
         return id;
     },
 
-    persistActiveProject() {
-        return queueActiveProjectPersistence(async () => {
-            const generation = get().projectGeneration;
-            const currentId = get().projectKey;
-
-            if (currentId) {
-                await queueProjectWrite(currentId, get().project);
-
-                if (
-                    get().projectGeneration !== generation
-                    || get().projectKey !== currentId
-                ) {
-                    throw new Error(
-                        "The active project changed while it was saving",
-                    );
-                }
-
-                return currentId;
-            }
-
-            const id = get().generateId(get().project.createdAt);
-            await queueProjectWrite(id, get().project);
-
-            if (
-                get().projectGeneration !== generation
-                || get().projectKey !== null
-            ) {
-                await queueProjectDelete(id);
-                throw new Error(
-                    "The active project changed while it was saving",
-                );
-            }
-
+    persistActiveProject: createActiveProjectPersister({
+        getActiveProject: () => ({
+            generation: get().projectGeneration,
+            key: get().projectKey,
+            project: get().project,
+        }),
+        getActiveIdentity: () => ({
+            generation: get().projectGeneration,
+            key: get().projectKey,
+        }),
+        snapshotProject: (project) => ({
+            ...project,
+            files: new Map(
+                [...project.files].map(([path, file]) => [
+                    path,
+                    { ...file },
+                ]),
+            ),
+            assets: new Map(
+                [...project.assets].map(([path, asset]) => [
+                    path,
+                    { ...asset },
+                ]),
+            ),
+        }),
+        generateId: (project) => get().generateId(project.createdAt),
+        writeProject: queueProjectWrite,
+        deleteProject: queueProjectDelete,
+        commitTransientProject: (id) => {
             get().setProjectKey(id);
             get().setDemoKey(null);
-            window.history.replaceState({}, "", `${window.location.origin}/`);
+            window.history.replaceState(
+                {},
+                "",
+                `${window.location.origin}/`,
+            );
 
             useConfig.getState().setConfig({
                 lastOpenedProject: id,
@@ -615,22 +603,8 @@ export const createProjectSlice: StateCreator<
                     ? get().savedProjects
                     : [...get().savedProjects, id],
             }));
-
-            // Persist edits made while the first IndexedDB write was in flight.
-            await queueProjectWrite(id, get().project);
-
-            if (
-                get().projectGeneration !== generation
-                || get().projectKey !== id
-            ) {
-                throw new Error(
-                    "The active project changed while it was saving",
-                );
-            }
-
-            return id;
-        });
-    },
+        },
+    }),
 
     getProjectStorageState() {
         return get().projectKey === null ? "transient" : "autosaved";

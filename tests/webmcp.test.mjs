@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { createPreviewRunCoordinator } from "../src/hooks/previewRunCoordinator.ts";
+import { createActiveProjectPersister } from "../src/features/Projects/stores/activeProjectPersistence.ts";
+import { createBoundedConsoleCapture } from "../src/integrations/webmcp/boundedConsoleCapture.ts";
 import {
     createKaplaygroundWebMCP,
     kaplaygroundContentRevision,
 } from "../src/integrations/webmcp/kaplaygroundWebMCP.ts";
+import { collectMonacoDiagnostics } from "../src/integrations/webmcp/monacoDiagnostics.ts";
 import {
     resetWebMCPActivityOnProjectReplacement,
     useWebMCPActivity,
@@ -196,8 +199,15 @@ function createAdapter() {
                     ],
                 };
             },
-            getDiagnostics: () => [],
-            getConsoleEntries: () => consoleEntries,
+            getDiagnostics: () => ({
+                available: true,
+                diagnostics: [],
+            }),
+            getConsoleEntries: () => ({
+                available: true,
+                entries: consoleEntries,
+                droppedCount: 0,
+            }),
             getPreviewRunId: () => state.activeRunId,
         },
     };
@@ -239,6 +249,101 @@ describe("KAPLAYGROUND WebMCP", () => {
         assert.match(sandbox, /protocolVersion:\s*PREVIEW_PROTOCOL_VERSION/);
         assert.match(sandbox, /import \* as HookModule/);
         assert.match(sandbox, /module\?\.default\?\.default/);
+        assert.match(sandbox, /consoleHook\(true\)/);
+        assert.doesNotMatch(sandbox, /hookedConsole\.unhook/);
+    });
+
+    it("keeps WebMCP console capture active when the visible console preference is false", () => {
+        const sandbox = readFileSync(
+            new URL("../sandbox/index.html", import.meta.url),
+            "utf8",
+        );
+        const toggleHandler = sandbox.match(
+            /TOGGLE_CONSOLE\(\)\s*\{(?<body>[\s\S]*?)\n\s*\},/,
+        );
+
+        assert.ok(toggleHandler?.groups?.body);
+        assert.doesNotMatch(toggleHandler.groups.body, /hook|unhook/i);
+        assert.match(sandbox, /consoleHook\(true\)/);
+    });
+
+    it("binds queued transient saves to their call-time project snapshot", async () => {
+        const firstWriteStarted = deferred();
+        const releaseFirstWrite = deferred();
+        const writes = [];
+        const deleted = [];
+        const committed = [];
+        let nextId = 0;
+        const state = {
+            generation: 1,
+            key: null,
+            project: {
+                name: "Project A",
+                files: new Map([["main.js", { value: "A" }]]),
+            },
+        };
+        const persist = createActiveProjectPersister({
+            getActiveProject: () => state,
+            getActiveIdentity: () => ({
+                generation: state.generation,
+                key: state.key,
+            }),
+            snapshotProject: (project) => ({
+                ...project,
+                files: new Map(
+                    [...project.files].map(([path, file]) => [
+                        path,
+                        { ...file },
+                    ]),
+                ),
+            }),
+            generateId: () => `project-a-${++nextId}`,
+            writeProject: async (id, snapshot) => {
+                writes.push({ id, snapshot });
+                if (writes.length === 1) {
+                    firstWriteStarted.resolve();
+                    await releaseFirstWrite.promise;
+                }
+            },
+            deleteProject: async (id) => {
+                deleted.push(id);
+            },
+            commitTransientProject: (id) => {
+                committed.push(id);
+                state.key = id;
+            },
+        });
+
+        const first = persist();
+        await firstWriteStarted.promise;
+        const second = persist();
+
+        state.project.files.get("main.js").value = "mutated A";
+        state.generation = 2;
+        state.key = null;
+        state.project = {
+            name: "Project B",
+            files: new Map([["main.js", { value: "B" }]]),
+        };
+        releaseFirstWrite.resolve();
+
+        const results = await Promise.allSettled([first, second]);
+        assert.deepEqual(results.map(({ status }) => status), [
+            "rejected",
+            "rejected",
+        ]);
+        for (const result of results) {
+            assert.match(result.reason.message, /active project changed/i);
+        }
+        assert.equal(writes.length, 1);
+        assert.equal(writes[0].snapshot.name, "Project A");
+        assert.equal(writes[0].snapshot.files.get("main.js").value, "A");
+        assert.deepEqual(deleted, ["project-a-1"]);
+        assert.deepEqual(committed, []);
+        assert.equal(state.generation, 2);
+        assert.equal(state.key, null);
+        assert.equal(state.project.name, "Project B");
+        assert.equal(state.project.files.get("main.js").value, "B");
     });
 
     it("registers the complete editor tool surface", async () => {
@@ -784,6 +889,64 @@ describe("KAPLAYGROUND WebMCP", () => {
         assert.deepEqual(result.objects.map(({ id }) => id), [1, 2]);
     });
 
+    it("reports diagnostics as unavailable when Monaco is missing", async () => {
+        const capture = collectMonacoDiagnostics(
+            undefined,
+            new Map([["main.js", {}]]),
+        );
+        assert.deepEqual(capture, {
+            available: false,
+            diagnostics: [],
+        });
+
+        const context = new FakeModelContext();
+        const { adapter } = createAdapter();
+        adapter.getDiagnostics = () => capture;
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+        await bridge.ready;
+
+        const result = await execute(
+            context,
+            "kaplayground_get_diagnostics",
+        );
+        assert.equal(result.available, false);
+        assert.equal(result.total, 0);
+        assert.equal(result.truncated, false);
+        assert.deepEqual(result.diagnostics, []);
+    });
+
+    it("reports available Monaco with no markers as a clean result", async () => {
+        const capture = collectMonacoDiagnostics({
+            MarkerSeverity: { Error: 8, Warning: 4, Info: 2, Hint: 1 },
+            editor: { getModelMarkers: () => [] },
+        }, new Map([["main.js", {}]]));
+        assert.deepEqual(capture, {
+            available: true,
+            diagnostics: [],
+        });
+
+        const context = new FakeModelContext();
+        const { adapter } = createAdapter();
+        adapter.getDiagnostics = () => capture;
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+        await bridge.ready;
+
+        const result = await execute(
+            context,
+            "kaplayground_get_diagnostics",
+        );
+        assert.equal(result.available, true);
+        assert.equal(result.total, 0);
+        assert.equal(result.truncated, false);
+        assert.deepEqual(result.diagnostics, []);
+    });
+
     it("defaults console reads to the active run and supports an explicit run filter", async () => {
         const context = new FakeModelContext();
         const { adapter, state } = createAdapter();
@@ -794,6 +957,9 @@ describe("KAPLAYGROUND WebMCP", () => {
         await bridge.ready;
 
         const latest = await execute(context, "kaplayground_get_console");
+        assert.equal(latest.available, true);
+        assert.equal(latest.truncated, false);
+        assert.equal(latest.droppedCount, 0);
         assert.equal(latest.runId, "run-latest");
         assert.equal(latest.total, 2);
         assert.deepEqual(
@@ -814,8 +980,67 @@ describe("KAPLAYGROUND WebMCP", () => {
             "kaplayground_get_console",
         );
         assert.equal(emptyCurrentRun.runId, "run-without-output");
+        assert.equal(emptyCurrentRun.available, true);
         assert.equal(emptyCurrentRun.total, 0);
         assert.deepEqual(emptyCurrentRun.entries, []);
+    });
+
+    it("distinguishes unavailable console capture from an available empty run", async () => {
+        const context = new FakeModelContext();
+        const { adapter, state } = createAdapter();
+        state.activeRunId = "run-empty";
+        adapter.getConsoleEntries = () => ({
+            available: false,
+            entries: [],
+            droppedCount: 0,
+        });
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+        await bridge.ready;
+
+        const unavailable = await execute(
+            context,
+            "kaplayground_get_console",
+        );
+        assert.equal(unavailable.available, false);
+        assert.equal(unavailable.runId, "run-empty");
+        assert.equal(unavailable.total, 0);
+        assert.deepEqual(unavailable.entries, []);
+    });
+
+    it("reports response truncation and console retention overflow", async () => {
+        const capture = createBoundedConsoleCapture(500);
+        for (let index = 0; index < 501; index++) {
+            capture.add({
+                timestamp: index,
+                runId: "run-overflow",
+                level: "log",
+                values: [index],
+            });
+        }
+
+        const context = new FakeModelContext();
+        const { adapter, state } = createAdapter();
+        state.activeRunId = "run-overflow";
+        adapter.getConsoleEntries = () => capture.snapshot();
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+        await bridge.ready;
+
+        const result = await execute(context, "kaplayground_get_console", {
+            limit: 200,
+        });
+        assert.equal(result.available, true);
+        assert.equal(result.total, 500);
+        assert.equal(result.entries.length, 200);
+        assert.equal(result.truncated, true);
+        assert.equal(result.droppedCount, 1);
+        assert.equal(result.entries[0].values[0], 301);
+        assert.equal(result.entries.at(-1).values[0], 500);
     });
 
     it("reports connection state and visible invocation lifecycles", async () => {

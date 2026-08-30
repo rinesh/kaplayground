@@ -8,8 +8,9 @@ import { useEditor } from "../../hooks/useEditor";
 import {
     createKaplaygroundWebMCP,
     type KaplaygroundConsoleEntry,
-    type KaplaygroundDiagnostic,
 } from "./kaplaygroundWebMCP";
+import { createBoundedConsoleCapture } from "./boundedConsoleCapture";
+import { collectMonacoDiagnostics } from "./monacoDiagnostics";
 import {
     resetWebMCPActivityOnProjectReplacement,
     useWebMCPActivity,
@@ -23,7 +24,7 @@ const FILE_KIND_BY_FOLDER: Record<string, FileKind> = {
 };
 
 export function registerKaplaygroundWebMCP(): () => void {
-    const consoleEntries: KaplaygroundConsoleEntry[] = [];
+    const consoleCapture = createBoundedConsoleCapture(MAX_RETAINED_LOGS);
 
     const handleMessage = (event: MessageEvent<unknown>) => {
         const iframeWindow = useEditor.getState().runtime.iframe?.contentWindow;
@@ -44,15 +45,12 @@ export function registerKaplaygroundWebMCP(): () => void {
         }
         if (values.some((value) => String(value).startsWith("[vite]"))) return;
 
-        consoleEntries.push({
+        consoleCapture.add({
             timestamp: Date.now(),
             runId: event.data.runId,
             level: normalizeConsoleLevel(decoded.method),
             values,
         });
-        if (consoleEntries.length > MAX_RETAINED_LOGS) {
-            consoleEntries.splice(0, consoleEntries.length - MAX_RETAINED_LOGS);
-        }
     };
 
     window.addEventListener("message", handleMessage);
@@ -60,7 +58,7 @@ export function registerKaplaygroundWebMCP(): () => void {
         resetWebMCPActivityOnProjectReplacement(
             state,
             previous,
-            () => consoleEntries.length = 0,
+            () => consoleCapture.clear(),
         );
     });
 
@@ -262,11 +260,15 @@ export function registerKaplaygroundWebMCP(): () => void {
             },
 
             getDiagnostics() {
-                return getMonacoDiagnostics();
+                const { monaco } = useEditor.getState().runtime;
+                return collectMonacoDiagnostics(
+                    monaco ?? undefined,
+                    useProject.getState().project.files,
+                );
             },
 
             getConsoleEntries() {
-                return consoleEntries;
+                return consoleCapture.snapshot();
             },
 
             getPreviewRunId() {
@@ -280,53 +282,6 @@ export function registerKaplaygroundWebMCP(): () => void {
         window.removeEventListener("message", handleMessage);
         bridge.destroy();
     };
-}
-
-function getMonacoDiagnostics(): KaplaygroundDiagnostic[] {
-    const { monaco } = useEditor.getState().runtime;
-    if (!monaco) return [];
-    const files = useProject.getState().project.files;
-
-    return monaco.editor.getModelMarkers({}).flatMap((marker) => {
-        const path = decodeURIComponent(marker.resource.path).replace(
-            /^\/+/,
-            "",
-        );
-        if (!files.has(path)) return [];
-
-        const diagnostic: KaplaygroundDiagnostic = {
-            path,
-            severity: markerSeverity(monaco.MarkerSeverity, marker.severity),
-            message: marker.message,
-            startLine: marker.startLineNumber,
-            startColumn: marker.startColumn,
-            endLine: marker.endLineNumber,
-            endColumn: marker.endColumn,
-        };
-        if (marker.source) diagnostic.source = marker.source;
-        if (marker.code !== undefined) {
-            diagnostic.code = typeof marker.code === "string"
-                ? marker.code
-                : marker.code.value;
-        }
-        return [diagnostic];
-    });
-}
-
-function markerSeverity(
-    markerSeverity: {
-        Error: number;
-        Warning: number;
-        Info: number;
-        Hint: number;
-    },
-    value: number,
-): KaplaygroundDiagnostic["severity"] {
-    if (value === markerSeverity.Error) return "error";
-    if (value === markerSeverity.Warning) return "warning";
-    if (value === markerSeverity.Info) return "info";
-    if (value === markerSeverity.Hint) return "hint";
-    return String(value);
 }
 
 function isConsoleMessage(

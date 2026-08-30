@@ -40,6 +40,11 @@ KAPLAYGROUND-specific tools can persist a transient project, list bounded asset
 metadata, and inspect a bounded shallow snapshot of the running game. Preview
 runs resolve only after the sandbox acknowledges module execution, pause changes
 are explicit and acknowledged, and console reads are scoped to a preview run.
+Diagnostic responses include `available`, so a missing Monaco instance is not
+reported as a clean project. Console responses likewise include `available`,
+plus `truncated` for per-call result limits and a bounded `droppedCount` for the
+500-entry capture buffer. WebMCP capture stays active when the visible console
+preference is disabled; that preference only controls the console panel.
 
 The WebMCP implementation is intentionally scoped to KAPLAYGROUND. Its Zustand,
 Monaco, preview, diagnostics, console, and activity integrations live in
