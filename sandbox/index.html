@@ -28,8 +28,11 @@
 
     <body>
         <script type="module">
-        import Hook from "console-feed/lib/Hook";
-        import Unhook from "console-feed/lib/Unhook";
+        import * as HookModule from "console-feed/lib/Hook";
+        import * as UnhookModule from "console-feed/lib/Unhook";
+
+        const Hook = resolveConsoleFeedExport(HookModule);
+        const Unhook = resolveConsoleFeedExport(UnhookModule);
 
         const PARENT_ORIGIN = document.referrer
             ? new URL(document.referrer).origin
@@ -506,6 +509,14 @@
             if (enabled) hook();
 
             return { hook, unhook };
+        }
+
+        function resolveConsoleFeedExport(module) {
+            const exported = module?.default?.default ?? module?.default ?? module;
+            if (typeof exported !== "function") {
+                throw new TypeError("console-feed export is not callable");
+            }
+            return exported;
         }
         </script>
     </body>
