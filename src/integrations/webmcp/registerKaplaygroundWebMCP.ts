@@ -5,7 +5,10 @@ import {
     type KaplaygroundConsoleEntry,
     type KaplaygroundDiagnostic,
 } from "./kaplaygroundWebMCP";
-import { useWebMCPActivity } from "./webMCPActivity";
+import {
+    resetWebMCPActivityOnProjectReplacement,
+    useWebMCPActivity,
+} from "./webMCPActivity";
 import { SANDBOX_ORIGIN } from "../../config/common";
 import type { FileKind } from "../../features/Projects/models/FileKind";
 import { useProject } from "../../features/Projects/stores/useProject";
@@ -46,9 +49,11 @@ export function registerKaplaygroundWebMCP(): () => void {
 
     window.addEventListener("message", handleMessage);
     const unsubscribeProject = useProject.subscribe((state, previous) => {
-        if (state.projectKey !== previous.projectKey || state.demoKey !== previous.demoKey) {
-            consoleEntries.length = 0;
-        }
+        resetWebMCPActivityOnProjectReplacement(
+            state,
+            previous,
+            () => consoleEntries.length = 0,
+        );
     });
 
     const bridge = createKaplaygroundWebMCP({
@@ -166,7 +171,7 @@ export function registerKaplaygroundWebMCP(): () => void {
             },
 
             runPreview() {
-                useEditor.getState().run();
+                return useEditor.getState().run();
             },
 
             togglePreviewPause() {

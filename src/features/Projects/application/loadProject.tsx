@@ -100,7 +100,8 @@ export const loadProject = async (projectKey: string) => {
         clearModels();
     }
 
-    useProject.setState({
+    useProject.setState((state) => ({
+        projectGeneration: state.projectGeneration + 1,
         projectKey,
         projectWasEdited: false,
         demoKey: null,
@@ -111,7 +112,7 @@ export const loadProject = async (projectKey: string) => {
             buildMode: project.buildMode || "legacy",
             favicon: project.favicon ?? "",
         },
-    });
+    }));
 
     editorStore.setCurrentFile("main.js");
 

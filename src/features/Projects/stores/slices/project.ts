@@ -17,6 +17,8 @@ import type { ProjectMode } from "../../models/ProjectMode";
 import { type ProjectStore } from "../useProject.ts";
 
 export interface ProjectSlice {
+    /** Increments whenever the active project is replaced. */
+    projectGeneration: number;
     /**
      * Current project associated idb key
      */
@@ -194,6 +196,7 @@ export const createProjectSlice: StateCreator<
     [],
     ProjectSlice
 > = (set, get) => ({
+    projectGeneration: 0,
     project: {
         name: "Untitled",
         version: "2.0.0",
@@ -373,7 +376,8 @@ export const createProjectSlice: StateCreator<
 
         const name = await get().generateName(mode, isShared);
 
-        set({
+        set((state) => ({
+            projectGeneration: state.projectGeneration + 1,
             project: {
                 name: name,
                 version: "2.0.0", // fixed project version
@@ -389,7 +393,7 @@ export const createProjectSlice: StateCreator<
             },
             projectKey: null,
             demoKey: demoName ?? null,
-        });
+        }));
 
         const url = new URL(window.location.href);
         if (demoName) {

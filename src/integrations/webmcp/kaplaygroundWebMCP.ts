@@ -141,6 +141,7 @@ export class KaplaygroundWebMCP {
     private readonly onInvocation: KaplaygroundWebMCPOptions["onInvocation"];
     private readonly registrationController = new AbortController();
     private readonly names = new Set<string>();
+    private readonly fileMutationTails = new Map<string, Promise<void>>();
     private currentStatus: KaplaygroundWebMCPStatus;
     private invocationSerial = 0;
 
@@ -291,6 +292,30 @@ export class KaplaygroundWebMCP {
         }
         catch {
             // UI observers must never interrupt registration or tool execution.
+        }
+    }
+
+    private async serializeFileMutation<T>(
+        path: string,
+        mutation: () => Promise<T>,
+    ): Promise<T> {
+        const previous = this.fileMutationTails.get(path) ?? Promise.resolve();
+        let release = () => {};
+        const held = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const tail = previous.then(() => held);
+        this.fileMutationTails.set(path, tail);
+
+        await previous;
+        try {
+            return await mutation();
+        }
+        finally {
+            release();
+            if (this.fileMutationTails.get(path) === tail) {
+                this.fileMutationTails.delete(path);
+            }
         }
     }
 
@@ -455,19 +480,24 @@ export class KaplaygroundWebMCP {
                     throw new Error("This editor adapter cannot run the preview.");
                 }
 
-                const current = await this.adapter.readFile(path);
-                throwIfAborted(signal);
-                if (!current) throw new RangeError(`No project file exists at "${path}".`);
+                await this.serializeFileMutation(path, async () => {
+                    throwIfAborted(signal);
+                    const current = await this.adapter.readFile(path);
+                    throwIfAborted(signal);
+                    if (!current) {
+                        throw new RangeError(`No project file exists at "${path}".`);
+                    }
 
-                const actualRevision = contentRevision(current.content);
-                if (actualRevision !== expectedRevision) {
-                    throw new Error(
-                        `Revision conflict for "${path}": expected ${expectedRevision}, found ${actualRevision}. Read the file again before replacing it.`,
-                    );
-                }
+                    const actualRevision = contentRevision(current.content);
+                    if (actualRevision !== expectedRevision) {
+                        throw new Error(
+                            `Revision conflict for "${path}": expected ${expectedRevision}, found ${actualRevision}. Read the file again before replacing it.`,
+                        );
+                    }
 
-                await this.adapter.writeFile(path, content);
-                throwIfAborted(signal);
+                    await this.adapter.writeFile(path, content);
+                    throwIfAborted(signal);
+                });
                 if (runPreview) {
                     await this.adapter.runPreview?.();
                     throwIfAborted(signal);
@@ -546,15 +576,22 @@ export class KaplaygroundWebMCP {
                     throw new Error("This editor adapter cannot run the preview.");
                 }
 
-                const current = await this.adapter.readFile(path);
-                throwIfAborted(signal);
-                if (current) throw new RangeError(`A project file already exists at "${path}".`);
-
                 const file: KaplaygroundFile = { path, content };
                 if (language !== undefined) file.language = language;
                 if (kind !== undefined) file.kind = kind;
-                await this.adapter.createFile?.(file);
-                throwIfAborted(signal);
+                await this.serializeFileMutation(path, async () => {
+                    throwIfAborted(signal);
+                    const current = await this.adapter.readFile(path);
+                    throwIfAborted(signal);
+                    if (current) {
+                        throw new RangeError(
+                            `A project file already exists at "${path}".`,
+                        );
+                    }
+
+                    await this.adapter.createFile?.(file);
+                    throwIfAborted(signal);
+                });
 
                 if (selectFile && this.adapter.selectFile) {
                     await this.adapter.selectFile(path);
@@ -609,19 +646,24 @@ export class KaplaygroundWebMCP {
                     throw new Error("This editor adapter cannot run the preview.");
                 }
 
-                const current = await this.adapter.readFile(path);
-                throwIfAborted(signal);
-                if (!current) throw new RangeError(`No project file exists at "${path}".`);
+                await this.serializeFileMutation(path, async () => {
+                    throwIfAborted(signal);
+                    const current = await this.adapter.readFile(path);
+                    throwIfAborted(signal);
+                    if (!current) {
+                        throw new RangeError(`No project file exists at "${path}".`);
+                    }
 
-                const actualRevision = contentRevision(current.content);
-                if (actualRevision !== expectedRevision) {
-                    throw new Error(
-                        `Revision conflict for "${path}": expected ${expectedRevision}, found ${actualRevision}. Read the file again before removing it.`,
-                    );
-                }
+                    const actualRevision = contentRevision(current.content);
+                    if (actualRevision !== expectedRevision) {
+                        throw new Error(
+                            `Revision conflict for "${path}": expected ${expectedRevision}, found ${actualRevision}. Read the file again before removing it.`,
+                        );
+                    }
 
-                await this.adapter.removeFile?.(path);
-                throwIfAborted(signal);
+                    await this.adapter.removeFile?.(path);
+                    throwIfAborted(signal);
+                });
                 if (runPreview) {
                     await this.adapter.runPreview?.();
                     throwIfAborted(signal);

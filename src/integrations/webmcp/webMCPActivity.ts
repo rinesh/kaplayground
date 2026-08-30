@@ -24,6 +24,10 @@ interface WebMCPActivityStore {
     clearInvocations(): void;
 }
 
+interface ProjectGenerationState {
+    projectGeneration: number;
+}
+
 export const useWebMCPActivity = create<WebMCPActivityStore>((set) => ({
     status: "registering",
     toolNames: [],
@@ -64,6 +68,17 @@ export const useWebMCPActivity = create<WebMCPActivityStore>((set) => ({
         set({ entries: [] });
     },
 }));
+
+export function resetWebMCPActivityOnProjectReplacement(
+    state: ProjectGenerationState,
+    previous: ProjectGenerationState,
+    clearConsoleEntries: () => void,
+): void {
+    if (state.projectGeneration === previous.projectGeneration) return;
+
+    clearConsoleEntries();
+    useWebMCPActivity.getState().clearInvocations();
+}
 
 function summarizeInput(input: Record<string, unknown>): Record<string, unknown> {
     return Object.fromEntries(

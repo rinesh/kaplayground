@@ -32,6 +32,22 @@
 
 This fork registers twelve `kaplayground_*` tools through the browser's WebMCP API. File replacement and removal use the revision returned by `kaplayground_read_file`, so an agent cannot silently overwrite or delete a newer editor change.
 
+The repository is also the canonical home of the reusable `kaplay-webmcp`
+workspace package under [`packages/kaplay-webmcp`](packages/kaplay-webmcp).
+That package exposes a running KAPLAY context to browser agents. The editor's
+Zustand, Monaco, preview, diagnostics, console, and activity integrations stay
+in `src/integrations/webmcp` because they depend on KAPLAYGROUND internals.
+
+Run the complete WebMCP verification suite with:
+
+```sh
+npm run verify:webmcp
+```
+
+The former private `rinesh/kaplay-connect` repository contained an earlier
+stdio bridge and the original standalone package prototype. Browser-native
+work now belongs here; the legacy server is retained only as migration history.
+
 ## 📚 Resources
 
 - [Roadmap](https://github.com/orgs/kaplayjs/projects/14/views/1) -

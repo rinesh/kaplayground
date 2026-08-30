@@ -4,6 +4,7 @@ import { useProject } from "../../features/Projects/stores/useProject";
 import { useWebMCPActivity } from "../../integrations/webmcp/webMCPActivity";
 import { confirmNavigate } from "../../util/confirmNavigate";
 import { Dialog } from "../UI/Dialog";
+import { WebMCPInvocationList } from "./WebMCPInvocationList";
 
 const statusDetails = {
     ready: {
@@ -153,61 +154,8 @@ export const WebMCPDialog = () => {
                     </button>
                 </div>
 
-                {entries.length === 0
-                    ? (
-                        <p className="px-6 py-10 text-center text-sm text-base-content/50">
-                            No WebMCP tools have been invoked in this session.
-                        </p>
-                    )
-                    : (
-                        <ol className="max-h-72 overflow-y-auto divide-y divide-base-content/10">
-                            {entries.map((entry) => (
-                                <li key={entry.id} className="px-6 py-3">
-                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                                        <span
-                                            className={cn("size-2 rounded-full", {
-                                                "bg-warning animate-pulse":
-                                                    entry.status === "running",
-                                                "bg-success": entry.status === "succeeded",
-                                                "bg-error": entry.status === "failed",
-                                            })}
-                                            aria-hidden="true"
-                                        />
-                                        <code className="font-semibold text-xs break-all">
-                                            {entry.toolName}
-                                        </code>
-                                        <time className="ml-auto text-xs text-base-content/45">
-                                            {formatTime(entry.startedAt)}
-                                            {entry.durationMs !== undefined
-                                                && ` · ${entry.durationMs} ms`}
-                                        </time>
-                                    </div>
-                                    <pre
-                                        className={cn(
-                                            "mt-2 max-h-36 overflow-auto rounded bg-base-300 p-2",
-                                            "text-[11px] whitespace-pre-wrap break-words",
-                                        )}
-                                    >
-                                        {JSON.stringify(entry.input, null, 2)}
-                                    </pre>
-                                    {entry.error && (
-                                        <p className="mt-2 text-xs text-error break-words">
-                                            {entry.error}
-                                        </p>
-                                    )}
-                                </li>
-                            ))}
-                        </ol>
-                    )}
+                <WebMCPInvocationList className="max-h-72" />
             </section>
         </Dialog>
     );
 };
-
-function formatTime(timestamp: number): string {
-    return new Date(timestamp).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-    });
-}

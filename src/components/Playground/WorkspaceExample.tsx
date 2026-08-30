@@ -1,5 +1,5 @@
-import { Allotment } from "allotment";
-import type { FC } from "react";
+import { Allotment, type AllotmentHandle } from "allotment";
+import { type FC, useRef } from "react";
 import { useMediaQuery } from "react-responsive";
 import { MonacoEditor } from "../../features/Editor/components/MonacoEditor.tsx";
 import useConsolePane from "../../hooks/useConsolePane";
@@ -22,11 +22,17 @@ type Props = {
 export const WorkspaceExample: FC<Props> = (props) => {
     const isWidescreen = useMediaQuery({ query: "(min-width: 900px)" });
     const { getAllotmentSize, setAllotmentSize } = allotmentStorage("example");
+    const consoleAllotmentRef = useRef<AllotmentHandle>(null);
 
     const { scrollbarThinHeight } = scrollbarSize();
     const assetBrewHeight = 72 + scrollbarThinHeight();
 
-    const { consoleVisible, consoleMinSize, consoleSize } = useConsolePane();
+    const {
+        consoleVisible,
+        consoleExpandedSize,
+        consoleMinSize,
+        consoleSize,
+    } = useConsolePane();
 
     const handleDragStart = () =>
         document.documentElement.classList.toggle("select-none", true);
@@ -82,6 +88,7 @@ export const WorkspaceExample: FC<Props> = (props) => {
                     </Allotment.Pane>
                     <Allotment.Pane snap>
                         <Allotment
+                            ref={consoleAllotmentRef}
                             vertical
                             defaultSizes={consoleVisible
                                 ? getAllotmentSize("console", [
@@ -102,7 +109,13 @@ export const WorkspaceExample: FC<Props> = (props) => {
                                 preferredSize={consoleSize}
                                 visible={consoleVisible}
                             >
-                                <ConsoleView />
+                                <ConsoleView
+                                    onSelectWebMCP={() =>
+                                        consoleAllotmentRef.current?.resize([
+                                            9999,
+                                            consoleExpandedSize,
+                                        ])}
+                                />
                             </Allotment.Pane>
                         </Allotment>
                     </Allotment.Pane>

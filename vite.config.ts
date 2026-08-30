@@ -27,7 +27,10 @@ export default defineConfig({
         viteStaticCopy({
             targets: [
                 {
-                    src: "kaplay/examples/**",
+                    src: [
+                        "kaplay/examples/**",
+                        "!kaplay/examples/examples.json",
+                    ],
                     dest: "",
                 },
             ],

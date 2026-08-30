@@ -11,6 +11,11 @@ import { parseAssetPath } from "../util/assetsParsing";
 import { debug } from "../util/logs";
 import { MATCH_ASSET_URL_REGEX } from "../util/regex";
 import { useConfig } from "./useConfig";
+import { createPreviewRunCoordinator } from "./previewRunCoordinator";
+
+const PREVIEW_READY_TIMEOUT_MS = 10_000;
+const LAYOUT_POLL_INTERVAL_MS = 100;
+const previewRunCoordinator = createPreviewRunCoordinator();
 
 interface EditorRuntime {
     /**
@@ -71,7 +76,7 @@ export interface EditorStore {
     runtime: EditorRuntime;
     stopped: boolean;
     update: (value?: string) => void;
-    run: () => void;
+    run: () => Promise<void>;
     pause: () => void;
     stop: () => void;
     getRuntime: () => EditorRuntime;
@@ -236,24 +241,23 @@ export const useEditor = create<EditorStore>((set, get) => ({
             get().stopped
             && new URLSearchParams(window.location.search).has("stopped")
         ) {
+            previewRunCoordinator.cancel();
             const url = new URL(window.location.href);
             url.searchParams.delete("stopped");
             window.history.replaceState({}, "", url);
-            return;
+            return Promise.resolve();
         }
 
         set({ stopped: false });
 
-        const iframe = document.querySelector<HTMLIFrameElement>(
-            "#game-view",
-        );
-
         const waitForIframeLayout = async (
             iframeContentWindow: Window,
+            signal: AbortSignal,
         ): Promise<HTMLIFrameElement | null> => {
-            const timeoutAt = performance.now() + 10_000;
+            const timeoutAt = performance.now() + PREVIEW_READY_TIMEOUT_MS;
 
             while (performance.now() < timeoutAt) {
+                signal.throwIfAborted();
                 const gameIframe = get().runtime.iframe
                     ?? document.querySelector<HTMLIFrameElement>("#game-view");
                 const rect = gameIframe?.getBoundingClientRect();
@@ -265,36 +269,38 @@ export const useEditor = create<EditorStore>((set, get) => ({
                     && rect.height > 0
                 ) {
                     // Let the sandbox complete layout before KAPLAY measures its canvas.
-                    await new Promise<void>(resolve =>
-                        requestAnimationFrame(() => resolve())
-                    );
-                    await new Promise<void>(resolve =>
-                        requestAnimationFrame(() => resolve())
-                    );
+                    await waitForLayoutTick(signal);
+                    await waitForLayoutTick(signal);
+                    signal.throwIfAborted();
                     return gameIframe;
                 }
 
-                await new Promise<void>(resolve =>
-                    requestAnimationFrame(() => resolve())
-                );
+                await waitForLayoutTick(signal);
             }
 
             return null;
         };
 
-        const updateCode = async (iframeContentWindow: Window | null) => {
-            if (!iframeContentWindow) return;
-
-            const gameIframe = await waitForIframeLayout(iframeContentWindow);
+        const updateCode = async (
+            iframeContentWindow: Window,
+            signal: AbortSignal,
+        ) => {
+            const gameIframe = await waitForIframeLayout(
+                iframeContentWindow,
+                signal,
+            );
             if (!gameIframe) {
-                console.warn("[game] iframe did not become visible in time");
-                return;
+                throw new Error("[game] iframe did not become visible in time");
             }
 
+            signal.throwIfAborted();
             console.log("[game] iframe loaded");
             const code = await wrapGame();
+            signal.throwIfAborted();
 
-            if (gameIframe.contentWindow !== iframeContentWindow) return;
+            if (gameIframe.contentWindow !== iframeContentWindow) {
+                throw new Error("[game] iframe changed before code could be posted");
+            }
 
             iframeContentWindow.postMessage(
                 {
@@ -305,29 +311,27 @@ export const useEditor = create<EditorStore>((set, get) => ({
             );
         };
 
-        const iframeReadyListener = (
-            { origin, data, source }: MessageEvent<{ type: string }>,
-        ) => {
-            if (origin !== SANDBOX_ORIGIN) return;
-            if (data?.type !== "READY") return;
-            window.removeEventListener("message", iframeReadyListener);
-            updateCode(source as Window);
-        };
+        const runPromise = previewRunCoordinator.run(async (signal) => {
+            const iframe = document.querySelector<HTMLIFrameElement>(
+                "#game-view",
+            );
 
-        // Refresh the iframe
-        if (iframe) {
-            // Remove leftover listener in case the iframe was recreated before it loaded the last time
-            window.removeEventListener("message", iframeReadyListener);
+            if (iframe) {
+                const iframeLoaded = waitForIframeLoad(iframe, signal);
+                iframe.src = get().getIframeSrc();
+                await updateCode(await iframeLoaded, signal);
+                return;
+            }
 
-            iframe.addEventListener("load", (e: Event) => {
-                updateCode((e.target as HTMLIFrameElement).contentWindow);
-            }, { once: true });
-
-            iframe.src = get().getIframeSrc();
-        } // If iframe is being recreated at the very moment
-        else {
-            window.addEventListener("message", iframeReadyListener);
-        }
+            await updateCode(await waitForIframeReady(signal), signal);
+        });
+        // UI actions intentionally fire and forget preview runs. Consume expected
+        // cancellations and log other failures; awaited callers still receive them.
+        void runPromise.catch((error: unknown) => {
+            if (error instanceof DOMException && error.name === "AbortError") return;
+            console.error("[game] Preview run failed", error);
+        });
+        return runPromise;
     },
     pause() {
         if (!get().stopped) {
@@ -336,10 +340,11 @@ export const useEditor = create<EditorStore>((set, get) => ({
                 SANDBOX_ORIGIN,
             );
         } else {
-            get().run();
+            void get().run();
         }
     },
     stop() {
+        previewRunCoordinator.cancel();
         set({ stopped: true });
     },
     updateImageDecorations() {
@@ -473,7 +478,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
     updateAndRun() {
         get().getRuntime().editor?.setScrollTop(0);
         get().update();
-        get().run();
+        void get().run();
     },
     focusGame() {
         const iframe = get().getRuntime().iframe;
@@ -484,3 +489,94 @@ export const useEditor = create<EditorStore>((set, get) => ({
         iframe.dispatchEvent(new CustomEvent("focusiframe"));
     },
 }));
+
+function waitForLayoutTick(signal: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve();
+        };
+        const abort = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(signal.reason);
+        };
+        const animationFrame = requestAnimationFrame(finish);
+        const timeout = window.setTimeout(finish, LAYOUT_POLL_INTERVAL_MS);
+        const cleanup = () => {
+            cancelAnimationFrame(animationFrame);
+            window.clearTimeout(timeout);
+            signal.removeEventListener("abort", abort);
+        };
+
+        if (signal.aborted) abort();
+        else signal.addEventListener("abort", abort, { once: true });
+    });
+}
+
+function waitForIframeLoad(
+    iframe: HTMLIFrameElement,
+    signal: AbortSignal,
+): Promise<Window> {
+    return new Promise((resolve, reject) => {
+        const timeout = window.setTimeout(() => {
+            cleanup();
+            reject(new Error("[game] iframe did not load in time"));
+        }, PREVIEW_READY_TIMEOUT_MS);
+        const abort = () => {
+            cleanup();
+            reject(signal.reason);
+        };
+        const load = () => {
+            const iframeWindow = iframe.contentWindow;
+            cleanup();
+            if (iframeWindow) resolve(iframeWindow);
+            else reject(new Error("[game] loaded iframe has no content window"));
+        };
+        const cleanup = () => {
+            window.clearTimeout(timeout);
+            iframe.removeEventListener("load", load);
+            signal.removeEventListener("abort", abort);
+        };
+
+        iframe.addEventListener("load", load);
+        if (signal.aborted) abort();
+        else signal.addEventListener("abort", abort, { once: true });
+    });
+}
+
+function waitForIframeReady(signal: AbortSignal): Promise<Window> {
+    return new Promise((resolve, reject) => {
+        const timeout = window.setTimeout(() => {
+            cleanup();
+            reject(new Error("[game] iframe did not become ready in time"));
+        }, PREVIEW_READY_TIMEOUT_MS);
+        const abort = () => {
+            cleanup();
+            reject(signal.reason);
+        };
+        const ready = (
+            { origin, data, source }: MessageEvent<{ type?: string }>,
+        ) => {
+            if (origin !== SANDBOX_ORIGIN || data?.type !== "READY" || !source) {
+                return;
+            }
+
+            cleanup();
+            resolve(source as Window);
+        };
+        const cleanup = () => {
+            window.clearTimeout(timeout);
+            window.removeEventListener("message", ready);
+            signal.removeEventListener("abort", abort);
+        };
+
+        window.addEventListener("message", ready);
+        if (signal.aborted) abort();
+        else signal.addEventListener("abort", abort, { once: true });
+    });
+}

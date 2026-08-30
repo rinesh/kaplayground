@@ -6,18 +6,28 @@ import { SANDBOX_ORIGIN } from "../../config/common";
 import { useProject } from "../../features/Projects/stores/useProject";
 import { useConfig } from "../../hooks/useConfig";
 import { useEditor } from "../../hooks/useEditor";
+import { useWebMCPActivity } from "../../integrations/webmcp/webMCPActivity";
+import { cn } from "../../util/cn";
+import { WebMCPLogPanel } from "../WebMCP";
 
 type LogMessageEvent = MessageEvent<{
     type: string;
     log: Message[];
 }>;
 
-export const ConsoleView = () => {
+type Props = {
+    onSelectWebMCP?: () => void;
+};
+
+export const ConsoleView = ({ onSelectWebMCP }: Props) => {
     const [logs, setLogs] = useState<any[]>([]);
+    const [activeTab, setActiveTab] = useState<"console" | "webmcp">("console");
     const projectKey = useProject((s) => s.projectKey || s.demoKey);
     const scrollDivRef = useRef<HTMLDivElement>(null);
     const ignoredFilter = ["[sandbox]", "[vite]"];
     const isConsoleEnabled = useConfig((s) => s.config.console);
+    const webMCPStatus = useWebMCPActivity((state) => state.status);
+    const webMCPEntryCount = useWebMCPActivity((state) => state.entries.length);
 
     const handleClear = () => {
         setLogs([]);
@@ -25,6 +35,11 @@ export const ConsoleView = () => {
 
     const handleEnable = () => {
         useConfig.getState().setConfig({ console: true });
+    };
+
+    const handleSelectWebMCP = () => {
+        setActiveTab("webmcp");
+        onSelectWebMCP?.();
     };
 
     const handleExpandLogs: MouseEventHandler = (e) => {
@@ -128,11 +143,60 @@ export const ConsoleView = () => {
     return (
         <div
             id="console-wrapper"
-            className="relative h-full w-full bg-base-300 rounded-xl overflow-hidden z-0"
+            className="relative flex h-full w-full flex-col bg-base-300 rounded-xl overflow-hidden z-0"
         >
             <div
+                role="tablist"
+                aria-label="Output panels"
+                className="flex h-8 shrink-0 items-stretch border-b border-base-content/10 bg-base-200/40"
+            >
+                <button
+                    id="console-output-tab"
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === "console"}
+                    aria-controls="console-output-panel"
+                    className={outputTabClass(activeTab === "console")}
+                    onClick={() => setActiveTab("console")}
+                >
+                    Console
+                </button>
+                <button
+                    id="webmcp-output-tab"
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === "webmcp"}
+                    aria-controls="webmcp-output-panel"
+                    aria-label={`WebMCP Log, ${webMCPEntryCount} tool invocations`}
+                    className={outputTabClass(activeTab === "webmcp")}
+                    onClick={handleSelectWebMCP}
+                >
+                    <span
+                        className={cn("size-1.5 rounded-full", {
+                            "bg-success": webMCPStatus === "ready",
+                            "bg-warning animate-pulse": webMCPStatus === "registering",
+                            "bg-error": webMCPStatus === "error",
+                            "bg-base-content/30": webMCPStatus === "unsupported"
+                                || webMCPStatus === "destroyed",
+                        })}
+                        aria-hidden="true"
+                    />
+                    WebMCP Log
+                    <span className="min-w-4 rounded bg-base-content/10 px-1 text-center text-[10px]">
+                        {webMCPEntryCount}
+                    </span>
+                </button>
+            </div>
+
+            <div
+                id="console-output-panel"
+                role="tabpanel"
+                aria-labelledby="console-output-tab"
                 ref={scrollDivRef}
-                className="relative flex flex-col-reverse h-full w-full overflow-auto scrollbar-thin"
+                className={cn(
+                    "relative min-h-0 flex-1 flex-col-reverse w-full overflow-auto scrollbar-thin",
+                    activeTab === "console" ? "flex" : "hidden",
+                )}
                 onClick={handleExpandLogs}
             >
                 {logs.length > 0 && (
@@ -215,6 +279,28 @@ export const ConsoleView = () => {
                         </div>
                     )}
             </div>
+
+            <div
+                id="webmcp-output-panel"
+                role="tabpanel"
+                aria-labelledby="webmcp-output-tab"
+                className={cn(
+                    "min-h-0 flex-1",
+                    activeTab === "webmcp" ? "block" : "hidden",
+                )}
+            >
+                <WebMCPLogPanel />
+            </div>
         </div>
     );
 };
+
+function outputTabClass(active: boolean): string {
+    return cn(
+        "relative flex items-center gap-1.5 px-3 text-[11px] font-semibold uppercase tracking-wide",
+        "focus-visible:-outline-offset-2 after:absolute after:inset-x-2 after:bottom-0 after:h-px",
+        active
+            ? "text-primary after:bg-primary"
+            : "text-base-content/50 hover:text-base-content after:bg-transparent",
+    );
+}

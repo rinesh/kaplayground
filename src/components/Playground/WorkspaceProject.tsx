@@ -1,5 +1,5 @@
-import { Allotment, LayoutPriority } from "allotment";
-import { type CSSProperties, type FC, useState } from "react";
+import { Allotment, type AllotmentHandle, LayoutPriority } from "allotment";
+import { type CSSProperties, type FC, useRef, useState } from "react";
 import { useDebouncedCallback } from "use-debounce";
 import { MonacoEditor } from "../../features/Editor/components/MonacoEditor.tsx";
 import useConsolePane from "../../hooks/useConsolePane";
@@ -19,8 +19,14 @@ type Props = {
 
 export const WorkspaceProject: FC<Props> = (props) => {
     const { getAllotmentSize, setAllotmentSize } = allotmentStorage("project");
+    const consoleAllotmentRef = useRef<AllotmentHandle>(null);
 
-    const { consoleVisible, consoleMinSize, consoleSize } = useConsolePane();
+    const {
+        consoleVisible,
+        consoleExpandedSize,
+        consoleMinSize,
+        consoleSize,
+    } = useConsolePane();
 
     const [allotmentSizes, setAllotmentSizes] = useState(
         getAllotmentSize("editor"),
@@ -99,6 +105,7 @@ export const WorkspaceProject: FC<Props> = (props) => {
                         </Allotment.Pane>
                         <Allotment.Pane snap>
                             <Allotment
+                                ref={consoleAllotmentRef}
                                 vertical
                                 defaultSizes={consoleVisible
                                     ? getAllotmentSize("console", [
@@ -118,7 +125,13 @@ export const WorkspaceProject: FC<Props> = (props) => {
                                     preferredSize={consoleSize}
                                     visible={consoleVisible}
                                 >
-                                    <ConsoleView />
+                                    <ConsoleView
+                                        onSelectWebMCP={() =>
+                                            consoleAllotmentRef.current?.resize([
+                                                9999,
+                                                consoleExpandedSize,
+                                            ])}
+                                    />
                                 </Allotment.Pane>
                             </Allotment>
                         </Allotment.Pane>
