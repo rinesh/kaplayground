@@ -84,6 +84,7 @@ export const Dialog: FC<DialogProps> = forwardRef<
                 className,
             )}
             onCancel={onCancel}
+            onClose={props.onClose}
         >
             <main
                 className={cn(

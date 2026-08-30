@@ -26,6 +26,10 @@ const ToolbarToolsMenu: FC = () => {
     return (
         <ul className="flex flex-row items-center justify-center h-full w-auto bg-base-300 rounded-b-xl">
             <ToolbarToolItem>
+                <WebMCPButton />
+            </ToolbarToolItem>
+
+            <ToolbarToolItem>
                 <ToolbarButton
                     icon={assets.play.outlined}
                     iconFirst={true}
@@ -41,10 +45,6 @@ const ToolbarToolsMenu: FC = () => {
 
             <ToolbarToolItem>
                 <ToolbarSeparator className="hidden md:flex -mx-1 px-0" />
-            </ToolbarToolItem>
-
-            <ToolbarToolItem>
-                <WebMCPButton />
             </ToolbarToolItem>
 
             {projectMode == "ex" && (

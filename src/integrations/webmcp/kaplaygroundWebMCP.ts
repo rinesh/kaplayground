@@ -1,5 +1,7 @@
 /// <reference types="webmcp-types" preserve="true" />
 
+import { WEBMCP_AGENT_GUIDE } from "./agentGuide.ts";
+
 const DEFAULT_PREFIX = "kaplayground";
 const DEFAULT_MAX_FILE_BYTES = 512 * 1024;
 const DEFAULT_MAX_FILES = 500;
@@ -488,6 +490,7 @@ export class KaplaygroundWebMCP {
 
     private createTools(): EditorTool[] {
         const tools: EditorTool[] = [
+            this.createGetAgentGuideTool(),
             this.createGetProjectTool(),
             this.createListFilesTool(),
             this.createReadFileTool(),
@@ -495,7 +498,7 @@ export class KaplaygroundWebMCP {
         ];
 
         if (this.adapter.listAssets) {
-            tools.splice(2, 0, this.createListAssetsTool());
+            tools.splice(3, 0, this.createListAssetsTool());
         }
         if (this.adapter.createFile) tools.push(this.createFileTool());
         if (this.adapter.removeFile) tools.push(this.createRemoveFileTool());
@@ -517,6 +520,21 @@ export class KaplaygroundWebMCP {
         }
 
         return tools;
+    }
+
+    private createGetAgentGuideTool(): EditorTool {
+        return {
+            name: "get_agent_guide",
+            title: "Read the KAPLAYGROUND agent guide",
+            description:
+                "Read the current KAPLAYGROUND WebMCP workflow, starter prompt, verification sequence, and revision-safety rules before editing a project.",
+            inputSchema: emptyObjectSchema(),
+            annotations: readAnnotations(),
+            execute: async (_input, signal) => {
+                throwIfAborted(signal);
+                return toSerializable(WEBMCP_AGENT_GUIDE);
+            },
+        };
     }
 
     private createGetProjectTool(): EditorTool {

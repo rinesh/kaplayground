@@ -1,8 +1,12 @@
 import { assets } from "@kaplayjs/crew";
 import { useEffect, useRef } from "react";
-import { demos } from "../../data/demos";
+import { WEBMCP_EXAMPLE_NAME } from "../../data/demos";
 import { useProject } from "../../features/Projects/stores/useProject";
+import { confirmNavigate } from "../../util/confirmNavigate";
+import { openDemoBrowser } from "../ProjectBrowser";
 import { Dialog } from "../UI/Dialog";
+
+const WELCOME_STORAGE_KEY = "kaplayground-codex-welcome-seen-v1";
 
 type WelcomeDialogProps = {
     isLoading: boolean;
@@ -10,23 +14,69 @@ type WelcomeDialogProps = {
 
 export const WelcomeDialog = ({ isLoading }: WelcomeDialogProps) => {
     const dialogRef = useRef<HTMLDialogElement>(null);
-    const isFirstVisit = !localStorage.getItem("first-visit");
-    const isIndex = location.pathname == "/" && !location.search;
+    const createNewProject = useProject((state) => state.createNewProject);
+    const demoKey = useProject((state) => state.demoKey);
 
-    const createNewProject = useProject((s) => s.createNewProject);
+    const searchParams = new URLSearchParams(location.search);
+    const isStarterDemoLink =
+        searchParams.get("example") === WEBMCP_EXAMPLE_NAME
+        && [...searchParams.keys()].every((key) => key === "example");
+    const isStarterLanding = location.pathname === "/"
+        && (!location.search || isStarterDemoLink);
+    const isStarterReady = demoKey === WEBMCP_EXAMPLE_NAME;
+    const hasSeenWelcome = localStorage.getItem(WELCOME_STORAGE_KEY) === "true";
 
-    const handleDemosButton = () => {
-        createNewProject("ex", {}, demos[0].key);
-        document.querySelector<HTMLDialogElement>("#examples-browser")
-            ?.showModal();
+    const markWelcomeSeen = () => {
+        localStorage.setItem(WELCOME_STORAGE_KEY, "true");
+    };
+
+    const closeWelcome = () => dialogRef.current?.close();
+
+    const openStarter = () => {
+        closeWelcome();
+        if (demoKey === WEBMCP_EXAMPLE_NAME) return;
+
+        void confirmNavigate(() => {
+            void createNewProject("ex", {}, WEBMCP_EXAMPLE_NAME);
+        });
+    };
+
+    const openCodexIdeas = () => {
+        closeWelcome();
+
+        const showIdeas = () => requestAnimationFrame(() => {
+            document.querySelector<HTMLDialogElement>("#webmcp-panel")
+                ?.showModal();
+        });
+
+        if (isStarterReady) {
+            showIdeas();
+            return;
+        }
+
+        void confirmNavigate(() => {
+            void createNewProject("ex", {}, WEBMCP_EXAMPLE_NAME).then(
+                showIdeas,
+            );
+        });
+    };
+
+    const openDemos = () => {
+        closeWelcome();
+        requestAnimationFrame(openDemoBrowser);
     };
 
     useEffect(() => {
-        if (!isFirstVisit || !isIndex) return;
+        if (
+            isLoading
+            || hasSeenWelcome
+            || !isStarterLanding
+            || !isStarterReady
+        ) return;
 
-        localStorage.setItem("first-visit", "false");
+        localStorage.setItem(WELCOME_STORAGE_KEY, "true");
         dialogRef.current?.showModal();
-    }, [isLoading]);
+    }, [hasSeenWelcome, isLoading, isStarterLanding, isStarterReady]);
 
     return (
         <Dialog
@@ -35,6 +85,7 @@ export const WelcomeDialog = ({ isLoading }: WelcomeDialogProps) => {
             className="backdrop-fade-in"
             mainClass="max-w-4xl max-h-[calc(100%-6.5rem)] bg-base-50 border border-base-content/0"
             contentClass="flex flex-col p-0"
+            onClose={markWelcomeSeen}
         >
             <div className="group absolute bottom-full left-0 ml-6 lg:ml-12 -z-10 scale-75 sm:scale-100 origin-bottom-left">
                 <div className="translate-y-3 [[open]_&]:translate-y-0 transition-transform delay-1000 duration-200 hover:!translate-y-3 hover:duration-150 hover:delay-0">
@@ -49,12 +100,11 @@ export const WelcomeDialog = ({ isLoading }: WelcomeDialogProps) => {
 
                         <div className="scale-0 [[open]_&]:scale-100 transition-all delay-1000 duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] origin-bottom-left group-has-[:hover]:scale-0 group-has-[:hover]:opacity-0 group-has-[:hover]:delay-0">
                             <div className="relative -top-1 px-3 py-1 font-bold text-black bg-gradient-to-tr from-lime-100 to-white rounded-lg -rotate-6">
-                                Hellowrr!
+                                Let's play!
                                 <div
                                     className="absolute -left-1 bottom-2.5 w-3 h-3 bg-lime-100 rotate-45"
                                     aria-hidden="true"
-                                >
-                                </div>
+                                />
                             </div>
                         </div>
                     </div>
@@ -75,10 +125,10 @@ export const WelcomeDialog = ({ isLoading }: WelcomeDialogProps) => {
                 <div className="flex gap-px rounded-[inherit]">
                     <header className="flex-1 flex flex-col justify-center gap-1 p-8 lg:p-12 bg-base-200 rounded-[inherit]">
                         <h1 className="font-bold text-xl sm:text-3xl text-white">
-                            Get started with KAPLAYGROUND
+                            Play, change, repeat
                         </h1>
                         <p className="text-base sm:text-lg">
-                            A fun playground for your KAPLAY projects!
+                            Make a tiny game your own with Codex.
                         </p>
                     </header>
 
@@ -100,18 +150,16 @@ export const WelcomeDialog = ({ isLoading }: WelcomeDialogProps) => {
                     <div className="sm:flex-1 px-8 lg:px-12 pt-6 pb-4 lg:py-8 space-y-4 lg:space-y-5 bg-base-200 rounded-[inherit]">
                         <div className="py-0.5 space-y-0.5">
                             <h2 className="font-semibold text-xl text-white">
-                                Create and Explore
+                                Start with the game
                             </h2>
-                            <p>
-                                Try our examples first or jump straight into
-                                creating
-                            </p>
+                            <p>No game-making experience needed.</p>
                         </div>
 
                         <div className="flex flex-col gap-3 -mx-4">
                             <button
+                                type="button"
                                 className="relative btn btn-ghost flex flex-col items-start justify-start gap-1.5 w-full h-auto min-h-0 py-4 font-normal text-left bg-base-50"
-                                onClick={handleDemosButton}
+                                onClick={openStarter}
                             >
                                 <img
                                     src={assets.apple.outlined}
@@ -121,25 +169,19 @@ export const WelcomeDialog = ({ isLoading }: WelcomeDialogProps) => {
                                     aria-hidden="true"
                                 />
                                 <span className="pr-8 font-medium text-lg leading-tight text-white">
-                                    Explore{" "}
-                                    <span className="text-primary">100+</span>
-                                    {" "}
-                                    Demos
+                                    Play Bean's Snack Dash
                                 </span>
                                 <span className="text-sm">
-                                    From the basics to more advanced games,
-                                    great to learn
-                                </span>
-                                <span className="-mt-1 text-xs opacity-80">
-                                    You can also edit and save demos as your own
-                                    projects easily
+                                    Move the bean, grab five apples, and see what
+                                    you want to change.
                                 </span>
                             </button>
 
                             <div className="flex flex-wrap gap-3">
                                 <button
-                                    className="relative btn btn-ghost flex flex-col items-start justify-start gap-1.5 w-full h-auto min-h-0 py-4 font-normal text-left bg-green-400/10 flex-none 2sm:flex-1 hover:bg-green-300/15"
-                                    onClick={() => createNewProject("ex")}
+                                    type="button"
+                                    className="relative btn btn-ghost flex flex-col items-start justify-start gap-1.5 w-full h-auto min-h-0 py-4 font-normal text-left bg-fuchsia-400/10 flex-none 2sm:flex-1 hover:bg-fuchsia-300/15"
+                                    onClick={openCodexIdeas}
                                 >
                                     <img
                                         src={assets.bean.outlined}
@@ -149,17 +191,17 @@ export const WelcomeDialog = ({ isLoading }: WelcomeDialogProps) => {
                                         aria-hidden="true"
                                     />
                                     <span className="pr-8 font-medium text-lg leading-tight text-white">
-                                        Create Example
+                                        Get a Codex idea
                                     </span>
                                     <span className="text-sm">
-                                        One file editor for a quick creation,
-                                        shareable as a link
+                                        Pick one fun change to try.
                                     </span>
                                 </button>
 
                                 <button
+                                    type="button"
                                     className="relative btn btn-ghost flex flex-col items-start justify-start gap-1.5 w-full h-auto min-h-0 py-4 font-normal text-left bg-violet-400/10 flex-none 2sm:flex-1 hover:bg-violet-300/15"
-                                    onClick={() => createNewProject("pj")}
+                                    onClick={openDemos}
                                 >
                                     <img
                                         src={assets.api_book.outlined}
@@ -169,11 +211,10 @@ export const WelcomeDialog = ({ isLoading }: WelcomeDialogProps) => {
                                         aria-hidden="true"
                                     />
                                     <span className="pr-8 font-medium text-lg leading-tight text-white">
-                                        Create Project
+                                        Try another game
                                     </span>
                                     <span className="text-sm">
-                                        Full editor (IDE) with a file tree,
-                                        export and build only
+                                        Browse more games when you're ready.
                                     </span>
                                 </button>
                             </div>
@@ -183,93 +224,45 @@ export const WelcomeDialog = ({ isLoading }: WelcomeDialogProps) => {
                     <div className="flex flex-col sm:flex-1 px-8 lg:px-12 pt-6 pb-4 lg:py-8 space-y-4 lg:space-y-5 w-full sm:max-w-72 min-h-[132px] bg-base-200 rounded-[inherit]">
                         <div className="py-0.5 -mr-2 space-y-0.5">
                             <h2 className="font-semibold text-xl text-white">
-                                More Links
+                                That's the whole loop
                             </h2>
-                            <p>Don't play alone, visit these!</p>
+                            <p>Take it one small change at a time.</p>
                         </div>
 
                         <div className="flex flex-col gap-3 flex-1 -mx-4">
-                            <ul className="flex flex-col gap-1">
-                                <li>
-                                    <a
-                                        href="https://github.com/kaplayjs/kaplayground/wiki"
-                                        target="_blank"
-                                        className="btn btn-sm btn-ghost justify-start font-medium px-2 py-1.5 w-full h-auto bg-base-100"
+                            <ol className="flex flex-col gap-2">
+                                {[
+                                    ["1", "Play", "Grab an apple or two."],
+                                    ["2", "Change", "Copy one idea into Codex."],
+                                    ["3", "Play again", "Try the new version here."],
+                                ].map(([number, title, description]) => (
+                                    <li
+                                        key={number}
+                                        className="flex items-center gap-3 rounded-lg bg-base-100 px-3 py-2"
                                     >
-                                        <img
-                                            src={assets.api_book.outlined}
-                                            className="h-4 w-4 object-scale-down"
-                                            aria-hidden="true"
-                                            width="16"
-                                            height="16"
-                                        />
-                                        <span>
-                                            Learn how to use in{" "}
-                                            <strong className="font-semibold text-white">
-                                                Wiki
-                                            </strong>
+                                        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary font-bold text-primary-content">
+                                            {number}
                                         </span>
-                                    </a>
-                                </li>
-                                <li>
-                                    <a
-                                        href="https://kaplayjs.com/docs/guides/"
-                                        target="_blank"
-                                        className="btn btn-sm btn-ghost justify-start font-medium px-2 py-1.5 w-full h-auto bg-base-100"
-                                    >
-                                        <img
-                                            src={assets.marks_legend.outlined}
-                                            className="h-4 w-4 object-scale-down"
-                                            aria-hidden="true"
-                                            width="16"
-                                            height="16"
-                                        />
-                                        <span>
-                                            Study KAPLAY{" "}
-                                            <strong className="font-semibold text-primary">
-                                                Docs
+                                        <span className="min-w-0">
+                                            <strong className="block text-sm text-white">
+                                                {title}
                                             </strong>
+                                            <span className="block text-xs opacity-80">
+                                                {description}
+                                            </span>
                                         </span>
-                                    </a>
-                                </li>
-                                <li>
-                                    <a
-                                        href="https://discord.com/invite/aQ6RuQm3TF"
-                                        target="_blank"
-                                        className="btn btn-sm btn-ghost justify-start font-medium px-2 py-1.5 w-full h-auto bg-base-100"
-                                    >
-                                        <img
-                                            alt="KAPLAYGROUND"
-                                            src={assets.discord.outlined}
-                                            className="h-4 w-4 object-scale-down"
-                                            width="16"
-                                            height="16"
-                                        />
-                                        <span>
-                                            Get help on{" "}
-                                            <strong className="font-semibold text-indigo-400">
-                                                Discord
-                                            </strong>
-                                        </span>
-                                    </a>
-                                </li>
-                            </ul>
+                                    </li>
+                                ))}
+                            </ol>
 
                             <div className="mt-auto pt-1">
                                 <p className="px-4 text-xs opacity-80">
-                                    You can find me again in Toolbar{" "}
-                                    <span className="font-mono leading-none">
-                                        &gt;
-                                    </span>{" "}
-                                    About{" "}
-                                    <span className="font-mono leading-none">
-                                        &gt;
-                                    </span>{" "}
-                                    Open Welcome Screen
+                                    Open this screen again from About whenever
+                                    you want a fresh start.
                                 </p>
                             </div>
                             <button className="btn btn-ghost py-3 min-h-0 h-auto bg-base-50">
-                                Thank you, bye!
+                                I'm ready — let's play
                             </button>
                         </div>
                     </div>

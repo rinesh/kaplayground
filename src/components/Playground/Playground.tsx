@@ -5,6 +5,7 @@ import { useMediaQuery } from "react-responsive";
 import { Slide, ToastContainer } from "react-toastify";
 import { Tooltip } from "react-tooltip";
 import { connectDB } from "../../db/client/db";
+import { WEBMCP_EXAMPLE_NAME } from "../../data/demos";
 import { loadProject } from "../../features/Projects/application/loadProject";
 import {
     beginPlaygroundInitialization,
@@ -81,9 +82,9 @@ const Playground = () => {
         await createNewProject("ex", undefined, demo);
     };
 
-    const loadNewProject = async () => {
-        debug(0, "[init] No project found, creating a new one...");
-        await createNewProject("pj");
+    const loadAgentPlayground = async () => {
+        debug(0, "[init] No project found, opening the Codex starter game...");
+        await createNewProject("ex", undefined, WEBMCP_EXAMPLE_NAME);
     };
 
     const loadLastOpenedProject = async (lastOpenedProjectId: string) => {
@@ -136,7 +137,7 @@ const Playground = () => {
             } else if (lastOpenedPj) {
                 await loadLastOpenedProject(lastOpenedPj);
             } else {
-                await loadNewProject();
+                await loadAgentPlayground();
             }
 
             if (!useProject.getState().project.createdAt) {
@@ -179,10 +180,8 @@ const Playground = () => {
                         <div className="h-full flex flex-col items-center justify-center bg-base-300 p-4 gap-4">
                             <img src={assets.burpman.outlined} />
 
-                            <p className="max-w-md text-center">
-                                Projects are currently not supported in mobile!
-                                Please use a desktop device, anyway you can
-                                still view demos.
+                            <p className="max-w-md text-center font-semibold text-white">
+                                This game-making workspace works best on desktop.
                             </p>
 
                             <div
@@ -190,9 +189,9 @@ const Playground = () => {
                                     + "border border-base-content/10 bg-base-200 px-4 py-3"}
                             >
                                 <p className="max-w-sm text-center text-sm text-base-content/65">
-                                    WebMCP remains available in this layout.
-                                    Open its activity panel to inspect the
-                                    registered tools and agent calls.
+                                    You can still ask Codex to change the game
+                                    from here. Open the ideas panel for a simple
+                                    prompt to try.
                                 </p>
                                 <div className="h-9">
                                     <WebMCPButton />

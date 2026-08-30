@@ -26,6 +26,13 @@ html, body, #root {
     background-color: #9bc26633;
 }
 
+.agent-grid-bg {
+    background-image:
+        linear-gradient(rgb(255 255 255 / 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgb(255 255 255 / 0.025) 1px, transparent 1px);
+    background-size: 24px 24px;
+}
+
 @property --alpha-0 {
   syntax: "<number>";
   initial-value: 0;

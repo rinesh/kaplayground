@@ -16,8 +16,9 @@ export const AboutDialog = () => {
 
                 <main className="max-w-xs mx-auto py-2">
                     <p className="text-center sm:px-6 py-2">
-                        KAPLAYGROUND is a web editor designed for creating
-                        KAPLAY games.
+                        Play a tiny game, ask Codex to change it, and try the
+                        new version right away. You can keep remixing until the
+                        game feels like yours.
                     </p>
 
                     <div className="mt-4 sm:px-4 text-sm">
@@ -87,17 +88,24 @@ export const AboutDialog = () => {
                         className="flex flex-col sm:flex-row justify-between gap-2 w-full"
                     >
                         <button
+                            type="button"
                             className="btn btn-ghost py-3.5 min-h-0 h-auto bg-base-content/10"
-                            onClick={() =>
+                            onClick={() => {
                                 document.querySelector<HTMLDialogElement>(
-                                    "#welcome-dialog",
-                                )?.showModal()}
+                                    "#about-dialog",
+                                )?.close();
+                                requestAnimationFrame(() => {
+                                    document.querySelector<HTMLDialogElement>(
+                                        "#welcome-dialog",
+                                    )?.showModal();
+                                });
+                            }}
                         >
-                            Open Welcome Screen
+                            Open welcome screen
                         </button>
 
                         <button className="btn py-3.5 min-h-0 h-auto">
-                            Continue making!
+                            Continue building
                         </button>
                     </form>
                 </footer>

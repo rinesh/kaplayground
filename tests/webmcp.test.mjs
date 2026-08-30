@@ -427,6 +427,7 @@ describe("KAPLAYGROUND WebMCP", () => {
         await bridge.ready;
 
         assert.deepEqual(bridge.toolNames, [
+            "kaplayground_get_agent_guide",
             "kaplayground_get_project",
             "kaplayground_list_files",
             "kaplayground_list_assets",
@@ -443,6 +444,14 @@ describe("KAPLAYGROUND WebMCP", () => {
             "kaplayground_get_diagnostics",
             "kaplayground_get_console",
         ]);
+
+        const guide = await execute(
+            context,
+            "kaplayground_get_agent_guide",
+        );
+        assert.equal(guide.title, "KAPLAYGROUND coding-agent workflow");
+        assert.match(guide.starterPrompt, /kaplayground_get_project/);
+        assert.ok(guide.workflow.length >= 9);
     });
 
     it("waits for application readiness before registering tools", async () => {
@@ -468,7 +477,7 @@ describe("KAPLAYGROUND WebMCP", () => {
         applicationReady.resolve();
         await bridge.ready;
         assert.equal(bridge.status, "ready");
-        assert.equal(context.registered.length, 15);
+        assert.equal(context.registered.length, 16);
     });
 
     it("waits for the preview to acknowledge that its run loaded", async () => {
@@ -1129,7 +1138,7 @@ describe("KAPLAYGROUND WebMCP", () => {
         await bridge.ready;
 
         assert.equal(connections.at(-1).status, "ready");
-        assert.equal(connections.at(-1).toolNames.length, 15);
+        assert.equal(connections.at(-1).toolNames.length, 16);
 
         await execute(context, "kaplayground_get_project");
         assert.deepEqual(

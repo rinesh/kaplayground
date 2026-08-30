@@ -21,7 +21,7 @@ type Props = {
 
 export const ConsoleView = ({ onSelectWebMCP }: Props) => {
     const [logs, setLogs] = useState<any[]>([]);
-    const [activeTab, setActiveTab] = useState<"console" | "webmcp">("console");
+    const [activeTab, setActiveTab] = useState<"console" | "webmcp">("webmcp");
     const projectKey = useProject((s) => s.projectKey || s.demoKey);
     const scrollDivRef = useRef<HTMLDivElement>(null);
     const ignoredFilter = ["[sandbox]", "[vite]"];
@@ -151,23 +151,12 @@ export const ConsoleView = ({ onSelectWebMCP }: Props) => {
                 className="flex h-8 shrink-0 items-stretch border-b border-base-content/10 bg-base-200/40"
             >
                 <button
-                    id="console-output-tab"
-                    type="button"
-                    role="tab"
-                    aria-selected={activeTab === "console"}
-                    aria-controls="console-output-panel"
-                    className={outputTabClass(activeTab === "console")}
-                    onClick={() => setActiveTab("console")}
-                >
-                    Console
-                </button>
-                <button
                     id="webmcp-output-tab"
                     type="button"
                     role="tab"
                     aria-selected={activeTab === "webmcp"}
                     aria-controls="webmcp-output-panel"
-                    aria-label={`WebMCP Log, ${webMCPEntryCount} tool invocations`}
+                    aria-label={`Codex changes, ${webMCPEntryCount} recent actions`}
                     className={outputTabClass(activeTab === "webmcp")}
                     onClick={handleSelectWebMCP}
                 >
@@ -181,10 +170,21 @@ export const ConsoleView = ({ onSelectWebMCP }: Props) => {
                         })}
                         aria-hidden="true"
                     />
-                    WebMCP Log
+                    Codex changes
                     <span className="min-w-4 rounded bg-base-content/10 px-1 text-center text-[10px]">
                         {webMCPEntryCount}
                     </span>
+                </button>
+                <button
+                    id="console-output-tab"
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === "console"}
+                    aria-controls="console-output-panel"
+                    className={outputTabClass(activeTab === "console")}
+                    onClick={() => setActiveTab("console")}
+                >
+                    Game messages
                 </button>
             </div>
 
