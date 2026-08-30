@@ -1,19 +1,22 @@
+import type { Project } from "../models/Project";
 import { useProject } from "../stores/useProject";
 
-export function buildCodeLegacy() {
-    let mainFile = useProject.getState().getMainFile()?.value ?? "";
+export function buildCodeLegacy(
+    project: Project = useProject.getState().project,
+) {
+    let mainFile = getFile(project, "main.js")?.value ?? "";
     let parsedFiles = "";
 
-    if (useProject.getState().project.mode === "ex") {
+    if (project.mode === "ex") {
         parsedFiles = mainFile;
     } else {
         let sceneFiles = "";
         let objectFiles = "";
         let utilFiles = "";
-        let KAPLAYFile = useProject.getState().getKAPLAYFile()?.value ?? "";
-        let assetsFile = useProject.getState().getAssetsFile()?.value ?? "";
+        let KAPLAYFile = getFile(project, "kaplay.js")?.value ?? "";
+        let assetsFile = getFile(project, "assets.js")?.value ?? "";
 
-        useProject.getState().project.files.forEach((file) => {
+        project.files.forEach((file) => {
             if (file.kind == "scene") {
                 sceneFiles += `\n${file.value}\n`;
             } else if (file.kind == "obj") {
@@ -32,4 +35,8 @@ export function buildCodeLegacy() {
     }
 
     return parsedFiles;
+}
+
+function getFile(project: Project, path: string) {
+    return project.files.get(path);
 }

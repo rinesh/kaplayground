@@ -30,13 +30,21 @@
 
 ## WebMCP
 
-This fork registers twelve `kaplayground_*` tools through the browser's WebMCP API. File replacement and removal use the revision returned by `kaplayground_read_file`, so an agent cannot silently overwrite or delete a newer editor change.
+This fork registers fifteen `kaplayground_*` tools through the browser's WebMCP
+API after IndexedDB, esbuild, and the active project are ready. File mutations
+require the opaque project revision and, where applicable, the content revision
+returned by the read tools, so an agent cannot write through a project switch or
+silently overwrite a newer editor change.
 
-The repository is also the canonical home of the reusable `kaplay-webmcp`
-workspace package under [`packages/kaplay-webmcp`](packages/kaplay-webmcp).
-That package exposes a running KAPLAY context to browser agents. The editor's
-Zustand, Monaco, preview, diagnostics, console, and activity integrations stay
-in `src/integrations/webmcp` because they depend on KAPLAYGROUND internals.
+KAPLAYGROUND-specific tools can persist a transient project, list bounded asset
+metadata, and inspect a bounded shallow snapshot of the running game. Preview
+runs resolve only after the sandbox acknowledges module execution, pause changes
+are explicit and acknowledged, and console reads are scoped to a preview run.
+
+The WebMCP implementation is intentionally scoped to KAPLAYGROUND. Its Zustand,
+Monaco, preview, diagnostics, console, and activity integrations live in
+`src/integrations/webmcp` and `src/components/WebMCP` because they depend on the
+editor's application state.
 
 Run the complete WebMCP verification suite with:
 
@@ -44,9 +52,28 @@ Run the complete WebMCP verification suite with:
 npm run verify:webmcp
 ```
 
+The app and preview sandbox use a versioned message protocol and must be
+released together. Deploy `sandbox/` with `npm run sandbox:deploy`, then set
+`VITE_SANDBOX_URL` to that deployment when building the app; an older sandbox
+is rejected before project code is sent, because it cannot acknowledge runs,
+pause state, or inspection requests.
+
+## Hosting
+
+This fork is deployed through OpenAI Sites. The Sites Vite plugin copies
+`.openai/hosting.json` into the production artifact, while the Cloudflare Vite
+plugin and `worker/index.ts` serve the generated assets with a single-page-app
+fallback. The Sites plugin requires Vite 8, so the Vite, React plugin, and
+static-copy upgrades are part of the hosting configuration rather than the
+WebMCP feature itself.
+
+If the OpenAI Sites deployment is retired, remove the Sites and Cloudflare
+plugins, the worker and hosting metadata together, then restore the upstream
+Vite dependencies and configuration.
+
 The former private `rinesh/kaplay-connect` repository contained an earlier
-stdio bridge and the original standalone package prototype. Browser-native
-work now belongs here; the legacy server is retained only as migration history.
+stdio bridge. Browser-native KAPLAYGROUND integration now belongs here; the
+legacy server is retained only as migration history.
 
 ## 📚 Resources
 

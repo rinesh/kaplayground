@@ -1,10 +1,13 @@
+import type { Asset } from "../features/Projects/models/Asset";
 import { useProject } from "../features/Projects/stores/useProject";
 import { parseAssetPath } from "./assetsParsing";
 import { debug } from "./logs";
 import { MATCH_ASSET_URL_REGEX } from "./regex";
 
-export const getVersion = (fetchIt = false) => {
-    const version = useProject.getState().project.kaplayVersion;
+export const getVersion = (
+    fetchIt = false,
+    version = useProject.getState().project.kaplayVersion,
+) => {
     let libVersion;
 
     if (version == "master") {
@@ -49,23 +52,32 @@ export const getVersion = (fetchIt = false) => {
     }
 };
 
-const transformAssetUrl = (regex: RegExp, code: string) => {
+const transformAssetUrl = (
+    regex: RegExp,
+    code: string,
+    projectAssets: ReadonlyMap<string, Asset>,
+) => {
     const parsed = code.replace(regex, (match, asset: string) => {
         return match.replace(
             asset,
-            parseAssetPath(asset, match),
+            parseAssetPath(asset, match, projectAssets),
         );
     });
 
     return parsed;
 };
 
-export const parseAssets = (code: string) => {
+export const parseAssets = (
+    code: string,
+    projectAssets: ReadonlyMap<string, Asset> =
+        useProject.getState().project.assets,
+) => {
     const regexComment = /\/\/\s*kaplay-transformation-asset\s*(.*)/g;
 
     const codeTransformed = transformAssetUrl(
         MATCH_ASSET_URL_REGEX,
-        transformAssetUrl(regexComment, code),
+        transformAssetUrl(regexComment, code, projectAssets),
+        projectAssets,
     );
 
     return codeTransformed;

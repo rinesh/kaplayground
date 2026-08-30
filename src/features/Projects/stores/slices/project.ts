@@ -16,6 +16,73 @@ import type { Project } from "../../models/Project";
 import type { ProjectMode } from "../../models/ProjectMode";
 import { type ProjectStore } from "../useProject.ts";
 
+export type ProjectStorageState = "transient" | "autosaved";
+
+const pendingProjectPersistence = new Map<string, Promise<void>>();
+let activeProjectPersistenceTail: Promise<void> = Promise.resolve();
+
+function queueActiveProjectPersistence<T>(
+    operation: () => Promise<T>,
+): Promise<T> {
+    const result = activeProjectPersistenceTail.then(operation, operation);
+    activeProjectPersistenceTail = result.then(
+        () => undefined,
+        () => undefined,
+    );
+    return result;
+}
+
+function queueProjectWrite(id: string, project: Project): Promise<void> {
+    const projectSnapshot = {
+        ...project,
+        files: new Map(project.files),
+        assets: new Map(project.assets),
+        id,
+    };
+    return queueProjectPersistenceOperation(id, async () => {
+        await db.put("projects", projectSnapshot);
+    });
+}
+
+function queueProjectDelete(id: string): Promise<void> {
+    return queueProjectPersistenceOperation(id, async () => {
+        await db.delete("projects", id);
+    });
+}
+
+function queueProjectPersistenceOperation(
+    id: string,
+    operation: () => Promise<void>,
+): Promise<void> {
+    const previous = pendingProjectPersistence.get(id);
+    const write = previous
+        ? previous.catch(() => {}).then(operation)
+        : operation();
+
+    pendingProjectPersistence.set(id, write);
+    void write.catch((error: unknown) => {
+        debug(
+            0,
+            "[project] Persistence failed:",
+            error instanceof Error ? error.message : String(error),
+        );
+    });
+    void write.then(
+        () => {
+            if (pendingProjectPersistence.get(id) === write) {
+                pendingProjectPersistence.delete(id);
+            }
+        },
+        () => {
+            if (pendingProjectPersistence.get(id) === write) {
+                pendingProjectPersistence.delete(id);
+            }
+        },
+    );
+
+    return write;
+}
+
 export interface ProjectSlice {
     /** Increments whenever the active project is replaced. */
     projectGeneration: number;
@@ -85,6 +152,15 @@ export interface ProjectSlice {
      */
     saveNewProject(): string;
     /**
+     * Persist the active project and resolve only after IndexedDB confirms it.
+     * Creates and activates a durable project id when the project is transient.
+     *
+     * @returns The persisted active project id
+     */
+    persistActiveProject(): Promise<string>;
+    /** Whether the active project is transient or has autosave enabled. */
+    getProjectStorageState(): ProjectStorageState;
+    /**
      * Current project edited state
      */
     projectWasEdited: boolean;
@@ -125,7 +201,7 @@ export interface ProjectSlice {
     /**
      * Refresh savedProjects from idb
      */
-    updateSavedProjects(): void;
+    updateSavedProjects(): Promise<void>;
     /**
      * Get KAPLAY versions used in projects
      *
@@ -450,14 +526,13 @@ export const createProjectSlice: StateCreator<
         debug(0, "[project] Saving changes...");
 
         if (id !== get().projectKey && project) {
-            db.put("projects", {
+            void queueProjectWrite(id, {
                 ...project,
                 updatedAt: new Date().toISOString(),
-                id,
             });
             set({ savedProjects: [...get().savedProjects] });
         } else {
-            db.put("projects", { ...get().project, id });
+            void queueProjectWrite(id, get().project);
             get().setProjectWasEdited(true);
         }
     },
@@ -466,7 +541,7 @@ export const createProjectSlice: StateCreator<
         debug(0, "[project] Saving new project...");
 
         const id = get().generateId(get().project.createdAt);
-        db.put("projects", { ...get().project, id });
+        void queueProjectWrite(id, get().project);
 
         get().setProjectKey(id);
         get().setDemoKey(null);
@@ -489,6 +564,76 @@ export const createProjectSlice: StateCreator<
         }));
 
         return id;
+    },
+
+    persistActiveProject() {
+        return queueActiveProjectPersistence(async () => {
+            const generation = get().projectGeneration;
+            const currentId = get().projectKey;
+
+            if (currentId) {
+                await queueProjectWrite(currentId, get().project);
+
+                if (
+                    get().projectGeneration !== generation
+                    || get().projectKey !== currentId
+                ) {
+                    throw new Error(
+                        "The active project changed while it was saving",
+                    );
+                }
+
+                return currentId;
+            }
+
+            const id = get().generateId(get().project.createdAt);
+            await queueProjectWrite(id, get().project);
+
+            if (
+                get().projectGeneration !== generation
+                || get().projectKey !== null
+            ) {
+                await queueProjectDelete(id);
+                throw new Error(
+                    "The active project changed while it was saving",
+                );
+            }
+
+            get().setProjectKey(id);
+            get().setDemoKey(null);
+            window.history.replaceState({}, "", `${window.location.origin}/`);
+
+            useConfig.getState().setConfig({
+                lastOpenedProject: id,
+            });
+
+            useEditor.getState().updateEditorLastSavedValue();
+            useEditor.getState().updateHasUnsavedChanges();
+
+            set(() => ({
+                savedProjects: get().savedProjects.includes(id)
+                    ? get().savedProjects
+                    : [...get().savedProjects, id],
+            }));
+
+            // Persist edits made while the first IndexedDB write was in flight.
+            await queueProjectWrite(id, get().project);
+
+            if (
+                get().projectGeneration !== generation
+                || get().projectKey !== id
+            ) {
+                throw new Error(
+                    "The active project changed while it was saving",
+                );
+            }
+
+            return id;
+        });
+    },
+
+    getProjectStorageState() {
+        return get().projectKey === null ? "transient" : "autosaved";
     },
 
     generateId(createdAt) {
@@ -608,7 +753,7 @@ export const createProjectSlice: StateCreator<
     removeProject(id) {
         if (!get().savedProjects.includes(id)) return false;
 
-        db.delete("projects", id);
+        void queueProjectDelete(id);
 
         set(() => ({
             savedProjects: get().savedProjects.filter(pid => pid != id),

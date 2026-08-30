@@ -2,9 +2,6 @@
   "name": "kaplayground",
   "type": "module",
   "version": "2.5.3",
-  "workspaces": [
-    "packages/*"
-  ],
   "bin": "scripts/cli.js",
   "scripts": {
     "dev": "vite dev",
@@ -23,12 +20,7 @@
     "sandbox:build": "cd sandbox && vite build",
     "sandbox:deploy": "cd sandbox && wrangler pages deploy --branch=main",
     "test:webmcp": "node --experimental-strip-types --test tests/webmcp.test.mjs",
-    "check:webmcp-package": "npm run check --workspace kaplay-webmcp",
-    "test:webmcp-package": "npm test --workspace kaplay-webmcp",
-    "build:webmcp-package": "npm run build --workspace kaplay-webmcp",
-    "check:webmcp-consumer": "npm run check:consumer --workspace kaplay-webmcp",
-    "build:webmcp-example": "npm run build:example --workspace kaplay-webmcp",
-    "verify:webmcp": "npm run test:webmcp && npm run check:webmcp-package && npm run check:webmcp-consumer && npm run test:webmcp-package && npm run build:webmcp-package && npm run build:webmcp-example",
+    "verify:webmcp": "npm run test:webmcp && npm run check && npm run sandbox:build && npm run build",
     "neu": "neu"
   },
   "dependencies": {

@@ -9,6 +9,7 @@ others are assumed as our hosted assets in public
 
 import { assets } from "@kaplayjs/crew";
 import publicAssets from "../data/publicAssets.json";
+import type { Asset } from "../features/Projects/models/Asset";
 import { useProject } from "../features/Projects/stores/useProject";
 
 type PublicAssets = Record<"assets", {
@@ -16,10 +17,14 @@ type PublicAssets = Record<"assets", {
     base64: string;
 }[]>;
 
-export const parseAssetPath = (path: string, match?: string) => {
+export const parseAssetPath = (
+    path: string,
+    match?: string,
+    projectAssets: ReadonlyMap<string, Asset> =
+        useProject.getState().project.assets,
+) => {
     let normalPath = normalize(path);
 
-    const projectAssets = useProject.getState().project.assets;
     const loadType = match?.match(/^load(\w+)/s)?.[1] ?? null;
 
     if (normalPath.startsWith("assets/")) {

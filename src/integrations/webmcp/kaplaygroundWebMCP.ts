@@ -3,9 +3,15 @@
 const DEFAULT_PREFIX = "kaplayground";
 const DEFAULT_MAX_FILE_BYTES = 512 * 1024;
 const DEFAULT_MAX_FILES = 500;
+const DEFAULT_MAX_ASSETS = 500;
 const DEFAULT_MAX_DIAGNOSTICS = 200;
 const DEFAULT_MAX_CONSOLE_ENTRIES = 200;
+const DEFAULT_MAX_PREVIEW_OBJECTS = 50;
+const MAX_SERIALIZED_STRING_LENGTH = 10_000;
 const MAX_PATH_LENGTH = 512;
+const MAX_ASSET_NAME_LENGTH = 256;
+const MAX_ASSET_KIND_LENGTH = 64;
+const MAX_ASSET_IMPORT_FUNCTION_LENGTH = 2_048;
 const TOOL_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,128}$/;
 const NEVER_ABORTED_SIGNAL = new AbortController().signal;
 
@@ -33,6 +39,9 @@ export interface KaplaygroundWebMCPInvocation {
 
 export interface KaplaygroundProjectInfo {
     name: string;
+    projectId?: string | null;
+    projectRevision: string;
+    storageState: "transient" | "autosaved";
     version?: string;
     kaplayVersion?: string;
     mode?: string;
@@ -40,7 +49,7 @@ export interface KaplaygroundProjectInfo {
     fileCount: number;
     assetCount?: number;
     currentFile?: string | null;
-    previewState?: "running" | "stopped" | "unknown";
+    previewState?: "running" | "paused" | "stopped" | "unknown";
     hasUnsavedChanges?: boolean;
 }
 
@@ -53,6 +62,16 @@ export interface KaplaygroundFileSummary {
 
 export interface KaplaygroundFile extends KaplaygroundFileSummary {
     content: string;
+}
+
+export interface KaplaygroundAssetSummary {
+    name: string;
+    path: string;
+    kind: "sprite" | "sound" | "font" | string;
+    importFunction?: string;
+    sizeBytes?: number;
+    source?: "embedded" | "remote" | "blob" | "unknown";
+    metadataTruncated?: boolean;
 }
 
 export interface KaplaygroundDiagnostic {
@@ -69,23 +88,89 @@ export interface KaplaygroundDiagnostic {
 
 export interface KaplaygroundConsoleEntry {
     timestamp: string | number;
+    runId?: string | null;
     level: "debug" | "log" | "info" | "warn" | "error" | string;
     values: readonly unknown[];
 }
 
+export interface KaplaygroundPreviewRunResult {
+    runId: string;
+    status: "loaded";
+}
+
+export interface KaplaygroundPreviewPauseResult {
+    runId: string | null;
+    paused: boolean;
+}
+
+export interface KaplaygroundPreviewObjectSnapshot {
+    id: string | number | null;
+    tags: string[];
+    hidden?: boolean;
+    paused?: boolean;
+    position?: { x: number; y: number };
+    angle?: number;
+    scale?: { x: number; y: number };
+    components?: Record<string, unknown>;
+}
+
+export interface KaplaygroundPreviewInspection {
+    runId: string | null;
+    available?: boolean;
+    scene: string | null;
+    paused: boolean | null;
+    viewport: { width: number | null; height: number | null } | null;
+    camera?: {
+        position?: { x: number; y: number } | null;
+        scale?: { x: number; y: number } | null;
+        rotation?: number | null;
+    } | null;
+    objectCount: number | null;
+    objects: readonly KaplaygroundPreviewObjectSnapshot[];
+    objectsTruncated?: boolean;
+}
+
 export interface KaplaygroundAdapter {
+    waitUntilReady?(signal: AbortSignal): WebMCP.MaybePromise<void>;
     getProject(): WebMCP.MaybePromise<KaplaygroundProjectInfo>;
+    getProjectRevision(): WebMCP.MaybePromise<string>;
     listFiles(): WebMCP.MaybePromise<readonly KaplaygroundFileSummary[]>;
+    listAssets?(): WebMCP.MaybePromise<readonly KaplaygroundAssetSummary[]>;
     readFile(path: string): WebMCP.MaybePromise<KaplaygroundFile | null>;
-    writeFile(path: string, content: string): WebMCP.MaybePromise<void>;
-    createFile?(file: KaplaygroundFile): WebMCP.MaybePromise<void>;
-    removeFile?(path: string): WebMCP.MaybePromise<void>;
+    writeFile(
+        path: string,
+        content: string,
+        expectedProjectRevision: string,
+    ): WebMCP.MaybePromise<void>;
+    createFile?(
+        file: KaplaygroundFile,
+        expectedProjectRevision: string,
+    ): WebMCP.MaybePromise<void>;
+    removeFile?(
+        path: string,
+        expectedProjectRevision: string,
+    ): WebMCP.MaybePromise<void>;
     selectFile?(path: string): WebMCP.MaybePromise<void>;
-    runPreview?(): WebMCP.MaybePromise<void>;
-    togglePreviewPause?(): WebMCP.MaybePromise<void>;
+    saveProject?(
+        expectedProjectRevision: string,
+    ): WebMCP.MaybePromise<{ projectId: string; storageState: "autosaved" }>;
+    runPreview?(
+        signal: AbortSignal,
+    ): WebMCP.MaybePromise<KaplaygroundPreviewRunResult>;
+    setPreviewPaused?(
+        paused: boolean,
+        signal: AbortSignal,
+    ): WebMCP.MaybePromise<KaplaygroundPreviewPauseResult>;
     stopPreview?(): WebMCP.MaybePromise<void>;
+    inspectPreview?(
+        options: { tag?: string; limit: number },
+        signal: AbortSignal,
+    ): WebMCP.MaybePromise<KaplaygroundPreviewInspection>;
     getDiagnostics?(): WebMCP.MaybePromise<readonly KaplaygroundDiagnostic[]>;
-    getConsoleEntries?(): WebMCP.MaybePromise<readonly KaplaygroundConsoleEntry[]>;
+    getConsoleEntries?(): WebMCP.MaybePromise<
+        readonly KaplaygroundConsoleEntry[]
+    >;
+    getPreviewRunId?(): WebMCP.MaybePromise<string | null>;
 }
 
 export interface KaplaygroundWebMCPOptions {
@@ -96,10 +181,14 @@ export interface KaplaygroundWebMCPOptions {
     maxFileBytes?: number;
     /** Maximum number of project files returned by one call. Defaults to 500. */
     maxFiles?: number;
+    /** Maximum number of project assets returned by one call. Defaults to 500. */
+    maxAssets?: number;
     /** Maximum number of diagnostics returned by one call. Defaults to 200. */
     maxDiagnostics?: number;
     /** Maximum number of console entries returned by one call. Defaults to 200. */
     maxConsoleEntries?: number;
+    /** Maximum number of shallow preview objects returned by one call. Defaults to 50. */
+    maxPreviewObjects?: number;
     /** Origins allowed to execute tools through an author-provided iframe agent. */
     exposedTo?: string[];
     /** Inject a model context, primarily for tests or host-provided adapters. */
@@ -121,7 +210,10 @@ interface EditorTool {
     description: string;
     inputSchema: object;
     annotations?: WebMCP.ToolAnnotations;
-    execute(input: Record<string, unknown>, signal: AbortSignal): Promise<unknown>;
+    execute(
+        input: Record<string, unknown>,
+        signal: AbortSignal,
+    ): Promise<unknown>;
 }
 
 /** Owns the WebMCP tools registered for one KAPLAYGROUND editor instance. */
@@ -134,10 +226,13 @@ export class KaplaygroundWebMCP {
     private readonly prefix: string;
     private readonly maxFileBytes: number;
     private readonly maxFiles: number;
+    private readonly maxAssets: number;
     private readonly maxDiagnostics: number;
     private readonly maxConsoleEntries: number;
+    private readonly maxPreviewObjects: number;
     private readonly exposedTo: string[] | undefined;
-    private readonly onStatusChange: KaplaygroundWebMCPOptions["onStatusChange"];
+    private readonly onStatusChange:
+        KaplaygroundWebMCPOptions["onStatusChange"];
     private readonly onInvocation: KaplaygroundWebMCPOptions["onInvocation"];
     private readonly registrationController = new AbortController();
     private readonly names = new Set<string>();
@@ -148,13 +243,25 @@ export class KaplaygroundWebMCP {
     constructor(options: KaplaygroundWebMCPOptions) {
         this.adapter = options.adapter;
         this.context = options.modelContext ?? getDocumentModelContext();
-        this.prefix = validateNamePart(options.prefix ?? DEFAULT_PREFIX, "prefix");
+        this.prefix = validateNamePart(
+            options.prefix ?? DEFAULT_PREFIX,
+            "prefix",
+        );
         this.maxFileBytes = positiveInteger(
             options.maxFileBytes,
             "maxFileBytes",
             DEFAULT_MAX_FILE_BYTES,
         );
-        this.maxFiles = positiveInteger(options.maxFiles, "maxFiles", DEFAULT_MAX_FILES);
+        this.maxFiles = positiveInteger(
+            options.maxFiles,
+            "maxFiles",
+            DEFAULT_MAX_FILES,
+        );
+        this.maxAssets = positiveInteger(
+            options.maxAssets,
+            "maxAssets",
+            DEFAULT_MAX_ASSETS,
+        );
         this.maxDiagnostics = positiveInteger(
             options.maxDiagnostics,
             "maxDiagnostics",
@@ -164,6 +271,11 @@ export class KaplaygroundWebMCP {
             options.maxConsoleEntries,
             "maxConsoleEntries",
             DEFAULT_MAX_CONSOLE_ENTRIES,
+        );
+        this.maxPreviewObjects = positiveInteger(
+            options.maxPreviewObjects,
+            "maxPreviewObjects",
+            DEFAULT_MAX_PREVIEW_OBJECTS,
         );
         this.exposedTo = options.exposedTo;
         this.onStatusChange = options.onStatusChange;
@@ -199,13 +311,16 @@ export class KaplaygroundWebMCP {
 
     private async registerTools(): Promise<void> {
         try {
+            await this.adapter.waitUntilReady?.(
+                this.registrationController.signal,
+            );
+            throwIfAborted(this.registrationController.signal);
             for (const tool of this.createTools()) {
                 if (this.currentStatus === "destroyed") return;
                 await this.register(tool);
             }
             if (this.currentStatus !== "destroyed") this.setStatus("ready");
-        }
-        catch (error) {
+        } catch (error) {
             if (this.currentStatus === "destroyed") return;
             this.registrationController.abort();
             this.names.clear();
@@ -246,8 +361,7 @@ export class KaplaygroundWebMCP {
                         durationMs: Date.now() - startedAt,
                     });
                     return result;
-                }
-                catch (error) {
+                } catch (error) {
                     this.emitInvocation({
                         ...invocation,
                         status: "failed",
@@ -258,15 +372,22 @@ export class KaplaygroundWebMCP {
                 }
             },
         };
-        if (tool.annotations !== undefined) definition.annotations = tool.annotations;
+        if (tool.annotations !== undefined) {
+            definition.annotations = tool.annotations;
+        }
 
         const registrationOptions: WebMCP.ModelContextRegisterToolOptions = {
             signal: this.registrationController.signal,
         };
-        if (this.exposedTo !== undefined) registrationOptions.exposedTo = this.exposedTo;
+        if (this.exposedTo !== undefined) {
+            registrationOptions.exposedTo = this.exposedTo;
+        }
 
         await context.registerTool(definition, registrationOptions);
-        if (!this.registrationController.signal.aborted && this.currentStatus !== "destroyed") {
+        if (
+            !this.registrationController.signal.aborted
+            && this.currentStatus !== "destroyed"
+        ) {
             this.names.add(name);
             this.emitStatus();
         }
@@ -280,8 +401,7 @@ export class KaplaygroundWebMCP {
     private emitStatus(): void {
         try {
             this.onStatusChange?.(this.currentStatus, this.toolNames);
-        }
-        catch {
+        } catch {
             // UI observers must never interrupt registration or tool execution.
         }
     }
@@ -289,8 +409,7 @@ export class KaplaygroundWebMCP {
     private emitInvocation(invocation: KaplaygroundWebMCPInvocation): void {
         try {
             this.onInvocation?.(invocation);
-        }
-        catch {
+        } catch {
             // UI observers must never interrupt registration or tool execution.
         }
     }
@@ -310,13 +429,51 @@ export class KaplaygroundWebMCP {
         await previous;
         try {
             return await mutation();
-        }
-        finally {
+        } finally {
             release();
             if (this.fileMutationTails.get(path) === tail) {
                 this.fileMutationTails.delete(path);
             }
         }
+    }
+
+    private async getCurrentProjectRevision(
+        signal: AbortSignal,
+    ): Promise<string> {
+        const revision = await this.adapter.getProjectRevision();
+        throwIfAborted(signal);
+        return stringValue(revision, "projectRevision");
+    }
+
+    private async assertProjectRevision(
+        expectedProjectRevision: string,
+        signal: AbortSignal,
+    ): Promise<void> {
+        const actualProjectRevision = await this.getCurrentProjectRevision(
+            signal,
+        );
+        if (actualProjectRevision !== expectedProjectRevision) {
+            throw new Error(
+                `Project changed: expected revision ${expectedProjectRevision}, found ${actualProjectRevision}. Call get_project and inspect the active project again.`,
+            );
+        }
+    }
+
+    private async readExactFile(
+        path: string,
+        signal: AbortSignal,
+    ): Promise<KaplaygroundFile> {
+        const file = await this.adapter.readFile(path);
+        throwIfAborted(signal);
+        if (!file) throw new RangeError(`No project file exists at "${path}".`);
+
+        const actualPath = projectPath(file.path);
+        if (actualPath !== path) {
+            throw new RangeError(
+                `"${path}" is not an exact project path. Use "${actualPath}" from list_files.`,
+            );
+        }
+        return file;
     }
 
     private createTools(): EditorTool[] {
@@ -327,14 +484,27 @@ export class KaplaygroundWebMCP {
             this.createReplaceFileTool(),
         ];
 
+        if (this.adapter.listAssets) {
+            tools.splice(2, 0, this.createListAssetsTool());
+        }
         if (this.adapter.createFile) tools.push(this.createFileTool());
         if (this.adapter.removeFile) tools.push(this.createRemoveFileTool());
         if (this.adapter.selectFile) tools.push(this.createSelectFileTool());
+        if (this.adapter.saveProject) tools.push(this.createSaveProjectTool());
         if (this.adapter.runPreview) tools.push(this.createRunPreviewTool());
-        if (this.adapter.togglePreviewPause) tools.push(this.createPausePreviewTool());
+        if (this.adapter.setPreviewPaused) {
+            tools.push(this.createSetPreviewPausedTool());
+        }
         if (this.adapter.stopPreview) tools.push(this.createStopPreviewTool());
-        if (this.adapter.getDiagnostics) tools.push(this.createGetDiagnosticsTool());
-        if (this.adapter.getConsoleEntries) tools.push(this.createGetConsoleTool());
+        if (this.adapter.inspectPreview) {
+            tools.push(this.createInspectPreviewTool());
+        }
+        if (this.adapter.getDiagnostics) {
+            tools.push(this.createGetDiagnosticsTool());
+        }
+        if (this.adapter.getConsoleEntries) {
+            tools.push(this.createGetConsoleTool());
+        }
 
         return tools;
     }
@@ -350,7 +520,18 @@ export class KaplaygroundWebMCP {
             execute: async (_input, signal) => {
                 const project = await this.adapter.getProject();
                 throwIfAborted(signal);
-                return toSerializable(project);
+                const projectRevision = stringValue(
+                    project.projectRevision,
+                    "project.projectRevision",
+                );
+                const actualProjectRevision = await this
+                    .getCurrentProjectRevision(signal);
+                if (projectRevision !== actualProjectRevision) {
+                    throw new Error(
+                        "The active project changed while its metadata was being read. Try again.",
+                    );
+                }
+                return toSerializable({ ...project, projectRevision });
             },
         };
     }
@@ -390,16 +571,90 @@ export class KaplaygroundWebMCP {
                     this.maxFiles,
                     this.maxFiles,
                 );
+                const projectRevision = await this.getCurrentProjectRevision(
+                    signal,
+                );
                 const allFiles = [...await this.adapter.listFiles()]
                     .map(normalizeFileSummary)
                     .sort((left, right) => left.path.localeCompare(right.path));
                 throwIfAborted(signal);
+                await this.assertProjectRevision(projectRevision, signal);
 
                 return {
+                    projectRevision,
                     total: allFiles.length,
                     offset,
                     limit,
                     files: allFiles.slice(offset, offset + limit),
+                };
+            },
+        };
+    }
+
+    private createListAssetsTool(): EditorTool {
+        return {
+            name: "list_assets",
+            title: "List KAPLAYGROUND assets",
+            description:
+                "List bounded metadata for assets in the active KAPLAYGROUND project without returning binary data or asset URLs.",
+            inputSchema: {
+                type: "object",
+                properties: {
+                    kind: {
+                        type: "string",
+                        enum: ["sprite", "sound", "font"],
+                        description: "Optional exact asset kind to return.",
+                    },
+                    offset: { type: "integer", minimum: 0, default: 0 },
+                    limit: {
+                        type: "integer",
+                        minimum: 1,
+                        maximum: this.maxAssets,
+                        default: this.maxAssets,
+                    },
+                },
+                additionalProperties: false,
+            },
+            annotations: readAnnotations(),
+            execute: async (input, signal) => {
+                const kind = optionalEnum(
+                    input.kind,
+                    "kind",
+                    ["sprite", "sound", "font"] as const,
+                );
+                const offset = boundedInteger(
+                    input.offset,
+                    "offset",
+                    0,
+                    Number.MAX_SAFE_INTEGER,
+                    0,
+                );
+                const limit = boundedInteger(
+                    input.limit,
+                    "limit",
+                    1,
+                    this.maxAssets,
+                    this.maxAssets,
+                );
+                const projectRevision = await this.getCurrentProjectRevision(
+                    signal,
+                );
+                const assets = [...await this.adapter.listAssets?.() ?? []]
+                    .map(normalizeAssetSummary)
+                    .filter((asset) =>
+                        kind === undefined || asset.kind === kind
+                    )
+                    .sort((left, right) => left.path.localeCompare(right.path));
+                throwIfAborted(signal);
+                await this.assertProjectRevision(projectRevision, signal);
+
+                return {
+                    projectRevision,
+                    kind: kind ?? null,
+                    total: assets.length,
+                    offset,
+                    limit,
+                    assets: assets.slice(offset, offset + limit),
                 };
             },
         };
@@ -415,9 +670,11 @@ export class KaplaygroundWebMCP {
             annotations: readAnnotations(),
             execute: async (input, signal) => {
                 const path = projectPath(input.path);
-                const file = await this.adapter.readFile(path);
-                throwIfAborted(signal);
-                if (!file) throw new RangeError(`No project file exists at "${path}".`);
+                const projectRevision = await this.getCurrentProjectRevision(
+                    signal,
+                );
+                const file = await this.readExactFile(path, signal);
+                await this.assertProjectRevision(projectRevision, signal);
 
                 const sizeBytes = utf8Size(file.content);
                 const truncated = sizeBytes > this.maxFileBytes;
@@ -430,6 +687,7 @@ export class KaplaygroundWebMCP {
                     sizeBytes,
                     truncated,
                     revision: contentRevision(file.content),
+                    projectRevision,
                 };
             },
         };
@@ -440,7 +698,7 @@ export class KaplaygroundWebMCP {
             name: "replace_file",
             title: "Replace a KAPLAYGROUND file",
             description:
-                "Replace one existing project file after verifying the revision returned by read_file, optionally running the preview afterward.",
+                "Replace one exact file in the active project after verifying both revisions returned by read_file, optionally building and running the preview afterward.",
             inputSchema: {
                 type: "object",
                 properties: {
@@ -448,28 +706,48 @@ export class KaplaygroundWebMCP {
                     content: {
                         type: "string",
                         maxLength: this.maxFileBytes,
-                        description: "Complete replacement content encoded as UTF-8.",
+                        description:
+                            "Complete replacement content encoded as UTF-8.",
                     },
                     expectedRevision: {
                         type: "string",
                         minLength: 10,
                         maxLength: 64,
-                        description: "Revision returned by the latest read_file call.",
+                        description:
+                            "Revision returned by the latest read_file call.",
                     },
+                    expectedProjectRevision: projectRevisionProperty(),
                     runPreview: {
                         type: "boolean",
                         default: false,
-                        description: "Run the updated project after the replacement succeeds.",
+                        description:
+                            "Run the updated project after the replacement succeeds.",
                     },
                 },
-                required: ["path", "content", "expectedRevision"],
+                required: [
+                    "path",
+                    "content",
+                    "expectedRevision",
+                    "expectedProjectRevision",
+                ],
                 additionalProperties: false,
             },
             execute: async (input, signal) => {
                 const path = projectPath(input.path);
                 const content = stringValue(input.content, "content", true);
-                const expectedRevision = stringValue(input.expectedRevision, "expectedRevision");
-                const runPreview = booleanValue(input.runPreview, "runPreview", false);
+                const expectedRevision = stringValue(
+                    input.expectedRevision,
+                    "expectedRevision",
+                );
+                const expectedProjectRevision = stringValue(
+                    input.expectedProjectRevision,
+                    "expectedProjectRevision",
+                );
+                const runPreview = booleanValue(
+                    input.runPreview,
+                    "runPreview",
+                    false,
+                );
                 const sizeBytes = utf8Size(content);
                 if (sizeBytes > this.maxFileBytes) {
                     throw new RangeError(
@@ -477,16 +755,18 @@ export class KaplaygroundWebMCP {
                     );
                 }
                 if (runPreview && !this.adapter.runPreview) {
-                    throw new Error("This editor adapter cannot run the preview.");
+                    throw new Error(
+                        "This editor adapter cannot run the preview.",
+                    );
                 }
 
                 await this.serializeFileMutation(path, async () => {
                     throwIfAborted(signal);
-                    const current = await this.adapter.readFile(path);
-                    throwIfAborted(signal);
-                    if (!current) {
-                        throw new RangeError(`No project file exists at "${path}".`);
-                    }
+                    await this.assertProjectRevision(
+                        expectedProjectRevision,
+                        signal,
+                    );
+                    const current = await this.readExactFile(path, signal);
 
                     const actualRevision = contentRevision(current.content);
                     if (actualRevision !== expectedRevision) {
@@ -495,19 +775,38 @@ export class KaplaygroundWebMCP {
                         );
                     }
 
-                    await this.adapter.writeFile(path, content);
+                    await this.adapter.writeFile(
+                        path,
+                        content,
+                        expectedProjectRevision,
+                    );
                     throwIfAborted(signal);
+                    await this.assertProjectRevision(
+                        expectedProjectRevision,
+                        signal,
+                    );
                 });
+                let preview: KaplaygroundPreviewRunResult | null = null;
                 if (runPreview) {
-                    await this.adapter.runPreview?.();
+                    await this.assertProjectRevision(
+                        expectedProjectRevision,
+                        signal,
+                    );
+                    preview = await this.adapter.runPreview?.(signal) ?? null;
                     throwIfAborted(signal);
+                    await this.assertProjectRevision(
+                        expectedProjectRevision,
+                        signal,
+                    );
                 }
 
                 return {
                     path,
                     sizeBytes,
                     revision: contentRevision(content),
+                    projectRevision: expectedProjectRevision,
                     previewRan: runPreview,
+                    preview,
                 };
             },
         };
@@ -518,7 +817,7 @@ export class KaplaygroundWebMCP {
             name: "create_file",
             title: "Create a KAPLAYGROUND file",
             description:
-                "Create one new project file, optionally open it in the editor and run the preview afterward.",
+                "Create one JavaScript or TypeScript file directly inside scenes/, objects/, or utils/ in the active project, optionally opening it and running the preview afterward.",
             inputSchema: {
                 type: "object",
                 properties: {
@@ -540,10 +839,12 @@ export class KaplaygroundWebMCP {
                         maxLength: 64,
                         description: "Optional editor-specific file kind.",
                     },
+                    expectedProjectRevision: projectRevisionProperty(),
                     selectFile: {
                         type: "boolean",
                         default: true,
-                        description: "Open the new file in the editor when supported.",
+                        description:
+                            "Open the new file in the editor when supported.",
                     },
                     runPreview: {
                         type: "boolean",
@@ -551,7 +852,7 @@ export class KaplaygroundWebMCP {
                         description: "Run the project after creating the file.",
                     },
                 },
-                required: ["path", "content"],
+                required: ["path", "content", "expectedProjectRevision"],
                 additionalProperties: false,
             },
             execute: async (input, signal) => {
@@ -563,8 +864,20 @@ export class KaplaygroundWebMCP {
                 const kind = input.kind === undefined
                     ? undefined
                     : stringValue(input.kind, "kind");
-                const selectFile = booleanValue(input.selectFile, "selectFile", true);
-                const runPreview = booleanValue(input.runPreview, "runPreview", false);
+                const expectedProjectRevision = stringValue(
+                    input.expectedProjectRevision,
+                    "expectedProjectRevision",
+                );
+                const selectFile = booleanValue(
+                    input.selectFile,
+                    "selectFile",
+                    true,
+                );
+                const runPreview = booleanValue(
+                    input.runPreview,
+                    "runPreview",
+                    false,
+                );
                 const sizeBytes = utf8Size(content);
 
                 if (sizeBytes > this.maxFileBytes) {
@@ -573,7 +886,14 @@ export class KaplaygroundWebMCP {
                     );
                 }
                 if (runPreview && !this.adapter.runPreview) {
-                    throw new Error("This editor adapter cannot run the preview.");
+                    throw new Error(
+                        "This editor adapter cannot run the preview.",
+                    );
+                }
+                if (!/^(scenes|objects|utils)\/[^/]+\.(js|ts)$/.test(path)) {
+                    throw new RangeError(
+                        "New files must be JavaScript or TypeScript files directly inside scenes/, objects/, or utils/.",
+                    );
                 }
 
                 const file: KaplaygroundFile = { path, content };
@@ -581,33 +901,66 @@ export class KaplaygroundWebMCP {
                 if (kind !== undefined) file.kind = kind;
                 await this.serializeFileMutation(path, async () => {
                     throwIfAborted(signal);
+                    await this.assertProjectRevision(
+                        expectedProjectRevision,
+                        signal,
+                    );
                     const current = await this.adapter.readFile(path);
                     throwIfAborted(signal);
                     if (current) {
+                        const actualPath = projectPath(current.path);
+                        if (actualPath !== path) {
+                            throw new RangeError(
+                                `"${path}" is not an exact project path. Use "${actualPath}" from list_files.`,
+                            );
+                        }
                         throw new RangeError(
                             `A project file already exists at "${path}".`,
                         );
                     }
 
-                    await this.adapter.createFile?.(file);
+                    await this.adapter.createFile?.(
+                        file,
+                        expectedProjectRevision,
+                    );
                     throwIfAborted(signal);
+                    await this.assertProjectRevision(
+                        expectedProjectRevision,
+                        signal,
+                    );
                 });
 
                 if (selectFile && this.adapter.selectFile) {
+                    await this.assertProjectRevision(
+                        expectedProjectRevision,
+                        signal,
+                    );
                     await this.adapter.selectFile(path);
                     throwIfAborted(signal);
                 }
+                let preview: KaplaygroundPreviewRunResult | null = null;
                 if (runPreview) {
-                    await this.adapter.runPreview?.();
+                    await this.assertProjectRevision(
+                        expectedProjectRevision,
+                        signal,
+                    );
+                    preview = await this.adapter.runPreview?.(signal) ?? null;
                     throwIfAborted(signal);
+                    await this.assertProjectRevision(
+                        expectedProjectRevision,
+                        signal,
+                    );
                 }
 
                 return {
                     path,
                     sizeBytes,
                     revision: contentRevision(content),
-                    selected: selectFile && this.adapter.selectFile !== undefined,
+                    projectRevision: expectedProjectRevision,
+                    selected: selectFile
+                        && this.adapter.selectFile !== undefined,
                     previewRan: runPreview,
+                    preview,
                 };
             },
         };
@@ -618,7 +971,7 @@ export class KaplaygroundWebMCP {
             name: "remove_file",
             title: "Remove a KAPLAYGROUND file",
             description:
-                "Remove one existing project file after verifying the revision returned by read_file, optionally running the preview afterward.",
+                "Remove one exact project file after verifying both revisions returned by read_file, optionally running the preview afterward.",
             inputSchema: {
                 type: "object",
                 properties: {
@@ -627,32 +980,51 @@ export class KaplaygroundWebMCP {
                         type: "string",
                         minLength: 10,
                         maxLength: 64,
-                        description: "Revision returned by the latest read_file call.",
+                        description:
+                            "Revision returned by the latest read_file call.",
                     },
+                    expectedProjectRevision: projectRevisionProperty(),
                     runPreview: {
                         type: "boolean",
                         default: false,
                         description: "Run the project after removing the file.",
                     },
                 },
-                required: ["path", "expectedRevision"],
+                required: [
+                    "path",
+                    "expectedRevision",
+                    "expectedProjectRevision",
+                ],
                 additionalProperties: false,
             },
             execute: async (input, signal) => {
                 const path = projectPath(input.path);
-                const expectedRevision = stringValue(input.expectedRevision, "expectedRevision");
-                const runPreview = booleanValue(input.runPreview, "runPreview", false);
+                const expectedRevision = stringValue(
+                    input.expectedRevision,
+                    "expectedRevision",
+                );
+                const expectedProjectRevision = stringValue(
+                    input.expectedProjectRevision,
+                    "expectedProjectRevision",
+                );
+                const runPreview = booleanValue(
+                    input.runPreview,
+                    "runPreview",
+                    false,
+                );
                 if (runPreview && !this.adapter.runPreview) {
-                    throw new Error("This editor adapter cannot run the preview.");
+                    throw new Error(
+                        "This editor adapter cannot run the preview.",
+                    );
                 }
 
                 await this.serializeFileMutation(path, async () => {
                     throwIfAborted(signal);
-                    const current = await this.adapter.readFile(path);
-                    throwIfAborted(signal);
-                    if (!current) {
-                        throw new RangeError(`No project file exists at "${path}".`);
-                    }
+                    await this.assertProjectRevision(
+                        expectedProjectRevision,
+                        signal,
+                    );
+                    const current = await this.readExactFile(path, signal);
 
                     const actualRevision = contentRevision(current.content);
                     if (actualRevision !== expectedRevision) {
@@ -661,15 +1033,36 @@ export class KaplaygroundWebMCP {
                         );
                     }
 
-                    await this.adapter.removeFile?.(path);
+                    await this.adapter.removeFile?.(
+                        path,
+                        expectedProjectRevision,
+                    );
                     throwIfAborted(signal);
+                    await this.assertProjectRevision(
+                        expectedProjectRevision,
+                        signal,
+                    );
                 });
+                let preview: KaplaygroundPreviewRunResult | null = null;
                 if (runPreview) {
-                    await this.adapter.runPreview?.();
+                    await this.assertProjectRevision(
+                        expectedProjectRevision,
+                        signal,
+                    );
+                    preview = await this.adapter.runPreview?.(signal) ?? null;
                     throwIfAborted(signal);
+                    await this.assertProjectRevision(
+                        expectedProjectRevision,
+                        signal,
+                    );
                 }
 
-                return { removedFile: path, previewRan: runPreview };
+                return {
+                    removedFile: path,
+                    projectRevision: expectedProjectRevision,
+                    previewRan: runPreview,
+                    preview,
+                };
             },
         };
     }
@@ -678,38 +1071,126 @@ export class KaplaygroundWebMCP {
         return {
             name: "select_file",
             title: "Select a KAPLAYGROUND file",
-            description: "Open one existing project file in the KAPLAYGROUND editor.",
+            description:
+                "Open one existing project file in the KAPLAYGROUND editor.",
             inputSchema: pathSchema(),
             execute: async (input, signal) => {
                 const path = projectPath(input.path);
-                const file = await this.adapter.readFile(path);
-                throwIfAborted(signal);
-                if (!file) throw new RangeError(`No project file exists at "${path}".`);
+                const projectRevision = await this.getCurrentProjectRevision(
+                    signal,
+                );
+                await this.readExactFile(path, signal);
+                await this.assertProjectRevision(projectRevision, signal);
                 await this.adapter.selectFile?.(path);
                 throwIfAborted(signal);
-                return { selectedFile: path };
+                return { selectedFile: path, projectRevision };
+            },
+        };
+    }
+
+    private createSaveProjectTool(): EditorTool {
+        return {
+            name: "save_project",
+            title: "Save the KAPLAYGROUND project",
+            description:
+                "Persist the active transient project, or flush the current autosaved project, after verifying its project revision.",
+            inputSchema: {
+                type: "object",
+                properties: {
+                    expectedProjectRevision: projectRevisionProperty(),
+                },
+                required: ["expectedProjectRevision"],
+                additionalProperties: false,
+            },
+            execute: async (input, signal) => {
+                const expectedProjectRevision = stringValue(
+                    input.expectedProjectRevision,
+                    "expectedProjectRevision",
+                );
+                await this.assertProjectRevision(
+                    expectedProjectRevision,
+                    signal,
+                );
+                const result = await this.adapter.saveProject?.(
+                    expectedProjectRevision,
+                );
+                throwIfAborted(signal);
+                await this.assertProjectRevision(
+                    expectedProjectRevision,
+                    signal,
+                );
+                return {
+                    projectRevision: expectedProjectRevision,
+                    projectId: result?.projectId ?? null,
+                    storageState: result?.storageState ?? "autosaved",
+                };
             },
         };
     }
 
     private createRunPreviewTool(): EditorTool {
-        return this.previewControlTool(
-            "run_preview",
-            "Run the KAPLAYGROUND preview",
-            "Build the current project and reload its KAPLAY preview.",
-            "running",
-            () => this.adapter.runPreview?.(),
-        );
+        return {
+            name: "run_preview",
+            title: "Build and run the KAPLAYGROUND preview",
+            description:
+                "Build the active project, reload its KAPLAY preview, and wait until that run reports module-loaded success or a build/runtime load error.",
+            inputSchema: emptyObjectSchema(),
+            execute: async (_input, signal) => {
+                const projectRevision = await this.getCurrentProjectRevision(
+                    signal,
+                );
+                const result = await this.adapter.runPreview?.(signal);
+                throwIfAborted(signal);
+                if (!result) {
+                    throw new Error("The preview did not return a run result.");
+                }
+                await this.assertProjectRevision(projectRevision, signal);
+                return { previewState: "running", ...result };
+            },
+        };
     }
 
-    private createPausePreviewTool(): EditorTool {
-        return this.previewControlTool(
-            "toggle_preview_pause",
-            "Toggle the KAPLAYGROUND preview pause state",
-            "Toggle pause for the active KAPLAY preview. If it is stopped, start it.",
-            "pause-toggled",
-            () => this.adapter.togglePreviewPause?.(),
-        );
+    private createSetPreviewPausedTool(): EditorTool {
+        return {
+            name: "set_preview_paused",
+            title: "Set the KAPLAYGROUND preview pause state",
+            description:
+                "Set an explicit pause state for the active KAPLAY preview and wait for the sandbox to acknowledge the resulting state.",
+            inputSchema: {
+                type: "object",
+                properties: {
+                    paused: {
+                        type: "boolean",
+                        description:
+                            "True to pause the preview; false to resume it.",
+                    },
+                },
+                required: ["paused"],
+                additionalProperties: false,
+            },
+            execute: async (input, signal) => {
+                const paused = booleanValue(input.paused, "paused", false);
+                const result = await this.adapter.setPreviewPaused?.(
+                    paused,
+                    signal,
+                );
+                throwIfAborted(signal);
+                if (!result) {
+                    throw new Error(
+                        "The preview did not acknowledge its pause state.",
+                    );
+                }
+                if (result.paused !== paused) {
+                    throw new Error(
+                        `The preview acknowledged paused=${result.paused}, expected ${paused}.`,
+                    );
+                }
+                return {
+                    previewState: paused ? "paused" : "running",
+                    ...result,
+                };
+            },
+        };
     }
 
     private createStopPreviewTool(): EditorTool {
@@ -720,6 +1201,66 @@ export class KaplaygroundWebMCP {
             "stopped",
             () => this.adapter.stopPreview?.(),
         );
+    }
+
+    private createInspectPreviewTool(): EditorTool {
+        return {
+            name: "inspect_preview",
+            title: "Inspect the KAPLAYGROUND preview",
+            description:
+                "Read a bounded, shallow snapshot of the active KAPLAY scene and game objects, optionally filtered by one exact tag.",
+            inputSchema: {
+                type: "object",
+                properties: {
+                    tag: {
+                        type: "string",
+                        minLength: 1,
+                        maxLength: 128,
+                        description:
+                            "Optional exact KAPLAY object tag to inspect.",
+                    },
+                    limit: {
+                        type: "integer",
+                        minimum: 1,
+                        maximum: this.maxPreviewObjects,
+                        default: this.maxPreviewObjects,
+                    },
+                },
+                additionalProperties: false,
+            },
+            annotations: readAnnotations(),
+            execute: async (input, signal) => {
+                const tag = input.tag === undefined
+                    ? undefined
+                    : stringValue(input.tag, "tag");
+                if (tag !== undefined && tag.length > 128) {
+                    throw new RangeError(
+                        "tag must contain at most 128 characters.",
+                    );
+                }
+                const limit = boundedInteger(
+                    input.limit,
+                    "limit",
+                    1,
+                    this.maxPreviewObjects,
+                    this.maxPreviewObjects,
+                );
+                const inspection = await this.adapter.inspectPreview?.(
+                    { tag, limit },
+                    signal,
+                );
+                throwIfAborted(signal);
+                if (!inspection) {
+                    throw new Error(
+                        "The preview did not return an inspection result.",
+                    );
+                }
+                return toSerializable({
+                    ...inspection,
+                    objects: [...inspection.objects].slice(0, limit),
+                });
+            },
+        };
     }
 
     private previewControlTool(
@@ -767,7 +1308,9 @@ export class KaplaygroundWebMCP {
             },
             annotations: readAnnotations(),
             execute: async (input, signal) => {
-                const path = input.path === undefined ? undefined : projectPath(input.path);
+                const path = input.path === undefined
+                    ? undefined
+                    : projectPath(input.path);
                 const severity = optionalEnum(
                     input.severity,
                     "severity",
@@ -780,13 +1323,31 @@ export class KaplaygroundWebMCP {
                     this.maxDiagnostics,
                     this.maxDiagnostics,
                 );
-                const diagnostics = [...await this.adapter.getDiagnostics?.() ?? []]
-                    .filter((diagnostic) => path === undefined || diagnostic.path === path)
-                    .filter((diagnostic) => severity === undefined || diagnostic.severity === severity)
-                    .slice(0, limit)
-                    .map((diagnostic) => toSerializable(diagnostic));
+                const projectRevision = await this.getCurrentProjectRevision(
+                    signal,
+                );
+                if (path !== undefined) await this.readExactFile(path, signal);
+                const matching = [
+                    ...await this.adapter.getDiagnostics?.() ?? [],
+                ]
+                    .filter((diagnostic) =>
+                        path === undefined || diagnostic.path === path
+                    )
+                    .filter((diagnostic) =>
+                        severity === undefined
+                        || diagnostic.severity === severity
+                    );
                 throwIfAborted(signal);
-                return { path: path ?? null, severity: severity ?? null, diagnostics };
+                await this.assertProjectRevision(projectRevision, signal);
+                return {
+                    projectRevision,
+                    path: path ?? null,
+                    severity: severity ?? null,
+                    total: matching.length,
+                    diagnostics: matching
+                        .slice(0, limit)
+                        .map((diagnostic) => toSerializable(diagnostic)),
+                };
             },
         };
     }
@@ -804,6 +1365,13 @@ export class KaplaygroundWebMCP {
                         type: "string",
                         enum: ["debug", "log", "info", "warn", "error"],
                     },
+                    runId: {
+                        type: "string",
+                        minLength: 1,
+                        maxLength: 128,
+                        description:
+                            "Optional run ID returned by run_preview. When omitted, only the newest run is returned.",
+                    },
                     limit: {
                         type: "integer",
                         minimum: 1,
@@ -820,6 +1388,16 @@ export class KaplaygroundWebMCP {
                     "level",
                     ["debug", "log", "info", "warn", "error"] as const,
                 );
+                const requestedRunId = input.runId === undefined
+                    ? undefined
+                    : stringValue(input.runId, "runId");
+                if (
+                    requestedRunId !== undefined && requestedRunId.length > 128
+                ) {
+                    throw new RangeError(
+                        "runId must contain at most 128 characters.",
+                    );
+                }
                 const limit = boundedInteger(
                     input.limit,
                     "limit",
@@ -827,12 +1405,27 @@ export class KaplaygroundWebMCP {
                     this.maxConsoleEntries,
                     Math.min(50, this.maxConsoleEntries),
                 );
-                const matching = [...await this.adapter.getConsoleEntries?.() ?? []]
-                    .filter((entry) => level === undefined || entry.level === level);
+                const entries = [
+                    ...await this.adapter.getConsoleEntries?.() ?? [],
+                ];
+                const currentRunId = await this.adapter.getPreviewRunId?.();
+                throwIfAborted(signal);
+                const runId = requestedRunId
+                    ?? normalizeOptionalRunId(currentRunId)
+                    ?? findNewestRunId(entries);
+                const matching = entries
+                    .filter((entry) => runId === null || entry.runId === runId)
+                    .filter((entry) =>
+                        level === undefined || entry.level === level
+                    );
                 throwIfAborted(signal);
                 return {
+                    runId,
                     level: level ?? null,
-                    entries: matching.slice(-limit).map((entry) => toSerializable(entry)),
+                    total: matching.length,
+                    entries: matching.slice(-limit).map((entry) =>
+                        toSerializable(entry)
+                    ),
                 };
             },
         };
@@ -875,7 +1468,11 @@ function validateNamePart(value: string, label: string): string {
     return value;
 }
 
-function positiveInteger(value: number | undefined, name: string, fallback: number): number {
+function positiveInteger(
+    value: number | undefined,
+    name: string,
+    fallback: number,
+): number {
     if (value === undefined) return fallback;
     if (!Number.isSafeInteger(value) || value < 1) {
         throw new RangeError(`${name} must be a positive safe integer.`);
@@ -905,25 +1502,45 @@ function pathSchema(): object {
     };
 }
 
+function projectRevisionProperty(): object {
+    return {
+        type: "string",
+        minLength: 1,
+        maxLength: 128,
+        description:
+            "Opaque projectRevision returned by get_project, list_files, list_assets, or read_file.",
+    };
+}
+
 function readAnnotations(): WebMCP.ToolAnnotations {
     return { readOnlyHint: true, untrustedContentHint: true };
 }
 
 function projectPath(value: unknown): string {
-    const raw = stringValue(value, "path").replace(/^\/+|\/+$/g, "");
+    const raw = stringValue(value, "path");
     if (raw.length === 0 || raw.length > MAX_PATH_LENGTH) {
-        throw new RangeError(`path must contain 1-${MAX_PATH_LENGTH} characters.`);
+        throw new RangeError(
+            `path must contain 1-${MAX_PATH_LENGTH} characters.`,
+        );
     }
     if (raw.includes("\\") || raw.includes("\0")) {
-        throw new TypeError("path must use forward slashes and cannot contain null bytes.");
+        throw new TypeError(
+            "path must use forward slashes and cannot contain null bytes.",
+        );
     }
-    if (raw.split("/").some((part) => part === "" || part === "." || part === "..")) {
+    if (
+        raw.split("/").some((part) =>
+            part === "" || part === "." || part === ".."
+        )
+    ) {
         throw new TypeError("path must be a normalized project-relative path.");
     }
     return raw;
 }
 
-function normalizeFileSummary(file: KaplaygroundFileSummary): KaplaygroundFileSummary {
+function normalizeFileSummary(
+    file: KaplaygroundFileSummary,
+): KaplaygroundFileSummary {
     const path = projectPath(file.path);
     const summary: KaplaygroundFileSummary = { path };
     if (file.language !== undefined) summary.language = file.language;
@@ -935,16 +1552,84 @@ function normalizeFileSummary(file: KaplaygroundFileSummary): KaplaygroundFileSu
     return summary;
 }
 
+function normalizeAssetSummary(
+    asset: KaplaygroundAssetSummary,
+): KaplaygroundAssetSummary {
+    const name = stringValue(asset.name, "asset.name");
+    const kind = stringValue(asset.kind, "asset.kind");
+    const importFunction = asset.importFunction === undefined
+        ? undefined
+        : stringValue(asset.importFunction, "asset.importFunction", true);
+    const summary: KaplaygroundAssetSummary = {
+        name: name.slice(0, MAX_ASSET_NAME_LENGTH),
+        path: projectPath(asset.path),
+        kind: kind.slice(0, MAX_ASSET_KIND_LENGTH),
+    };
+    if (importFunction !== undefined) {
+        summary.importFunction = importFunction.slice(
+            0,
+            MAX_ASSET_IMPORT_FUNCTION_LENGTH,
+        );
+    }
+    if (
+        name.length > MAX_ASSET_NAME_LENGTH
+        || kind.length > MAX_ASSET_KIND_LENGTH
+        || (importFunction?.length ?? 0) > MAX_ASSET_IMPORT_FUNCTION_LENGTH
+    ) {
+        summary.metadataTruncated = true;
+    }
+    if (asset.sizeBytes !== undefined) {
+        if (!Number.isSafeInteger(asset.sizeBytes) || asset.sizeBytes < 0) {
+            throw new RangeError(
+                "asset.sizeBytes must be a non-negative safe integer.",
+            );
+        }
+        summary.sizeBytes = asset.sizeBytes;
+    }
+    if (asset.source !== undefined) {
+        summary.source = optionalEnum(
+            asset.source,
+            "asset.source",
+            ["embedded", "remote", "blob", "unknown"] as const,
+        );
+    }
+    return summary;
+}
+
+function findNewestRunId(
+    entries: readonly KaplaygroundConsoleEntry[],
+): string | null {
+    for (let index = entries.length - 1; index >= 0; index--) {
+        const runId = entries[index]?.runId;
+        if (typeof runId === "string" && runId.length > 0) return runId;
+    }
+    return null;
+}
+
+function normalizeOptionalRunId(value: unknown): string | null {
+    return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 function stringValue(value: unknown, name: string, allowEmpty = false): string {
     if (typeof value !== "string" || (!allowEmpty && value.length === 0)) {
-        throw new TypeError(`${name} must be ${allowEmpty ? "a string" : "a non-empty string"}.`);
+        throw new TypeError(
+            `${name} must be ${
+                allowEmpty ? "a string" : "a non-empty string"
+            }.`,
+        );
     }
     return value;
 }
 
-function booleanValue(value: unknown, name: string, fallback: boolean): boolean {
+function booleanValue(
+    value: unknown,
+    name: string,
+    fallback: boolean,
+): boolean {
     if (value === undefined) return fallback;
-    if (typeof value !== "boolean") throw new TypeError(`${name} must be a boolean.`);
+    if (typeof value !== "boolean") {
+        throw new TypeError(`${name} must be a boolean.`);
+    }
     return value;
 }
 
@@ -956,8 +1641,13 @@ function boundedInteger(
     fallback: number,
 ): number {
     if (value === undefined) return fallback;
-    if (!Number.isInteger(value) || (value as number) < minimum || (value as number) > maximum) {
-        throw new RangeError(`${name} must be an integer between ${minimum} and ${maximum}.`);
+    if (
+        !Number.isInteger(value) || (value as number) < minimum
+        || (value as number) > maximum
+    ) {
+        throw new RangeError(
+            `${name} must be an integer between ${minimum} and ${maximum}.`,
+        );
     }
     return value as number;
 }
@@ -1004,21 +1694,41 @@ function errorMessage(error: unknown): string {
     return String(error);
 }
 
-function toSerializable(value: unknown, depth = 0, seen = new WeakSet<object>()): unknown {
-    if (value === null || typeof value === "string" || typeof value === "boolean") return value;
-    if (typeof value === "number") return Number.isFinite(value) ? value : String(value);
-    if (typeof value === "bigint" || typeof value === "symbol" || typeof value === "function") {
+function toSerializable(
+    value: unknown,
+    depth = 0,
+    seen = new WeakSet<object>(),
+): unknown {
+    if (value === null || typeof value === "boolean") return value;
+    if (typeof value === "string") {
+        return value.length <= MAX_SERIALIZED_STRING_LENGTH
+            ? value
+            : `${value.slice(0, MAX_SERIALIZED_STRING_LENGTH)}…[truncated]`;
+    }
+    if (typeof value === "number") {
+        return Number.isFinite(value)
+            ? value
+            : String(value);
+    }
+    if (
+        typeof value === "bigint" || typeof value === "symbol"
+        || typeof value === "function"
+    ) {
         return String(value);
     }
     if (value === undefined) return null;
-    if (value instanceof Error) return { name: value.name, message: value.message };
+    if (value instanceof Error) {
+        return { name: value.name, message: value.message };
+    }
     if (depth >= 6) return "[Max depth]";
     if (typeof value !== "object") return String(value);
     if (seen.has(value)) return "[Circular]";
     seen.add(value);
 
     if (Array.isArray(value)) {
-        return value.slice(0, 100).map((item) => toSerializable(item, depth + 1, seen));
+        return value.slice(0, 100).map((item) =>
+            toSerializable(item, depth + 1, seen)
+        );
     }
 
     return Object.fromEntries(

@@ -11,8 +11,14 @@ export const GameView: FC = () => {
     const focusFrameRef = useFocusFrameRef();
     const iframeSrc = useMemo(() => useEditor.getState().getIframeSrc(), []);
 
-    const iframeRef = useCallback((iframe: HTMLIFrameElement) => {
-        if (!iframe) return;
+    const iframeRef = useCallback((iframe: HTMLIFrameElement | null) => {
+        if (!iframe) {
+            const editor = useEditor.getState();
+            if (!editor.stopped) editor.stop();
+            editor.setRuntime({ iframe: null, console: null });
+            (window as any).iframeWindow = null;
+            return;
+        }
 
         const iframeWindow = iframe.contentWindow?.window;
         (window as any).iframeWindow = iframeWindow;

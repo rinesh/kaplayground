@@ -37,42 +37,105 @@
 
         const params = new URLSearchParams(window.location.search);
         const isConsoleEnabled = (params.get("console") ?? "true") == "true";
+        const MAX_INSPECTION_OBJECTS = 50;
+        const MAX_INSPECTION_TAG_LENGTH = 128;
+        const MAX_TAGS_PER_OBJECT = 20;
+        const MAX_OBJECT_STRING_LENGTH = 256;
+        const PREVIEW_PROTOCOL_VERSION = 1;
+        const RUN_LOADED_CALLBACK = "__kaplaygroundModuleLoaded";
 
+        let activeRunId = null;
         let hookedConsole = consoleHook(isConsoleEnabled);
-        window.addEventListener("error", e => e?.error && console.error(e.message));
+        window.addEventListener("error", event => {
+            const message = event?.error?.message ?? event?.message;
+            if (message) console.error(message);
+        });
+        window.addEventListener("unhandledrejection", event => {
+            console.error("Unhandled promise rejection:", errorText(event.reason));
+        });
 
-        const executeCode = (code) => {
-            const previousScripts = document.querySelectorAll(
-                "script[type=\"module\"]",
-            );
-            previousScripts.forEach(script => script.remove());
+        const executeCode = (code, runId) => {
+            activeRunId = runId;
+            console.groupCollapsed("[sandbox] Received code update");
+            console.log("[sandbox] Run:", runId);
+            console.log("[sandbox] Code:", code);
+            console.groupEnd();
 
-            try {
-                const script = document.createElement("script");
-                script.type = "module";
-                script.textContent = code;
-                document.body.appendChild(script);
-            } catch (error) {
-                console.error("Error executing code:", error.message);
-            }
+            document.querySelectorAll("script[data-preview-run]")
+                .forEach(script => script.remove());
+
+            const script = document.createElement("script");
+            script.type = "module";
+            script.dataset.previewRun = runId;
+            let settled = false;
+
+            const cleanup = () => {
+                script.removeEventListener("error", moduleError);
+                window.removeEventListener("error", runtimeError, true);
+                window.removeEventListener("unhandledrejection", rejection);
+                if (globalThis[RUN_LOADED_CALLBACK] === moduleLoaded) {
+                    delete globalThis[RUN_LOADED_CALLBACK];
+                }
+            };
+            const finish = (result) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                postParent(result);
+            };
+            const fail = (error) => {
+                if (settled) return;
+                const message = errorText(error);
+                console.error("Error executing code:", message);
+                finish({
+                    type: "RUN_RESULT",
+                    runId,
+                    status: "failed",
+                    paused: readPaused(),
+                    error: message,
+                });
+            };
+            const moduleLoaded = (completedRunId) => {
+                if (completedRunId !== runId) return;
+                finish({
+                    type: "RUN_RESULT",
+                    runId,
+                    status: "loaded",
+                    paused: readPaused(),
+                });
+            };
+            const moduleError = () => {
+                fail("The preview module failed to load.");
+            };
+            const runtimeError = (event) => {
+                fail(event?.error ?? event?.message ?? "Preview execution failed.");
+            };
+            const rejection = (event) => {
+                fail(event.reason ?? "Preview execution rejected.");
+            };
+
+            globalThis[RUN_LOADED_CALLBACK] = moduleLoaded;
+            script.addEventListener("error", moduleError, { once: true });
+            window.addEventListener("error", runtimeError, {
+                capture: true,
+                once: true,
+            });
+            window.addEventListener("unhandledrejection", rejection, {
+                once: true,
+            });
+            const callbackName = JSON.stringify(RUN_LOADED_CALLBACK);
+            const callbackRunId = JSON.stringify(runId);
+            script.textContent =
+                `${code}\n;globalThis[${callbackName}]?.(${callbackRunId});\n`;
+            document.body.appendChild(script);
         };
 
         const messageEventHandlers = {
-            UPDATE_CODE({ code }) {
-                console.groupCollapsed("[sandbox] Received code update");
-                console.log("[sandbox] Code:", code);
-                console.groupEnd();
-
-                if (document.visibilityState == "visible") {
-                    executeCode(code);
+            UPDATE_CODE({ code, runId }) {
+                if (typeof code !== "string" || typeof runId !== "string") {
                     return;
                 }
-
-                document.addEventListener("visibilitychange", function onChange() {
-                    if (document.visibilityState != "visible") return;
-                    document.removeEventListener("visibilitychange", onChange);
-                    executeCode(code);
-                });
+                void executeCode(code, runId);
             },
 
             REFRESH() {
@@ -80,13 +143,82 @@
                 window.location.reload();
             },
 
+            SET_PAUSED({ requestId, runId, paused }) {
+                if (
+                    typeof requestId !== "string"
+                    || typeof runId !== "string"
+                    || typeof paused !== "boolean"
+                ) {
+                    return;
+                }
+
+                if (runId !== activeRunId) {
+                    postParent({
+                        type: "PAUSE_RESULT",
+                        requestId,
+                        runId: activeRunId,
+                        paused: readPaused(),
+                        error: "The requested preview run is no longer active.",
+                    });
+                    return;
+                }
+
+                try {
+                    const actualPaused = setPaused(paused);
+                    postParent({
+                        type: "PAUSE_RESULT",
+                        requestId,
+                        runId: activeRunId,
+                        paused: actualPaused,
+                    });
+                } catch (error) {
+                    postParent({
+                        type: "PAUSE_RESULT",
+                        requestId,
+                        runId: activeRunId,
+                        paused: readPaused(),
+                        error: errorText(error),
+                    });
+                }
+            },
+
+            // Compatibility for the existing toolbar and older parent clients.
             PAUSE() {
-                const debug = window.debug ?? window._k_debug;
-                if (!debug) return;
-                console.log(
-                    `[sandbox] ${debug.paused ? "Resuming" : "Pausing"} the game`,
-                );
-                debug.paused = !debug.paused;
+                const paused = readPaused();
+                if (paused === null) return;
+                setPaused(!paused);
+            },
+
+            INSPECT_RUNTIME({ requestId, runId, tag, limit }) {
+                if (typeof requestId !== "string" || typeof runId !== "string") {
+                    return;
+                }
+
+                if (runId !== activeRunId) {
+                    postParent({
+                        type: "RUNTIME_INSPECTION_RESULT",
+                        requestId,
+                        runId: activeRunId,
+                        error: "The requested preview run is no longer active.",
+                    });
+                    return;
+                }
+
+                try {
+                    postParent({
+                        type: "RUNTIME_INSPECTION_RESULT",
+                        requestId,
+                        runId: activeRunId,
+                        inspection: inspectRuntime({ tag, limit }),
+                    });
+                } catch (error) {
+                    postParent({
+                        type: "RUNTIME_INSPECTION_RESULT",
+                        requestId,
+                        runId: activeRunId,
+                        error: errorText(error),
+                    });
+                }
             },
 
             FOCUS() {
@@ -106,13 +238,219 @@
         };
 
         window.addEventListener("message", (event) => {
-            if (event.origin !== PARENT_ORIGIN) return;
+            if (event.origin !== PARENT_ORIGIN || event.source !== window.parent) {
+                return;
+            }
             messageEventHandlers[event.data?.type]?.(event.data);
         });
 
         window.addEventListener("load", () => {
-            window.parent.postMessage({ type: "READY" }, PARENT_ORIGIN);
+            postParent({
+                type: "READY",
+                protocolVersion: PREVIEW_PROTOCOL_VERSION,
+            });
         });
+
+        function setPaused(paused) {
+            const debug = getDebug();
+            if (!debug || typeof debug.paused !== "boolean") {
+                throw new Error("The running game does not expose KAPLAY debug state.");
+            }
+
+            console.log(`[sandbox] ${paused ? "Pausing" : "Resuming"} the game`);
+            debug.paused = paused;
+            const actualPaused = readPaused();
+            if (actualPaused === null) {
+                throw new Error("KAPLAY did not report its pause state.");
+            }
+            return actualPaused;
+        }
+
+        function readPaused() {
+            const debug = getDebug();
+            return typeof debug?.paused === "boolean" ? debug.paused : null;
+        }
+
+        function getDebug() {
+            return window._k_ctx?.debug ?? window.debug ?? window._k_debug ?? null;
+        }
+
+        function inspectRuntime({ tag, limit }) {
+            const normalizedTag = normalizeInspectionTag(tag);
+            const normalizedLimit = normalizeInspectionLimit(limit);
+            const canvas = document.querySelector("canvas");
+            const debug = getDebug();
+            const scene = safeCall("getSceneName");
+            const viewportWidth = finiteNumber(safeCall("width"))
+                ?? finiteNumber(canvas?.width);
+            const viewportHeight = finiteNumber(safeCall("height"))
+                ?? finiteNumber(canvas?.height);
+            const cameraPosition = pointSnapshot(safeCall("camPos"));
+            const cameraScale = pointSnapshot(safeCall("camScale"));
+            const cameraRotation = finiteNumber(safeCall("camRot"));
+            const matchedObjects = queryObjects(normalizedTag);
+            const objectCount = matchedObjects
+                ? matchedObjects.length
+                : normalizedTag === undefined && typeof debug?.numObjects === "function"
+                ? finiteNumber(safeInvoke(() => debug.numObjects()))
+                : null;
+            const objects = matchedObjects
+                ? matchedObjects.slice(0, normalizedLimit).map(snapshotObject)
+                : [];
+            const hasCamera = cameraPosition !== null
+                || cameraScale !== null
+                || cameraRotation !== null;
+
+            return {
+                runId: activeRunId,
+                available: Boolean(
+                    debug
+                        || canvas
+                        || scene !== undefined
+                        || matchedObjects,
+                ),
+                scene: typeof scene === "string" ? boundedString(scene, 256) : null,
+                paused: readPaused(),
+                viewport: viewportWidth !== null && viewportHeight !== null
+                    ? { width: viewportWidth, height: viewportHeight }
+                    : null,
+                camera: hasCamera
+                    ? {
+                        position: cameraPosition,
+                        scale: cameraScale,
+                        rotation: cameraRotation,
+                    }
+                    : null,
+                objectCount,
+                objects,
+                objectsTruncated: objectCount !== null && objects.length < objectCount,
+            };
+        }
+
+        function queryObjects(tag) {
+            const queryTag = tag ?? "*";
+            const result = safeCall("get", queryTag, { recursive: true });
+            if (Array.isArray(result)) return result;
+
+            const root = safeCall("getTreeRoot");
+            const rootResult = safeInvoke(() =>
+                typeof root?.get === "function"
+                    ? root.get(queryTag, { recursive: true })
+                    : undefined
+            );
+            return Array.isArray(rootResult) ? rootResult : null;
+        }
+
+        function snapshotObject(object) {
+            const snapshot = {
+                id: primitiveId(safeRead(object, "id")),
+                tags: Array.isArray(safeRead(object, "tags"))
+                    ? safeRead(object, "tags")
+                        .filter(tag => typeof tag === "string")
+                        .slice(0, MAX_TAGS_PER_OBJECT)
+                        .map(tag => boundedString(tag, 64))
+                    : [],
+            };
+            const position = pointSnapshot(safeRead(object, "pos"));
+            const scale = pointSnapshot(safeRead(object, "scale"));
+            const angle = finiteNumber(safeRead(object, "angle"));
+            const opacity = finiteNumber(safeRead(object, "opacity"));
+            const hidden = safeRead(object, "hidden");
+            const paused = safeRead(object, "paused");
+            const text = safeRead(object, "text");
+            const sprite = safeRead(object, "sprite");
+
+            if (position) snapshot.position = position;
+            if (scale) snapshot.scale = scale;
+            if (angle !== null) snapshot.angle = angle;
+            if (opacity !== null) snapshot.opacity = opacity;
+            if (typeof hidden === "boolean") snapshot.hidden = hidden;
+            if (typeof paused === "boolean") snapshot.paused = paused;
+            if (typeof text === "string") {
+                snapshot.text = boundedString(text, MAX_OBJECT_STRING_LENGTH);
+            }
+            if (typeof sprite === "string") {
+                snapshot.sprite = boundedString(sprite, MAX_OBJECT_STRING_LENGTH);
+            }
+            return snapshot;
+        }
+
+        function safeCall(name, ...args) {
+            const contextMethod = window._k_ctx?.[name];
+            if (typeof contextMethod === "function") {
+                return safeInvoke(() => contextMethod(...args));
+            }
+
+            const globalMethod = window[name];
+            return typeof globalMethod === "function"
+                ? safeInvoke(() => globalMethod(...args))
+                : undefined;
+        }
+
+        function safeInvoke(operation) {
+            try {
+                return operation();
+            } catch {
+                return undefined;
+            }
+        }
+
+        function safeRead(object, property) {
+            return safeInvoke(() => object?.[property]);
+        }
+
+        function pointSnapshot(value) {
+            const x = finiteNumber(safeRead(value, "x"));
+            const y = finiteNumber(safeRead(value, "y"));
+            return x !== null && y !== null ? { x, y } : null;
+        }
+
+        function finiteNumber(value) {
+            return typeof value === "number" && Number.isFinite(value) ? value : null;
+        }
+
+        function primitiveId(value) {
+            return typeof value === "string" || typeof value === "number"
+                ? value
+                : null;
+        }
+
+        function normalizeInspectionTag(tag) {
+            if (tag === undefined) return undefined;
+            if (
+                typeof tag !== "string"
+                || tag.length === 0
+                || tag.length > MAX_INSPECTION_TAG_LENGTH
+                || /\p{Cc}/u.test(tag)
+            ) {
+                throw new Error("Invalid KAPLAY object tag.");
+            }
+            return tag;
+        }
+
+        function normalizeInspectionLimit(limit) {
+            if (limit === undefined) return 0;
+            if (!Number.isInteger(limit) || limit < 0) {
+                throw new Error("Inspection limit must be a non-negative integer.");
+            }
+            return Math.min(limit, MAX_INSPECTION_OBJECTS);
+        }
+
+        function boundedString(value, maxLength) {
+            return value.length <= maxLength ? value : value.slice(0, maxLength);
+        }
+
+        function errorText(error) {
+            const value = error instanceof Error
+                ? `${error.name}: ${error.message}`
+                : String(error);
+            return boundedString(value, 2_000);
+        }
+
+        function postParent(message) {
+            if (!PARENT_ORIGIN) return;
+            window.parent.postMessage(message, PARENT_ORIGIN);
+        }
 
         const keysToPreventDefault = ["e", "p", "s"];
 
@@ -132,7 +470,7 @@
                 e.preventDefault();
             }
 
-            window.parent.postMessage({
+            postParent({
                 type: "KEY_BINDING",
                 e: {
                     ctrlKey: e.ctrlKey,
@@ -141,7 +479,7 @@
                     altKey: e.altKey,
                     key: e.key,
                 },
-            }, PARENT_ORIGIN);
+            });
         });
 
         function consoleHook(enabled) {
@@ -151,10 +489,11 @@
                 hooked ??= Hook(
                     window.console,
                     log =>
-                        window.parent.postMessage(
-                            { type: "CONSOLE", log },
-                            PARENT_ORIGIN,
-                        ),
+                        postParent({
+                            type: "CONSOLE",
+                            runId: activeRunId,
+                            log,
+                        }),
                 );
             };
 

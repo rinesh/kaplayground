@@ -1,13 +1,13 @@
 export interface PreviewRunCoordinator {
-    run(task: (signal: AbortSignal) => Promise<void>): Promise<void>;
+    run<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T>;
     cancel(): void;
 }
 
 interface PreviewRunBatch {
     controller: AbortController | null;
     generation: number;
-    promise: Promise<void>;
-    resolve: () => void;
+    promise: Promise<unknown>;
+    resolve: (value: unknown) => void;
     reject: (error: unknown) => void;
 }
 
@@ -15,13 +15,13 @@ interface PreviewRunBatch {
 export function createPreviewRunCoordinator(): PreviewRunCoordinator {
     let activeBatch: PreviewRunBatch | null = null;
 
-    const run = (task: (signal: AbortSignal) => Promise<void>) => {
+    const run = <T>(task: (signal: AbortSignal) => Promise<T>): Promise<T> => {
         let batch = activeBatch;
 
         if (!batch) {
-            let resolve!: () => void;
+            let resolve!: (value: unknown) => void;
             let reject!: (error: unknown) => void;
-            const promise = new Promise<void>((onResolve, onReject) => {
+            const promise = new Promise<unknown>((onResolve, onReject) => {
                 resolve = onResolve;
                 reject = onReject;
             });
@@ -43,24 +43,23 @@ export function createPreviewRunCoordinator(): PreviewRunCoordinator {
         batch.controller = controller;
         batch.generation = generation;
 
-        let execution: Promise<void>;
+        let execution: Promise<T>;
         try {
             controller.signal.throwIfAborted();
             execution = task(controller.signal);
-        }
-        catch (error) {
+        } catch (error) {
             execution = Promise.reject(error);
         }
 
         void execution.then(
-            () => {
+            (value) => {
                 if (
                     activeBatch !== batch
                     || batch.generation !== generation
                 ) return;
 
                 activeBatch = null;
-                batch.resolve();
+                batch.resolve(value);
             },
             (error: unknown) => {
                 if (
@@ -69,12 +68,12 @@ export function createPreviewRunCoordinator(): PreviewRunCoordinator {
                 ) return;
 
                 activeBatch = null;
-                if (controller.signal.aborted) batch.resolve();
-                else batch.reject(error);
+                batch.reject(controller.signal.reason ?? error);
             },
         );
 
-        return batch.promise;
+        // Every caller in a coalesced batch receives the newest task's result.
+        return batch.promise as Promise<T>;
     };
 
     return {

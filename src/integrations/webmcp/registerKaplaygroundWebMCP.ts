@@ -1,5 +1,10 @@
 /** Connects browser WebMCP tools to KAPLAYGROUND's live editor stores. */
 import { Decode } from "console-feed";
+import { SANDBOX_ORIGIN } from "../../config/common";
+import { waitForPlaygroundReady } from "../../features/Projects/application/playgroundReadiness";
+import type { FileKind } from "../../features/Projects/models/FileKind";
+import { useProject } from "../../features/Projects/stores/useProject";
+import { useEditor } from "../../hooks/useEditor";
 import {
     createKaplaygroundWebMCP,
     type KaplaygroundConsoleEntry,
@@ -9,10 +14,6 @@ import {
     resetWebMCPActivityOnProjectReplacement,
     useWebMCPActivity,
 } from "./webMCPActivity";
-import { SANDBOX_ORIGIN } from "../../config/common";
-import type { FileKind } from "../../features/Projects/models/FileKind";
-import { useProject } from "../../features/Projects/stores/useProject";
-import { useEditor } from "../../hooks/useEditor";
 
 const MAX_RETAINED_LOGS = 500;
 const FILE_KIND_BY_FOLDER: Record<string, FileKind> = {
@@ -26,19 +27,26 @@ export function registerKaplaygroundWebMCP(): () => void {
 
     const handleMessage = (event: MessageEvent<unknown>) => {
         const iframeWindow = useEditor.getState().runtime.iframe?.contentWindow;
-        if (event.origin !== SANDBOX_ORIGIN || event.source !== iframeWindow) return;
+        if (event.origin !== SANDBOX_ORIGIN || event.source !== iframeWindow) {
+            return;
+        }
         if (!isConsoleMessage(event.data)) return;
 
-        const decoded = Decode(event.data.log) as {
-            method?: string;
-            data?: unknown[];
-        };
+        let decoded: { method?: string; data?: unknown[] };
+        try {
+            decoded = Decode(event.data.log) as typeof decoded;
+        } catch {
+            return;
+        }
         const values = decoded.data ?? [];
-        if (values.some((value) => String(value).startsWith("[sandbox]"))) return;
+        if (values.some((value) => String(value).startsWith("[sandbox]"))) {
+            return;
+        }
         if (values.some((value) => String(value).startsWith("[vite]"))) return;
 
         consoleEntries.push({
             timestamp: Date.now(),
+            runId: event.data.runId,
             level: normalizeConsoleLevel(decoded.method),
             values,
         });
@@ -64,11 +72,22 @@ export function registerKaplaygroundWebMCP(): () => void {
             useWebMCPActivity.getState().recordInvocation(invocation);
         },
         adapter: {
+            async waitUntilReady(signal) {
+                await waitWithAbort(waitForPlaygroundReady(), signal);
+            },
+
             getProject() {
-                const { project } = useProject.getState();
+                const projectStore = useProject.getState();
+                const { project } = projectStore;
                 const editor = useEditor.getState();
+                const previewAvailable =
+                    editor.runtime.iframe?.isConnected === true
+                    || document.querySelector("#game-view") !== null;
                 return {
                     name: project.name,
+                    projectId: projectStore.projectKey,
+                    projectRevision: getProjectRevision(),
+                    storageState: projectStore.getProjectStorageState(),
                     version: project.version,
                     kaplayVersion: project.kaplayVersion,
                     mode: project.mode,
@@ -76,13 +95,23 @@ export function registerKaplaygroundWebMCP(): () => void {
                     fileCount: project.files.size,
                     assetCount: project.assets.size,
                     currentFile: editor.runtime.currentFile,
-                    previewState: editor.stopped ? "stopped" : "running",
+                    previewState: editor.stopped
+                        ? "stopped"
+                        : !previewAvailable
+                        ? "unknown"
+                        : editor.paused
+                        ? "paused"
+                        : "running",
                     hasUnsavedChanges: editor.runtime.hasUnsavedChanges,
                 };
             },
 
+            getProjectRevision,
+
             listFiles() {
-                return [...useProject.getState().project.files.values()].map((file) => ({
+                return [...useProject.getState().project.files.values()].map((
+                    file,
+                ) => ({
                     path: file.path,
                     language: file.language,
                     kind: file.kind,
@@ -90,8 +119,24 @@ export function registerKaplaygroundWebMCP(): () => void {
                 }));
             },
 
+            listAssets() {
+                return [...useProject.getState().project.assets.values()].map(
+                    (asset) => {
+                        const sizeBytes = embeddedAssetSize(asset.url);
+                        return {
+                            name: asset.name,
+                            path: asset.path,
+                            kind: asset.kind,
+                            importFunction: asset.importFunction,
+                            source: assetSource(asset.url),
+                            ...(sizeBytes === undefined ? {} : { sizeBytes }),
+                        };
+                    },
+                );
+            },
+
             readFile(path) {
-                const file = useProject.getState().getFile(path);
+                const file = useProject.getState().project.files.get(path);
                 if (!file) return null;
                 return {
                     path: file.path,
@@ -101,22 +146,31 @@ export function registerKaplaygroundWebMCP(): () => void {
                 };
             },
 
-            writeFile(path, content) {
+            writeFile(path, content, expectedProjectRevision) {
+                assertProjectRevision(expectedProjectRevision);
                 const projectStore = useProject.getState();
-                const file = projectStore.getFile(path);
+                const file = projectStore.project.files.get(path);
                 if (!file) throw new Error(`Project file not found: ${path}`);
 
                 projectStore.updateFile(file.path, content);
 
                 const { editor, monaco } = useEditor.getState().runtime;
-                const model = monaco?.editor.getModel(monaco.Uri.file(file.path));
-                if (model && model.getValue() !== content) model.setValue(content);
-                if (editor && editor.getModel() === model && editor.getValue() !== content) {
+                const model = monaco?.editor.getModel(
+                    monaco.Uri.file(file.path),
+                );
+                if (model && model.getValue() !== content) {
+                    model.setValue(content);
+                }
+                if (
+                    editor && editor.getModel() === model
+                    && editor.getValue() !== content
+                ) {
                     editor.setValue(content);
                 }
             },
 
-            createFile(file) {
+            createFile(file, expectedProjectRevision) {
+                assertProjectRevision(expectedProjectRevision);
                 const match = file.path.match(
                     /^(scenes|objects|utils)\/([^/]+)\.(js|ts)$/,
                 );
@@ -127,8 +181,10 @@ export function registerKaplaygroundWebMCP(): () => void {
                 }
 
                 const projectStore = useProject.getState();
-                if (projectStore.getFile(file.path)) {
-                    throw new Error(`Project file already exists: ${file.path}`);
+                if (projectStore.project.files.has(file.path)) {
+                    throw new Error(
+                        `Project file already exists: ${file.path}`,
+                    );
                 }
 
                 const folder = match[1]!;
@@ -149,11 +205,14 @@ export function registerKaplaygroundWebMCP(): () => void {
                 });
             },
 
-            removeFile(path) {
+            removeFile(path, expectedProjectRevision) {
+                assertProjectRevision(expectedProjectRevision);
                 const projectStore = useProject.getState();
-                const file = projectStore.getFile(path);
+                const file = projectStore.project.files.get(path);
                 if (!file) throw new Error(`Project file not found: ${path}`);
-                if (!/^(scenes|objects|utils)\/[^/]+\.(js|ts)$/.test(file.path)) {
+                if (
+                    !/^(scenes|objects|utils)\/[^/]+\.(js|ts)$/.test(file.path)
+                ) {
                     throw new Error(
                         "Only files inside scenes/, objects/, or utils/ can be removed through WebMCP.",
                     );
@@ -163,23 +222,43 @@ export function registerKaplaygroundWebMCP(): () => void {
                 const { monaco, currentFile } = editorStore.runtime;
                 monaco?.editor.getModel(monaco.Uri.file(file.path))?.dispose();
                 projectStore.removeFile(file.path);
-                if (currentFile === file.path) editorStore.setCurrentFile("main.js");
+                if (currentFile === file.path) {
+                    editorStore.setCurrentFile("main.js");
+                }
             },
 
             selectFile(path) {
+                if (!useProject.getState().project.files.has(path)) {
+                    throw new Error(`Project file not found: ${path}`);
+                }
                 useEditor.getState().setCurrentFile(path);
             },
 
-            runPreview() {
-                return useEditor.getState().run();
+            async saveProject(expectedProjectRevision) {
+                assertProjectRevision(expectedProjectRevision);
+                const projectId = await useProject.getState()
+                    .persistActiveProject();
+                assertProjectRevision(expectedProjectRevision);
+                return { projectId, storageState: "autosaved" as const };
             },
 
-            togglePreviewPause() {
-                useEditor.getState().pause();
+            runPreview(signal) {
+                assertPreviewLayoutAvailable();
+                return useEditor.getState().runWithSignal(signal);
+            },
+
+            setPreviewPaused(paused, signal) {
+                assertPreviewLayoutAvailable();
+                return useEditor.getState().setPaused(paused, signal);
             },
 
             stopPreview() {
                 useEditor.getState().stop();
+            },
+
+            inspectPreview(options, signal) {
+                assertPreviewLayoutAvailable();
+                return useEditor.getState().inspectPreview(options, signal);
             },
 
             getDiagnostics() {
@@ -188,6 +267,10 @@ export function registerKaplaygroundWebMCP(): () => void {
 
             getConsoleEntries() {
                 return consoleEntries;
+            },
+
+            getPreviewRunId() {
+                return useEditor.getState().previewRunId;
             },
         },
     });
@@ -205,7 +288,10 @@ function getMonacoDiagnostics(): KaplaygroundDiagnostic[] {
     const files = useProject.getState().project.files;
 
     return monaco.editor.getModelMarkers({}).flatMap((marker) => {
-        const path = decodeURIComponent(marker.resource.path).replace(/^\/+/, "");
+        const path = decodeURIComponent(marker.resource.path).replace(
+            /^\/+/,
+            "",
+        );
         if (!files.has(path)) return [];
 
         const diagnostic: KaplaygroundDiagnostic = {
@@ -228,7 +314,12 @@ function getMonacoDiagnostics(): KaplaygroundDiagnostic[] {
 }
 
 function markerSeverity(
-    markerSeverity: { Error: number; Warning: number; Info: number; Hint: number },
+    markerSeverity: {
+        Error: number;
+        Warning: number;
+        Info: number;
+        Hint: number;
+    },
     value: number,
 ): KaplaygroundDiagnostic["severity"] {
     if (value === markerSeverity.Error) return "error";
@@ -240,16 +331,107 @@ function markerSeverity(
 
 function isConsoleMessage(
     value: unknown,
-): value is { type: string; log: Parameters<typeof Decode>[0] } {
+): value is {
+    type: string;
+    runId: string | null;
+    log: Parameters<typeof Decode>[0];
+} {
     if (typeof value !== "object" || value === null) return false;
-    const candidate = value as { type?: unknown; log?: unknown };
-    return candidate.type === "CONSOLE" && Array.isArray(candidate.log);
+    const candidate = value as {
+        type?: unknown;
+        runId?: unknown;
+        log?: unknown;
+    };
+    return candidate.type === "CONSOLE"
+        && (
+            candidate.runId === null
+            || (typeof candidate.runId === "string"
+                && candidate.runId.length <= 128)
+        )
+        && Array.isArray(candidate.log);
 }
 
-function normalizeConsoleLevel(method: string | undefined): KaplaygroundConsoleEntry["level"] {
+function normalizeConsoleLevel(
+    method: string | undefined,
+): KaplaygroundConsoleEntry["level"] {
     const level = method?.toLowerCase();
-    if (level === "debug" || level === "info" || level === "warn" || level === "error") {
+    if (
+        level === "debug" || level === "info" || level === "warn"
+        || level === "error"
+    ) {
         return level;
     }
     return "log";
+}
+
+function getProjectRevision(): string {
+    return `project-${useProject.getState().projectGeneration}`;
+}
+
+function assertProjectRevision(expectedProjectRevision: string): void {
+    const actualProjectRevision = getProjectRevision();
+    if (actualProjectRevision !== expectedProjectRevision) {
+        throw new Error(
+            `Project changed: expected revision ${expectedProjectRevision}, found ${actualProjectRevision}.`,
+        );
+    }
+}
+
+function assertPreviewLayoutAvailable(): void {
+    const isUnsupportedPortraitProject =
+        useProject.getState().project.mode === "pj"
+        && window.matchMedia("(orientation: portrait)").matches;
+    if (isUnsupportedPortraitProject) {
+        throw new Error(
+            "The preview is unavailable for projects in the current portrait layout.",
+        );
+    }
+}
+
+function assetSource(
+    url: string,
+): "embedded" | "remote" | "blob" | "unknown" {
+    if (url.startsWith("data:")) return "embedded";
+    if (url.startsWith("blob:")) return "blob";
+    if (/^https?:\/\//.test(url)) return "remote";
+    return "unknown";
+}
+
+function embeddedAssetSize(url: string): number | undefined {
+    if (!url.startsWith("data:")) return undefined;
+    const separator = url.indexOf(",");
+    if (separator < 0) return undefined;
+    const metadata = url.slice(0, separator);
+    const data = url.slice(separator + 1);
+    if (!metadata.endsWith(";base64")) {
+        try {
+            return new TextEncoder().encode(decodeURIComponent(data))
+                .byteLength;
+        } catch {
+            return undefined;
+        }
+    }
+    const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+    return Math.max(0, Math.floor(data.length * 3 / 4) - padding);
+}
+
+async function waitWithAbort<T>(
+    promise: Promise<T>,
+    signal: AbortSignal,
+): Promise<T> {
+    if (signal.aborted) throw abortReason(signal);
+
+    return await new Promise<T>((resolve, reject) => {
+        const abort = () => reject(abortReason(signal));
+        signal.addEventListener("abort", abort, { once: true });
+        void promise.then(resolve, reject).finally(() => {
+            signal.removeEventListener("abort", abort);
+        });
+    });
+}
+
+function abortReason(signal: AbortSignal): Error {
+    return signal.reason instanceof Error
+        ? signal.reason
+        : new DOMException("The WebMCP bridge was destroyed.", "AbortError");
 }

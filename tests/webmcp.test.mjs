@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { createPreviewRunCoordinator } from "../src/hooks/previewRunCoordinator.ts";
 import {
     createKaplaygroundWebMCP,
     kaplaygroundContentRevision,
 } from "../src/integrations/webmcp/kaplaygroundWebMCP.ts";
-import { createPreviewRunCoordinator } from "../src/hooks/previewRunCoordinator.ts";
 import {
     resetWebMCPActivityOnProjectReplacement,
     useWebMCPActivity,
@@ -28,6 +29,8 @@ class FakeModelContext extends EventTarget {
     }
 }
 
+const PROJECT_REVISION = "project-revision-1";
+
 function createAdapter() {
     const files = new Map([
         [
@@ -40,44 +43,162 @@ function createAdapter() {
             },
         ],
     ]);
+    const assets = [
+        {
+            name: "hero.png",
+            path: "assets/sprites/hero.png",
+            kind: "sprite",
+            importFunction:
+                "loadSprite(\"hero\", \"assets/sprites/hero.png\");",
+            source: "embedded",
+            url: "data:image/png;base64,not-returned",
+        },
+        {
+            name: "theme.ogg",
+            path: "assets/sounds/theme.ogg",
+            kind: "sound",
+            importFunction:
+                "loadSound(\"theme\", \"assets/sounds/theme.ogg\");",
+            source: "remote",
+            url: "https://assets.example/theme.ogg",
+        },
+        {
+            name: "zapper.png",
+            path: "assets/sprites/zapper.png",
+            kind: "sprite",
+            importFunction:
+                "loadSprite(\"zapper\", \"assets/sprites/zapper.png\");",
+            source: "blob",
+            url: "blob:https://example.test/zapper",
+        },
+    ];
+    const consoleEntries = [
+        {
+            timestamp: 1,
+            runId: "run-old",
+            level: "warn",
+            values: ["old warning"],
+        },
+        {
+            timestamp: 2,
+            runId: "run-latest",
+            level: "log",
+            values: ["latest ready"],
+        },
+        {
+            timestamp: 3,
+            runId: "run-latest",
+            level: "error",
+            values: ["latest error"],
+        },
+    ];
+    const state = {
+        projectId: null,
+        projectRevision: PROJECT_REVISION,
+        storageState: "transient",
+        paused: false,
+        activeRunId: "run-latest",
+    };
     const calls = {
         selected: [],
         previewRuns: 0,
+        saves: 0,
+        pauseStates: [],
+        inspections: [],
+    };
+
+    const assertProjectRevision = (expectedProjectRevision) => {
+        assert.equal(
+            expectedProjectRevision,
+            state.projectRevision,
+            "mutation must receive the current expectedProjectRevision",
+        );
     };
 
     return {
         files,
+        assets,
+        consoleEntries,
+        state,
         calls,
         adapter: {
+            waitUntilReady: () => undefined,
             getProject: () => ({
                 name: "Agent game",
+                projectId: state.projectId,
+                projectRevision: state.projectRevision,
+                storageState: state.storageState,
                 fileCount: files.size,
+                assetCount: assets.length,
                 currentFile: "main.js",
-                previewState: "running",
+                previewState: state.paused ? "paused" : "running",
             }),
+            getProjectRevision: () => state.projectRevision,
             listFiles: () => [...files.values()],
+            listAssets: () => assets,
             readFile: (path) => files.get(path) ?? null,
-            writeFile: (path, content) => {
+            writeFile: (path, content, expectedProjectRevision) => {
+                assertProjectRevision(expectedProjectRevision);
                 const file = files.get(path);
                 assert.ok(file);
                 files.set(path, { ...file, content });
             },
-            createFile: (file) => {
+            createFile: (file, expectedProjectRevision) => {
+                assertProjectRevision(expectedProjectRevision);
                 files.set(file.path, file);
             },
-            removeFile: (path) => {
+            removeFile: (path, expectedProjectRevision) => {
+                assertProjectRevision(expectedProjectRevision);
                 files.delete(path);
             },
             selectFile: (path) => {
                 calls.selected.push(path);
             },
+            saveProject: (expectedProjectRevision) => {
+                assertProjectRevision(expectedProjectRevision);
+                calls.saves += 1;
+                state.projectId ??= "project-saved-1";
+                state.storageState = "autosaved";
+                return {
+                    projectId: state.projectId,
+                    storageState: state.storageState,
+                };
+            },
             runPreview: () => {
                 calls.previewRuns += 1;
+                state.activeRunId = `run-${calls.previewRuns}`;
+                state.paused = false;
+                return { runId: state.activeRunId, status: "loaded" };
             },
-            togglePreviewPause: () => undefined,
-            stopPreview: () => undefined,
+            setPreviewPaused: (paused) => {
+                calls.pauseStates.push(paused);
+                state.paused = paused;
+                return { runId: state.activeRunId, paused };
+            },
+            stopPreview: () => {
+                state.activeRunId = null;
+                state.paused = false;
+            },
+            inspectPreview: (options) => {
+                calls.inspections.push(options);
+                return {
+                    runId: state.activeRunId,
+                    available: true,
+                    scene: "main",
+                    paused: state.paused,
+                    viewport: { width: 640, height: 360 },
+                    objectCount: 3,
+                    objectsTruncated: true,
+                    objects: [
+                        { id: 1, tags: ["enemy"], position: { x: 10, y: 20 } },
+                        { id: 2, tags: ["enemy"], position: { x: 30, y: 40 } },
+                        { id: 3, tags: ["friend"], position: { x: 50, y: 60 } },
+                    ],
+                };
+            },
             getDiagnostics: () => [],
-            getConsoleEntries: () => [],
+            getConsoleEntries: () => consoleEntries,
+            getPreviewRunId: () => state.activeRunId,
         },
     };
 }
@@ -99,38 +220,93 @@ function deferred() {
 }
 
 describe("KAPLAYGROUND WebMCP", () => {
+    it("keeps the sandbox side of the preview protocol in the repository", () => {
+        const sandbox = readFileSync(
+            new URL("../sandbox/index.html", import.meta.url),
+            "utf8",
+        );
+        for (
+            const messageType of [
+                "RUN_RESULT",
+                "SET_PAUSED",
+                "PAUSE_RESULT",
+                "INSPECT_RUNTIME",
+                "RUNTIME_INSPECTION_RESULT",
+            ]
+        ) {
+            assert.match(sandbox, new RegExp(`\\b${messageType}\\b`));
+        }
+        assert.match(sandbox, /protocolVersion:\s*PREVIEW_PROTOCOL_VERSION/);
+    });
+
     it("registers the complete editor tool surface", async () => {
         const context = new FakeModelContext();
         const { adapter } = createAdapter();
-        const bridge = createKaplaygroundWebMCP({ adapter, modelContext: context });
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
 
         await bridge.ready;
 
         assert.deepEqual(bridge.toolNames, [
             "kaplayground_get_project",
             "kaplayground_list_files",
+            "kaplayground_list_assets",
             "kaplayground_read_file",
             "kaplayground_replace_file",
             "kaplayground_create_file",
             "kaplayground_remove_file",
             "kaplayground_select_file",
+            "kaplayground_save_project",
             "kaplayground_run_preview",
-            "kaplayground_toggle_preview_pause",
+            "kaplayground_set_preview_paused",
             "kaplayground_stop_preview",
+            "kaplayground_inspect_preview",
             "kaplayground_get_diagnostics",
             "kaplayground_get_console",
         ]);
     });
 
-    it("waits for the editor to finish running the preview", async () => {
+    it("waits for application readiness before registering tools", async () => {
+        const context = new FakeModelContext();
+        const { adapter } = createAdapter();
+        const applicationReady = deferred();
+        adapter.waitUntilReady = () => applicationReady.promise;
+
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+        let settled = false;
+        void bridge.ready.then(() => {
+            settled = true;
+        });
+        await new Promise((resolve) => setImmediate(resolve));
+
+        assert.equal(settled, false);
+        assert.equal(bridge.status, "registering");
+        assert.equal(context.registered.length, 0);
+
+        applicationReady.resolve();
+        await bridge.ready;
+        assert.equal(bridge.status, "ready");
+        assert.equal(context.registered.length, 15);
+    });
+
+    it("waits for the preview to acknowledge that its run loaded", async () => {
         const context = new FakeModelContext();
         const { adapter, calls } = createAdapter();
         const previewFinished = deferred();
         adapter.runPreview = async () => {
             calls.previewRuns += 1;
             await previewFinished.promise;
+            return { runId: "run-acknowledged", status: "loaded" };
         };
-        const bridge = createKaplaygroundWebMCP({ adapter, modelContext: context });
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
         await bridge.ready;
 
         let settled = false;
@@ -144,7 +320,11 @@ describe("KAPLAYGROUND WebMCP", () => {
         assert.equal(settled, false);
 
         previewFinished.resolve();
-        assert.deepEqual(await invocation, { previewState: "running" });
+        assert.deepEqual(await invocation, {
+            previewState: "running",
+            runId: "run-acknowledged",
+            status: "loaded",
+        });
     });
 
     it("coalesces superseded preview runs until the newest run finishes", async () => {
@@ -213,7 +393,10 @@ describe("KAPLAYGROUND WebMCP", () => {
     it("replaces files only when their revision is current", async () => {
         const context = new FakeModelContext();
         const { adapter, files, calls } = createAdapter();
-        const bridge = createKaplaygroundWebMCP({ adapter, modelContext: context });
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
         await bridge.ready;
 
         const original = files.get("main.js").content;
@@ -221,6 +404,7 @@ describe("KAPLAYGROUND WebMCP", () => {
             path: "main.js",
             content: "add([circle(24)])\n",
             expectedRevision: kaplaygroundContentRevision(original),
+            expectedProjectRevision: PROJECT_REVISION,
             runPreview: true,
         });
 
@@ -231,6 +415,7 @@ describe("KAPLAYGROUND WebMCP", () => {
                 path: "main.js",
                 content: "stale write",
                 expectedRevision: kaplaygroundContentRevision(original),
+                expectedProjectRevision: PROJECT_REVISION,
             }),
             /Revision conflict/,
         );
@@ -250,32 +435,40 @@ describe("KAPLAYGROUND WebMCP", () => {
             signalFirstWriteStarted = resolve;
         });
         let writeCount = 0;
-        adapter.writeFile = async (path, content) => {
+        adapter.writeFile = async (path, content, expectedProjectRevision) => {
             writeCount += 1;
             if (writeCount === 1) {
                 signalFirstWriteStarted();
                 await firstWriteReleased;
             }
-            originalWriteFile(path, content);
+            originalWriteFile(path, content, expectedProjectRevision);
         };
 
-        const bridge = createKaplaygroundWebMCP({ adapter, modelContext: context });
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
         await bridge.ready;
 
         const first = execute(context, "kaplayground_replace_file", {
             path: "main.js",
             content: "add([circle(24)])\n",
             expectedRevision: kaplaygroundContentRevision(original),
+            expectedProjectRevision: PROJECT_REVISION,
         });
         await firstWriteStarted;
         const second = execute(context, "kaplayground_replace_file", {
             path: "main.js",
             content: "add([sprite(\"bean\")])\n",
             expectedRevision: kaplaygroundContentRevision(original),
+            expectedProjectRevision: PROJECT_REVISION,
         });
 
         releaseFirstWrite();
-        const [firstResult, secondResult] = await Promise.allSettled([first, second]);
+        const [firstResult, secondResult] = await Promise.allSettled([
+            first,
+            second,
+        ]);
 
         assert.equal(firstResult.status, "fulfilled");
         assert.equal(secondResult.status, "rejected");
@@ -291,24 +484,29 @@ describe("KAPLAYGROUND WebMCP", () => {
         const originalWriteFile = adapter.writeFile;
         const firstWriteStarted = deferred();
         const releaseFirstWrite = deferred();
-        adapter.writeFile = async (path, content) => {
+        adapter.writeFile = async (path, content, expectedProjectRevision) => {
             firstWriteStarted.resolve();
             await releaseFirstWrite.promise;
-            originalWriteFile(path, content);
+            originalWriteFile(path, content, expectedProjectRevision);
         };
 
-        const bridge = createKaplaygroundWebMCP({ adapter, modelContext: context });
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
         await bridge.ready;
 
         const replacement = execute(context, "kaplayground_replace_file", {
             path: "main.js",
             content: "add([circle(24)])\n",
             expectedRevision: kaplaygroundContentRevision(original),
+            expectedProjectRevision: PROJECT_REVISION,
         });
         await firstWriteStarted.promise;
         const removal = execute(context, "kaplayground_remove_file", {
             path: "main.js",
             expectedRevision: kaplaygroundContentRevision(original),
+            expectedProjectRevision: PROJECT_REVISION,
         });
 
         releaseFirstWrite.resolve();
@@ -330,30 +528,38 @@ describe("KAPLAYGROUND WebMCP", () => {
         const firstCreateStarted = deferred();
         const releaseFirstCreate = deferred();
         let createCount = 0;
-        adapter.createFile = async (file) => {
+        adapter.createFile = async (file, expectedProjectRevision) => {
             createCount += 1;
             if (createCount === 1) {
                 firstCreateStarted.resolve();
                 await releaseFirstCreate.promise;
             }
-            originalCreateFile(file);
+            originalCreateFile(file, expectedProjectRevision);
         };
 
-        const bridge = createKaplaygroundWebMCP({ adapter, modelContext: context });
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
         await bridge.ready;
 
         const first = execute(context, "kaplayground_create_file", {
             path: "scenes/level.js",
             content: "scene(\"first\", () => {});\n",
+            expectedProjectRevision: PROJECT_REVISION,
         });
         await firstCreateStarted.promise;
         const second = execute(context, "kaplayground_create_file", {
             path: "scenes/level.js",
             content: "scene(\"second\", () => {});\n",
+            expectedProjectRevision: PROJECT_REVISION,
         });
 
         releaseFirstCreate.resolve();
-        const [firstResult, secondResult] = await Promise.allSettled([first, second]);
+        const [firstResult, secondResult] = await Promise.allSettled([
+            first,
+            second,
+        ]);
 
         assert.equal(firstResult.status, "fulfilled");
         assert.equal(secondResult.status, "rejected");
@@ -368,7 +574,10 @@ describe("KAPLAYGROUND WebMCP", () => {
     it("creates and removes project files through revision-safe calls", async () => {
         const context = new FakeModelContext();
         const { adapter, files, calls } = createAdapter();
-        const bridge = createKaplaygroundWebMCP({ adapter, modelContext: context });
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
         await bridge.ready;
 
         const content = "scene(\"level\", () => {});\n";
@@ -376,6 +585,7 @@ describe("KAPLAYGROUND WebMCP", () => {
             path: "scenes/level.js",
             content,
             kind: "scene",
+            expectedProjectRevision: PROJECT_REVISION,
             runPreview: true,
         });
 
@@ -386,9 +596,224 @@ describe("KAPLAYGROUND WebMCP", () => {
         await execute(context, "kaplayground_remove_file", {
             path: "scenes/level.js",
             expectedRevision: kaplaygroundContentRevision(content),
+            expectedProjectRevision: PROJECT_REVISION,
         });
 
         assert.equal(files.has("scenes/level.js"), false);
+    });
+
+    it("rejects a stale project revision before mutating a file", async () => {
+        const context = new FakeModelContext();
+        const { adapter, files } = createAdapter();
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+        await bridge.ready;
+
+        const original = files.get("main.js").content;
+        await assert.rejects(
+            execute(context, "kaplayground_replace_file", {
+                path: "main.js",
+                content: "add([circle(8)])\n",
+                expectedRevision: kaplaygroundContentRevision(original),
+                expectedProjectRevision: "stale-project-revision",
+            }),
+            /Project changed/,
+        );
+
+        assert.equal(files.get("main.js").content, original);
+    });
+
+    it("rejects extensionless aliases instead of selecting a different exact path", async () => {
+        const context = new FakeModelContext();
+        const { adapter, files } = createAdapter();
+        const readExactFile = adapter.readFile;
+        adapter.readFile = (path) =>
+            path === "main"
+                ? files.get("main.js")
+                : readExactFile(path);
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+        await bridge.ready;
+
+        await assert.rejects(
+            execute(context, "kaplayground_read_file", { path: "main" }),
+            /not an exact project path.*main\.js/,
+        );
+        await assert.rejects(
+            execute(context, "kaplayground_read_file", { path: "/main.js" }),
+            /normalized project-relative path/,
+        );
+        await assert.rejects(
+            execute(context, "kaplayground_read_file", { path: "main.js/" }),
+            /normalized project-relative path/,
+        );
+    });
+
+    it("saves the current project with its opaque project revision", async () => {
+        const context = new FakeModelContext();
+        const { adapter, calls, state } = createAdapter();
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+        await bridge.ready;
+
+        const project = await execute(context, "kaplayground_get_project");
+        assert.equal(project.projectRevision, PROJECT_REVISION);
+        assert.equal(project.storageState, "transient");
+
+        const result = await execute(context, "kaplayground_save_project", {
+            expectedProjectRevision: project.projectRevision,
+        });
+
+        assert.deepEqual(result, {
+            projectRevision: PROJECT_REVISION,
+            projectId: "project-saved-1",
+            storageState: "autosaved",
+        });
+        assert.equal(state.projectId, "project-saved-1");
+        assert.equal(state.storageState, "autosaved");
+        assert.equal(calls.saves, 1);
+    });
+
+    it("filters and paginates asset metadata without exposing URLs", async () => {
+        const context = new FakeModelContext();
+        const { adapter } = createAdapter();
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+        await bridge.ready;
+
+        const result = await execute(context, "kaplayground_list_assets", {
+            kind: "sprite",
+            offset: 1,
+            limit: 1,
+        });
+
+        assert.equal(result.projectRevision, PROJECT_REVISION);
+        assert.equal(result.kind, "sprite");
+        assert.equal(result.total, 2);
+        assert.equal(result.offset, 1);
+        assert.equal(result.limit, 1);
+        assert.equal(result.assets.length, 1);
+        assert.equal(result.assets[0].path, "assets/sprites/zapper.png");
+        assert.equal(result.assets[0].source, "blob");
+        assert.equal("url" in result.assets[0], false);
+    });
+
+    it("bounds strings in asset metadata", async () => {
+        const context = new FakeModelContext();
+        const { adapter } = createAdapter();
+        adapter.listAssets = () => [{
+            name: "x".repeat(1_000),
+            path: "assets/sprites/large.png",
+            kind: "sprite",
+            importFunction: "y".repeat(20_000),
+            source: "embedded",
+        }];
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+        await bridge.ready;
+
+        const result = await execute(context, "kaplayground_list_assets");
+        assert.equal(result.assets[0].name.length, 256);
+        assert.equal(result.assets[0].importFunction.length, 2_048);
+        assert.equal(result.assets[0].metadataTruncated, true);
+    });
+
+    it("sets an explicit preview pause state and returns the acknowledged state", async () => {
+        const context = new FakeModelContext();
+        const { adapter, calls } = createAdapter();
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+        await bridge.ready;
+
+        assert.deepEqual(
+            await execute(context, "kaplayground_set_preview_paused", {
+                paused: true,
+            }),
+            {
+                previewState: "paused",
+                runId: "run-latest",
+                paused: true,
+            },
+        );
+        assert.deepEqual(
+            await execute(context, "kaplayground_set_preview_paused", {
+                paused: false,
+            }),
+            {
+                previewState: "running",
+                runId: "run-latest",
+                paused: false,
+            },
+        );
+        assert.deepEqual(calls.pauseStates, [true, false]);
+    });
+
+    it("returns a bounded preview inspection", async () => {
+        const context = new FakeModelContext();
+        const { adapter, calls } = createAdapter();
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+        await bridge.ready;
+
+        const result = await execute(context, "kaplayground_inspect_preview", {
+            tag: "enemy",
+            limit: 2,
+        });
+
+        assert.deepEqual(calls.inspections, [{ tag: "enemy", limit: 2 }]);
+        assert.equal(result.runId, "run-latest");
+        assert.equal(result.scene, "main");
+        assert.equal(result.objectCount, 3);
+        assert.equal(result.objectsTruncated, true);
+        assert.deepEqual(result.objects.map(({ id }) => id), [1, 2]);
+    });
+
+    it("defaults console reads to the active run and supports an explicit run filter", async () => {
+        const context = new FakeModelContext();
+        const { adapter, state } = createAdapter();
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+        await bridge.ready;
+
+        const latest = await execute(context, "kaplayground_get_console");
+        assert.equal(latest.runId, "run-latest");
+        assert.equal(latest.total, 2);
+        assert.deepEqual(
+            latest.entries.map(({ values }) => values[0]),
+            ["latest ready", "latest error"],
+        );
+
+        const old = await execute(context, "kaplayground_get_console", {
+            runId: "run-old",
+        });
+        assert.equal(old.runId, "run-old");
+        assert.equal(old.total, 1);
+        assert.equal(old.entries[0].values[0], "old warning");
+
+        state.activeRunId = "run-without-output";
+        const emptyCurrentRun = await execute(
+            context,
+            "kaplayground_get_console",
+        );
+        assert.equal(emptyCurrentRun.runId, "run-without-output");
+        assert.equal(emptyCurrentRun.total, 0);
+        assert.deepEqual(emptyCurrentRun.entries, []);
     });
 
     it("reports connection state and visible invocation lifecycles", async () => {
@@ -407,7 +832,7 @@ describe("KAPLAYGROUND WebMCP", () => {
         await bridge.ready;
 
         assert.equal(connections.at(-1).status, "ready");
-        assert.equal(connections.at(-1).toolNames.length, 12);
+        assert.equal(connections.at(-1).toolNames.length, 15);
 
         await execute(context, "kaplayground_get_project");
         assert.deepEqual(

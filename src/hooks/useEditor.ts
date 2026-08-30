@@ -10,12 +10,27 @@ import { useProject } from "../features/Projects/stores/useProject";
 import { parseAssetPath } from "../util/assetsParsing";
 import { debug } from "../util/logs";
 import { MATCH_ASSET_URL_REGEX } from "../util/regex";
-import { useConfig } from "./useConfig";
+import {
+    MAX_PREVIEW_INSPECTION_OBJECTS,
+    type PreviewInspection,
+    type PreviewInspectionOptions,
+    type PreviewPauseResult,
+    PreviewRunError,
+    type PreviewRunResult,
+    type SandboxInspectionResultMessage,
+    type SandboxPauseResultMessage,
+    type SandboxRunResultMessage,
+} from "./previewProtocol";
 import { createPreviewRunCoordinator } from "./previewRunCoordinator";
+import { useConfig } from "./useConfig";
 
 const PREVIEW_READY_TIMEOUT_MS = 10_000;
+const PREVIEW_RUN_TIMEOUT_MS = 30_000;
+const PREVIEW_CONTROL_TIMEOUT_MS = 10_000;
+const PREVIEW_PROTOCOL_VERSION = 1;
 const LAYOUT_POLL_INTERVAL_MS = 100;
 const previewRunCoordinator = createPreviewRunCoordinator();
+let previewSessionController = new AbortController();
 
 interface EditorRuntime {
     /**
@@ -75,8 +90,19 @@ interface EditorRuntime {
 export interface EditorStore {
     runtime: EditorRuntime;
     stopped: boolean;
+    previewRunId: string | null;
+    paused: boolean | null;
     update: (value?: string) => void;
-    run: () => Promise<void>;
+    run: () => Promise<PreviewRunResult>;
+    runWithSignal: (signal?: AbortSignal) => Promise<PreviewRunResult>;
+    setPaused: (
+        paused: boolean,
+        signal?: AbortSignal,
+    ) => Promise<PreviewPauseResult>;
+    inspectPreview: (
+        options?: PreviewInspectionOptions,
+        signal?: AbortSignal,
+    ) => Promise<PreviewInspection>;
     pause: () => void;
     stop: () => void;
     getRuntime: () => EditorRuntime;
@@ -114,6 +140,8 @@ export const useEditor = create<EditorStore>((set, get) => ({
         confettiCanvas: null,
     },
     stopped: (new URL(window.location.href)).searchParams.has("stopped"),
+    previewRunId: null,
+    paused: null,
     setRuntime: (runtime) => {
         set((state) => ({
             runtime: {
@@ -237,18 +265,25 @@ export const useEditor = create<EditorStore>((set, get) => ({
         return url.href;
     },
     run() {
+        return get().runWithSignal();
+    },
+    runWithSignal(callerSignal) {
         if (
             get().stopped
             && new URLSearchParams(window.location.search).has("stopped")
         ) {
-            previewRunCoordinator.cancel();
             const url = new URL(window.location.href);
             url.searchParams.delete("stopped");
             window.history.replaceState({}, "", url);
-            return Promise.resolve();
         }
 
-        set({ stopped: false });
+        const runId = createRequestId("run");
+        const sessionSignal = beginPreviewSession();
+        set({
+            stopped: false,
+            previewRunId: runId,
+            paused: null,
+        });
 
         const waitForIframeLayout = async (
             iframeContentWindow: Window,
@@ -284,7 +319,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
         const updateCode = async (
             iframeContentWindow: Window,
             signal: AbortSignal,
-        ) => {
+        ): Promise<PreviewRunResult> => {
             const gameIframe = await waitForIframeLayout(
                 iframeContentWindow,
                 signal,
@@ -299,53 +334,222 @@ export const useEditor = create<EditorStore>((set, get) => ({
             signal.throwIfAborted();
 
             if (gameIframe.contentWindow !== iframeContentWindow) {
-                throw new Error("[game] iframe changed before code could be posted");
+                throw new Error(
+                    "[game] iframe changed before code could be posted",
+                );
             }
 
-            iframeContentWindow.postMessage(
+            const result = await requestSandbox(
+                iframeContentWindow,
                 {
                     type: "UPDATE_CODE",
+                    runId,
                     code,
                 },
-                SANDBOX_ORIGIN,
+                (data): data is SandboxRunResultMessage =>
+                    isRecord(data)
+                    && data.type === "RUN_RESULT"
+                    && data.runId === runId,
+                signal,
+                PREVIEW_READY_TIMEOUT_MS,
+                "[game] sandbox did not acknowledge the preview run in time",
             );
-        };
 
-        const runPromise = previewRunCoordinator.run(async (signal) => {
-            const iframe = document.querySelector<HTMLIFrameElement>(
-                "#game-view",
-            );
-
-            if (iframe) {
-                const iframeLoaded = waitForIframeLoad(iframe, signal);
-                iframe.src = get().getIframeSrc();
-                await updateCode(await iframeLoaded, signal);
-                return;
+            if (result.status === "failed") {
+                throw new PreviewRunError(
+                    runId,
+                    result.error ?? "The preview module failed to execute.",
+                );
             }
 
-            await updateCode(await waitForIframeReady(signal), signal);
-        });
+            set({
+                previewRunId: runId,
+                paused: typeof result.paused === "boolean"
+                    ? result.paused
+                    : null,
+            });
+            return { runId, status: "loaded" };
+        };
+
+        const runPromise = previewRunCoordinator.run(
+            async (coordinatorSignal) => {
+                const operation = createOperationSignal(
+                    [coordinatorSignal, sessionSignal, callerSignal],
+                    PREVIEW_RUN_TIMEOUT_MS,
+                    "The preview run timed out.",
+                );
+
+                try {
+                    const iframe = document.querySelector<HTMLIFrameElement>(
+                        "#game-view",
+                    );
+
+                    if (iframe) {
+                        const iframeReady = waitForIframeReady(
+                            operation.signal,
+                        );
+                        iframe.src = get().getIframeSrc();
+                        return await updateCode(
+                            await iframeReady,
+                            operation.signal,
+                        );
+                    }
+
+                    return await updateCode(
+                        await waitForIframeReady(operation.signal),
+                        operation.signal,
+                    );
+                } catch (error) {
+                    if (get().previewRunId === runId) {
+                        set({
+                            stopped: true,
+                            previewRunId: null,
+                            paused: null,
+                        });
+                    }
+                    if (operation.signal.aborted) throw operation.signal.reason;
+                    if (error instanceof PreviewRunError) throw error;
+                    throw new PreviewRunError(runId, errorMessage(error));
+                } finally {
+                    operation.dispose();
+                }
+            },
+        );
         // UI actions intentionally fire and forget preview runs. Consume expected
         // cancellations and log other failures; awaited callers still receive them.
         void runPromise.catch((error: unknown) => {
-            if (error instanceof DOMException && error.name === "AbortError") return;
+            if (error instanceof DOMException && error.name === "AbortError") {
+                return;
+            }
             console.error("[game] Preview run failed", error);
         });
         return runPromise;
     },
-    pause() {
-        if (!get().stopped) {
-            get().runtime.iframe?.contentWindow?.postMessage(
-                { type: "PAUSE" },
-                SANDBOX_ORIGIN,
-            );
-        } else {
-            void get().run();
+    async setPaused(paused, callerSignal) {
+        if (get().stopped || get().previewRunId === null) {
+            await get().runWithSignal(callerSignal);
         }
+
+        const iframeWindow = getPreviewWindow(get().runtime.iframe);
+        const runId = get().previewRunId;
+        if (runId === null) throw new Error("The preview has no active run.");
+        const requestId = createRequestId("pause");
+        const operation = createOperationSignal(
+            [previewSessionController.signal, callerSignal],
+            PREVIEW_CONTROL_TIMEOUT_MS,
+            "Changing the preview pause state timed out.",
+        );
+
+        try {
+            const result = await requestSandbox(
+                iframeWindow,
+                { type: "SET_PAUSED", requestId, runId, paused },
+                (data): data is SandboxPauseResultMessage =>
+                    isRecord(data)
+                    && data.type === "PAUSE_RESULT"
+                    && data.requestId === requestId,
+                operation.signal,
+                PREVIEW_CONTROL_TIMEOUT_MS,
+                "[game] sandbox did not acknowledge the pause state in time",
+            );
+
+            if (
+                result.error
+                || result.runId !== runId
+                || typeof result.paused !== "boolean"
+            ) {
+                throw new Error(
+                    result.error
+                        ?? "The sandbox did not acknowledge the active preview run.",
+                );
+            }
+
+            set({
+                previewRunId: result.runId,
+                paused: result.paused,
+            });
+            return {
+                runId: result.runId,
+                paused: result.paused,
+            };
+        } finally {
+            operation.dispose();
+        }
+    },
+    async inspectPreview(options = {}, callerSignal) {
+        if (get().stopped) {
+            throw new Error(
+                "The preview is stopped. Run it before inspecting it.",
+            );
+        }
+
+        const tag = normalizeInspectionTag(options.tag);
+        const limit = normalizeInspectionLimit(options.limit);
+        const iframeWindow = getPreviewWindow(get().runtime.iframe);
+        const runId = get().previewRunId;
+        if (runId === null) throw new Error("The preview has no active run.");
+        const requestId = createRequestId("inspection");
+        const operation = createOperationSignal(
+            [previewSessionController.signal, callerSignal],
+            PREVIEW_CONTROL_TIMEOUT_MS,
+            "Inspecting the preview timed out.",
+        );
+
+        try {
+            const result = await requestSandbox(
+                iframeWindow,
+                {
+                    type: "INSPECT_RUNTIME",
+                    requestId,
+                    runId,
+                    tag,
+                    limit,
+                },
+                (data): data is SandboxInspectionResultMessage =>
+                    isRecord(data)
+                    && data.type === "RUNTIME_INSPECTION_RESULT"
+                    && data.requestId === requestId,
+                operation.signal,
+                PREVIEW_CONTROL_TIMEOUT_MS,
+                "[game] sandbox did not return runtime inspection in time",
+            );
+
+            if (
+                result.error
+                || result.runId !== runId
+                || !result.inspection
+                || result.inspection.runId !== runId
+            ) {
+                throw new Error(
+                    result.error
+                        ?? "The sandbox did not inspect the active preview run.",
+                );
+            }
+
+            if (typeof result.inspection.paused === "boolean") {
+                set({ paused: result.inspection.paused });
+            }
+            return result.inspection;
+        } finally {
+            operation.dispose();
+        }
+    },
+    pause() {
+        if (get().stopped) {
+            void get().run();
+            return;
+        }
+
+        const pausePromise = get().setPaused(!(get().paused ?? false));
+        void pausePromise.catch((error: unknown) => {
+            if (isAbortError(error)) return;
+            console.error("[game] Changing pause state failed", error);
+        });
     },
     stop() {
         previewRunCoordinator.cancel();
-        set({ stopped: true });
+        cancelPreviewSession("The preview was stopped.");
+        set({ stopped: true, previewRunId: null, paused: null });
     },
     updateImageDecorations() {
         debug(0, "[monaco] Updating glyph decorations");
@@ -518,37 +722,6 @@ function waitForLayoutTick(signal: AbortSignal): Promise<void> {
     });
 }
 
-function waitForIframeLoad(
-    iframe: HTMLIFrameElement,
-    signal: AbortSignal,
-): Promise<Window> {
-    return new Promise((resolve, reject) => {
-        const timeout = window.setTimeout(() => {
-            cleanup();
-            reject(new Error("[game] iframe did not load in time"));
-        }, PREVIEW_READY_TIMEOUT_MS);
-        const abort = () => {
-            cleanup();
-            reject(signal.reason);
-        };
-        const load = () => {
-            const iframeWindow = iframe.contentWindow;
-            cleanup();
-            if (iframeWindow) resolve(iframeWindow);
-            else reject(new Error("[game] loaded iframe has no content window"));
-        };
-        const cleanup = () => {
-            window.clearTimeout(timeout);
-            iframe.removeEventListener("load", load);
-            signal.removeEventListener("abort", abort);
-        };
-
-        iframe.addEventListener("load", load);
-        if (signal.aborted) abort();
-        else signal.addEventListener("abort", abort, { once: true });
-    });
-}
-
 function waitForIframeReady(signal: AbortSignal): Promise<Window> {
     return new Promise((resolve, reject) => {
         const timeout = window.setTimeout(() => {
@@ -560,9 +733,29 @@ function waitForIframeReady(signal: AbortSignal): Promise<Window> {
             reject(signal.reason);
         };
         const ready = (
-            { origin, data, source }: MessageEvent<{ type?: string }>,
+            {
+                origin,
+                data,
+                source,
+            }: MessageEvent<{ type?: string; protocolVersion?: number }>,
         ) => {
-            if (origin !== SANDBOX_ORIGIN || data?.type !== "READY" || !source) {
+            if (
+                origin !== SANDBOX_ORIGIN || data?.type !== "READY" || !source
+            ) {
+                return;
+            }
+
+            const iframe = useEditor.getState().runtime.iframe
+                ?? document.querySelector<HTMLIFrameElement>("#game-view");
+            if (iframe?.contentWindow !== source) return;
+
+            if (data.protocolVersion !== PREVIEW_PROTOCOL_VERSION) {
+                cleanup();
+                reject(
+                    new Error(
+                        `[game] sandbox protocol ${PREVIEW_PROTOCOL_VERSION} is required; deploy the matching sandbox build`,
+                    ),
+                );
                 return;
             }
 
@@ -579,4 +772,168 @@ function waitForIframeReady(signal: AbortSignal): Promise<Window> {
         if (signal.aborted) abort();
         else signal.addEventListener("abort", abort, { once: true });
     });
+}
+
+function requestSandbox<T>(
+    iframeWindow: Window,
+    request: Record<string, unknown>,
+    matches: (data: unknown) => data is T,
+    signal: AbortSignal,
+    timeoutMs: number,
+    timeoutMessage: string,
+): Promise<T> {
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const timeout = window.setTimeout(() => {
+            finish(() =>
+                reject(new DOMException(timeoutMessage, "TimeoutError"))
+            );
+        }, timeoutMs);
+        const abort = () => {
+            finish(() => reject(signal.reason ?? abortError()));
+        };
+        const message = (event: MessageEvent<unknown>) => {
+            const data = event.data;
+            if (
+                event.origin !== SANDBOX_ORIGIN
+                || event.source !== iframeWindow
+                || !matches(data)
+            ) return;
+
+            finish(() => resolve(data));
+        };
+        const cleanup = () => {
+            window.clearTimeout(timeout);
+            window.removeEventListener("message", message);
+            signal.removeEventListener("abort", abort);
+        };
+        const finish = (settle: () => void) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            settle();
+        };
+
+        window.addEventListener("message", message);
+        if (signal.aborted) {
+            abort();
+            return;
+        }
+        signal.addEventListener("abort", abort, { once: true });
+
+        try {
+            iframeWindow.postMessage(request, SANDBOX_ORIGIN);
+        } catch (error) {
+            finish(() => reject(error));
+        }
+    });
+}
+
+function beginPreviewSession(): AbortSignal {
+    cancelPreviewSession("A newer preview run replaced this session.");
+    previewSessionController = new AbortController();
+    return previewSessionController.signal;
+}
+
+function cancelPreviewSession(message: string): void {
+    if (previewSessionController.signal.aborted) return;
+    previewSessionController.abort(new DOMException(message, "AbortError"));
+}
+
+function createOperationSignal(
+    signals: Array<AbortSignal | undefined>,
+    timeoutMs: number,
+    timeoutMessage: string,
+): { signal: AbortSignal; dispose: () => void } {
+    const controller = new AbortController();
+    const listeners: Array<{ signal: AbortSignal; listener: () => void }> = [];
+    const abortFrom = (signal: AbortSignal) => {
+        if (controller.signal.aborted) return;
+        controller.abort(signal.reason ?? abortError());
+    };
+
+    for (const signal of signals) {
+        if (!signal) continue;
+        if (signal.aborted) {
+            abortFrom(signal);
+            break;
+        }
+
+        const listener = () => abortFrom(signal);
+        signal.addEventListener("abort", listener, { once: true });
+        listeners.push({ signal, listener });
+    }
+
+    const timeout = window.setTimeout(() => {
+        if (controller.signal.aborted) return;
+        controller.abort(new DOMException(timeoutMessage, "TimeoutError"));
+    }, timeoutMs);
+
+    return {
+        signal: controller.signal,
+        dispose() {
+            window.clearTimeout(timeout);
+            for (const { signal, listener } of listeners) {
+                signal.removeEventListener("abort", listener);
+            }
+        },
+    };
+}
+
+function getPreviewWindow(runtimeIframe: HTMLIFrameElement | null): Window {
+    const iframe = runtimeIframe
+        ?? document.querySelector<HTMLIFrameElement>("#game-view");
+    if (!iframe?.isConnected || !iframe.contentWindow) {
+        throw new Error(
+            "The preview sandbox is not available in the current layout.",
+        );
+    }
+    return iframe.contentWindow;
+}
+
+function normalizeInspectionTag(tag: string | undefined): string | undefined {
+    if (tag === undefined) return undefined;
+    if (typeof tag !== "string" || tag.length === 0 || tag.length > 128) {
+        throw new RangeError("tag must contain between 1 and 128 characters.");
+    }
+    if (/\p{Cc}/u.test(tag)) {
+        throw new RangeError("tag cannot contain control characters.");
+    }
+    return tag;
+}
+
+function normalizeInspectionLimit(limit: number | undefined): number {
+    if (limit === undefined) return 0;
+    if (
+        !Number.isInteger(limit)
+        || limit < 0
+        || limit > MAX_PREVIEW_INSPECTION_OBJECTS
+    ) {
+        throw new RangeError(
+            `limit must be an integer between 0 and ${MAX_PREVIEW_INSPECTION_OBJECTS}.`,
+        );
+    }
+    return limit;
+}
+
+function createRequestId(scope: string): string {
+    const randomId = globalThis.crypto?.randomUUID?.()
+        ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    return `${scope}-${randomId}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null;
+}
+
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
+function isAbortError(error: unknown): boolean {
+    return error instanceof DOMException && error.name === "AbortError";
+}
+
+function abortError(): DOMException {
+    return new DOMException("The preview operation was aborted.", "AbortError");
 }
