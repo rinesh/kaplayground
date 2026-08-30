@@ -237,6 +237,8 @@ describe("KAPLAYGROUND WebMCP", () => {
             assert.match(sandbox, new RegExp(`\\b${messageType}\\b`));
         }
         assert.match(sandbox, /protocolVersion:\s*PREVIEW_PROTOCOL_VERSION/);
+        assert.match(sandbox, /import \* as HookModule/);
+        assert.match(sandbox, /module\?\.default\?\.default/);
     });
 
     it("registers the complete editor tool surface", async () => {
