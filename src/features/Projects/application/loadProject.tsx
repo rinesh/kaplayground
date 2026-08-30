@@ -102,6 +102,7 @@ export const loadProject = async (projectKey: string) => {
 
     useProject.setState((state) => ({
         projectGeneration: state.projectGeneration + 1,
+        projectRevision: state.projectRevision + 1,
         projectKey,
         projectWasEdited: false,
         demoKey: null,

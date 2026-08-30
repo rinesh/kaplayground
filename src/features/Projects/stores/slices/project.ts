@@ -74,6 +74,8 @@ function queueProjectPersistenceOperation(
 export interface ProjectSlice {
     /** Increments whenever the active project is replaced. */
     projectGeneration: number;
+    /** Increments whenever the active project's contents change. */
+    projectRevision: number;
     /**
      * Current project associated idb key
      */
@@ -261,6 +263,7 @@ export const createProjectSlice: StateCreator<
     ProjectSlice
 > = (set, get) => ({
     projectGeneration: 0,
+    projectRevision: 0,
     project: {
         name: "Untitled",
         version: "2.0.0",
@@ -286,7 +289,8 @@ export const createProjectSlice: StateCreator<
         }));
     },
     setProject: (project) => {
-        set(() => ({
+        set((state) => ({
+            projectRevision: state.projectRevision + 1,
             project: {
                 ...get().project,
                 ...project,
@@ -442,6 +446,7 @@ export const createProjectSlice: StateCreator<
 
         set((state) => ({
             projectGeneration: state.projectGeneration + 1,
+            projectRevision: state.projectRevision + 1,
             project: {
                 name: name,
                 version: "2.0.0", // fixed project version
@@ -558,11 +563,13 @@ export const createProjectSlice: StateCreator<
         getActiveProject: () => ({
             generation: get().projectGeneration,
             key: get().projectKey,
+            revision: get().projectRevision,
             project: get().project,
         }),
         getActiveIdentity: () => ({
             generation: get().projectGeneration,
             key: get().projectKey,
+            revision: get().projectRevision,
         }),
         snapshotProject: (project) => ({
             ...project,

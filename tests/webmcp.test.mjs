@@ -277,6 +277,7 @@ describe("KAPLAYGROUND WebMCP", () => {
         const state = {
             generation: 1,
             key: null,
+            revision: 1,
             project: {
                 name: "Project A",
                 files: new Map([["main.js", { value: "A" }]]),
@@ -287,6 +288,7 @@ describe("KAPLAYGROUND WebMCP", () => {
             getActiveIdentity: () => ({
                 generation: state.generation,
                 key: state.key,
+                revision: state.revision,
             }),
             snapshotProject: (project) => ({
                 ...project,
@@ -344,6 +346,74 @@ describe("KAPLAYGROUND WebMCP", () => {
         assert.equal(state.key, null);
         assert.equal(state.project.name, "Project B");
         assert.equal(state.project.files.get("main.js").value, "B");
+    });
+
+    it("does not mark edited transient contents saved after a stale write", async () => {
+        const firstWriteStarted = deferred();
+        const releaseFirstWrite = deferred();
+        const writes = [];
+        const deleted = [];
+        const committed = [];
+        let nextId = 0;
+        const state = {
+            generation: 1,
+            key: null,
+            revision: 1,
+            project: {
+                name: "Transient project",
+                files: new Map([["main.js", { value: "v1" }]]),
+            },
+        };
+        const persist = createActiveProjectPersister({
+            getActiveProject: () => state,
+            getActiveIdentity: () => ({
+                generation: state.generation,
+                key: state.key,
+                revision: state.revision,
+            }),
+            snapshotProject: (project) => ({
+                ...project,
+                files: new Map(
+                    [...project.files].map(([path, file]) => [
+                        path,
+                        { ...file },
+                    ]),
+                ),
+            }),
+            generateId: () => `transient-${++nextId}`,
+            writeProject: async (id, snapshot) => {
+                writes.push({ id, snapshot });
+                if (writes.length === 1) {
+                    firstWriteStarted.resolve();
+                    await releaseFirstWrite.promise;
+                }
+            },
+            deleteProject: async (id) => {
+                deleted.push(id);
+            },
+            commitTransientProject: (id) => {
+                committed.push(id);
+                state.key = id;
+            },
+        });
+
+        const staleSave = persist();
+        await firstWriteStarted.promise;
+
+        state.project.files.set("main.js", { value: "v2" });
+        state.revision += 1;
+        releaseFirstWrite.resolve();
+
+        await assert.rejects(staleSave, /active project changed/i);
+        assert.equal(writes[0].snapshot.files.get("main.js").value, "v1");
+        assert.deepEqual(deleted, ["transient-1"]);
+        assert.deepEqual(committed, []);
+        assert.equal(state.key, null);
+
+        await persist();
+        assert.equal(writes[1].snapshot.files.get("main.js").value, "v2");
+        assert.deepEqual(committed, ["transient-2"]);
+        assert.equal(state.key, "transient-2");
     });
 
     it("registers the complete editor tool surface", async () => {

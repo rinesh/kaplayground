@@ -1,6 +1,7 @@
 export interface ActiveProjectIdentity {
     generation: number;
     key: string | null;
+    revision: number;
 }
 
 export interface ActiveProjectState<Project> extends ActiveProjectIdentity {
@@ -28,6 +29,7 @@ export function createActiveProjectPersister<Project, Snapshot>(
         const captured = {
             generation: active.generation,
             key: active.key,
+            revision: active.revision,
             snapshot: dependencies.snapshotProject(active.project),
         };
         const id = captured.key ?? dependencies.generateId(captured.snapshot);
@@ -69,6 +71,7 @@ function assertStillActive(
     if (
         active.generation !== captured.generation
         || active.key !== captured.key
+        || active.revision !== captured.revision
     ) {
         throw new Error("The active project changed while it was saving");
     }
