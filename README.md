@@ -73,8 +73,10 @@ The nineteen tools above are the **current baseline**. The target design treats
 the coach, editor, WebMCP control surface, project state, preview sandbox,
 evidence, and persistence as one proof-carrying co-creation system. Its common
 loop is: orient in one coherent workspace snapshot, make one bounded atomic
-change set, run that exact revision, collect independent evidence, and issue a
-criterion-by-criterion verification receipt.
+change set, run that exact revision, exercise interactive behavior when needed,
+collect independent evidence, and issue a criterion-by-criterion verification
+receipt. Effectful requests are designed to be safely replayable after a lost
+response rather than accidentally applied twice.
 
 The design set is intentionally explicit about what exists today versus what is
 planned:
@@ -83,6 +85,9 @@ planned:
   system constitution, linked abstraction tower, and invariants.
 - [`docs/agent-system/CONTRACTS.md`](./docs/agent-system/CONTRACTS.md) —
   capability, state, transaction, evidence, verification, and compatibility contracts.
+- [`docs/agent-system/OPERATIONS.md`](./docs/agent-system/OPERATIONS.md) —
+  assumption handling, idempotent replay, resource-aware control, runtime exercise,
+  visual evidence, and recovery protocol.
 - [`docs/agent-system/DECISIONS.md`](./docs/agent-system/DECISIONS.md) —
   stable architectural choices and consequences.
 - [`docs/agent-system/ROADMAP.md`](./docs/agent-system/ROADMAP.md) —
@@ -92,9 +97,11 @@ planned:
 
 The migration preserves current tool compatibility while extracting a shared
 capability manifest and domain services. Target capabilities such as coherent
-context queries, atomic multi-file change sets, checkpoints, evidence ledgers,
-and verification receipts are plans until their roadmap milestones and tests
-land; this documentation does not advertise them as shipped behavior.
+context queries, atomic multi-file change sets, idempotent operation journals,
+checkpoints, controlled runtime exercise, evidence ledgers, verification receipts,
+operation retention, and composite fast paths are plans until their roadmap
+milestones and tests land; this documentation does not advertise them as shipped
+behavior.
 
 Run the complete WebMCP verification suite with:
 
