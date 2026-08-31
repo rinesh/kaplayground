@@ -1,5 +1,9 @@
 /// <reference types="webmcp-types" preserve="true" />
 
+import {
+    type AssetBrewCatalogEntry,
+    searchAssetBrewEntries,
+} from "../../data/assetBrewCatalog.ts";
 import { type CodexPlayStep, WEBMCP_AGENT_GUIDE } from "./agentGuide.ts";
 
 const DEFAULT_PREFIX = "kaplayground";
@@ -14,6 +18,11 @@ const MAX_PATH_LENGTH = 512;
 const MAX_ASSET_NAME_LENGTH = 256;
 const MAX_ASSET_KIND_LENGTH = 64;
 const MAX_ASSET_IMPORT_FUNCTION_LENGTH = 2_048;
+const MAX_ASSET_BREW_RESULTS = 100;
+const DEFAULT_ASSET_BREW_RESULTS = 25;
+const MAX_ASSET_BREW_DESCRIPTION_LENGTH = 2_000;
+const MAX_ASSET_BREW_LIST_ITEMS = 64;
+const MAX_ASSET_BREW_LIST_ITEM_LENGTH = 128;
 const TOOL_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,128}$/;
 const NEVER_ABORTED_SIGNAL = new AbortController().signal;
 
@@ -93,6 +102,10 @@ export interface KaplaygroundAssetSummary {
     importFunction?: string;
     sizeBytes?: number;
     source?: "embedded" | "remote" | "blob" | "unknown";
+    metadataTruncated?: boolean;
+}
+
+export interface KaplaygroundAssetBrewSummary extends AssetBrewCatalogEntry {
     metadataTruncated?: boolean;
 }
 
@@ -178,6 +191,9 @@ export interface KaplaygroundAdapter {
     ): WebMCP.MaybePromise<void>;
     listFiles(): WebMCP.MaybePromise<readonly KaplaygroundFileSummary[]>;
     listAssets?(): WebMCP.MaybePromise<readonly KaplaygroundAssetSummary[]>;
+    listAssetBrew?(): WebMCP.MaybePromise<
+        readonly KaplaygroundAssetBrewSummary[]
+    >;
     readFile(path: string): WebMCP.MaybePromise<KaplaygroundFile | null>;
     writeFile(
         path: string,
@@ -550,11 +566,22 @@ export class KaplaygroundWebMCP {
         if (this.adapter.listExamples && this.adapter.openExample) {
             tools.splice(2, 0, this.createOpenExampleTool());
         }
-        if (this.adapter.listAssets) {
+        if (this.adapter.listAssets || this.adapter.listAssetBrew) {
             const listFilesIndex = tools.findIndex((tool) =>
                 tool.name === "list_files"
             );
-            tools.splice(listFilesIndex + 1, 0, this.createListAssetsTool());
+            let insertionIndex = listFilesIndex + 1;
+            if (this.adapter.listAssets) {
+                tools.splice(insertionIndex, 0, this.createListAssetsTool());
+                insertionIndex += 1;
+            }
+            if (this.adapter.listAssetBrew) {
+                tools.splice(
+                    insertionIndex,
+                    0,
+                    this.createSearchAssetBrewTool(),
+                );
+            }
         }
         if (this.adapter.createFile) tools.push(this.createFileTool());
         if (this.adapter.removeFile) tools.push(this.createRemoveFileTool());
@@ -905,6 +932,101 @@ export class KaplaygroundWebMCP {
                     offset,
                     limit,
                     assets: assets.slice(offset, offset + limit),
+                };
+            },
+        };
+    }
+
+    private createSearchAssetBrewTool(): EditorTool {
+        const maximumLimit = Math.min(
+            this.maxAssets,
+            MAX_ASSET_BREW_RESULTS,
+        );
+        const defaultLimit = Math.min(
+            maximumLimit,
+            DEFAULT_ASSET_BREW_RESULTS,
+        );
+
+        return {
+            name: "search_asset_brew",
+            title: "Search the KAPLAYGROUND Asset Brew",
+            description:
+                "Search KAPLAYGROUND's curated Asset Brew for reusable sprites, sounds, and fonts. Returns descriptive metadata and exact loader code without binary data or asset URLs.",
+            inputSchema: {
+                type: "object",
+                properties: {
+                    query: {
+                        type: "string",
+                        maxLength: 120,
+                        description:
+                            "Optional words describing the desired character, object, sound, font, or theme.",
+                    },
+                    kind: {
+                        type: "string",
+                        enum: ["sprite", "sound", "font"],
+                        description: "Optional exact asset kind to return.",
+                    },
+                    tag: {
+                        type: "string",
+                        maxLength: 64,
+                        description:
+                            "Optional exact Asset Brew tag, such as crew, food, objects, or sounds.",
+                    },
+                    offset: { type: "integer", minimum: 0, default: 0 },
+                    limit: {
+                        type: "integer",
+                        minimum: 1,
+                        maximum: maximumLimit,
+                        default: defaultLimit,
+                    },
+                },
+                additionalProperties: false,
+            },
+            annotations: readAnnotations(),
+            execute: async (input, signal) => {
+                const query = optionalBoundedString(
+                    input.query,
+                    "query",
+                    120,
+                ) ?? "";
+                const kind = optionalEnum(
+                    input.kind,
+                    "kind",
+                    ["sprite", "sound", "font"] as const,
+                );
+                const tag = optionalBoundedString(input.tag, "tag", 64) ?? "";
+                const offset = boundedInteger(
+                    input.offset,
+                    "offset",
+                    0,
+                    Number.MAX_SAFE_INTEGER,
+                    0,
+                );
+                const limit = boundedInteger(
+                    input.limit,
+                    "limit",
+                    1,
+                    maximumLimit,
+                    defaultLimit,
+                );
+                const catalog = [
+                    ...await this.adapter.listAssetBrew?.() ?? [],
+                ].map(normalizeAssetBrewSummary);
+                throwIfAborted(signal);
+                const matches = searchAssetBrewEntries(catalog, {
+                    query,
+                    kind,
+                    tag,
+                });
+
+                return {
+                    query: query || null,
+                    kind: kind ?? null,
+                    tag: tag || null,
+                    total: matches.length,
+                    offset,
+                    limit,
+                    assets: matches.slice(offset, offset + limit),
                 };
             },
         };
@@ -1901,6 +2023,114 @@ function normalizeAssetSummary(
         );
     }
     return summary;
+}
+
+function normalizeAssetBrewSummary(
+    asset: KaplaygroundAssetBrewSummary,
+): KaplaygroundAssetBrewSummary {
+    const key = stringValue(asset.key, "assetBrew.key");
+    if (!TOOL_NAME_PATTERN.test(key)) {
+        throw new RangeError(
+            "assetBrew.key must contain 1-128 letters, numbers, dots, underscores, or hyphens.",
+        );
+    }
+
+    const name = stringValue(asset.name, "assetBrew.name");
+    const description = stringValue(
+        asset.description,
+        "assetBrew.description",
+        true,
+    );
+    const kind = optionalEnum(
+        asset.kind,
+        "assetBrew.kind",
+        ["sprite", "sound", "font"] as const,
+    );
+    if (kind === undefined) {
+        throw new TypeError("assetBrew.kind is required.");
+    }
+
+    const tags = normalizeAssetBrewList(asset.tags, "assetBrew.tags");
+    const searchTerms = normalizeAssetBrewList(
+        asset.searchTerms,
+        "assetBrew.searchTerms",
+    );
+    const animations = normalizeAssetBrewList(
+        asset.animations,
+        "assetBrew.animations",
+    );
+    const importFunction = stringValue(
+        asset.importFunction,
+        "assetBrew.importFunction",
+    );
+    const outlinedImportFunction = asset.outlinedImportFunction === undefined
+        ? undefined
+        : stringValue(
+            asset.outlinedImportFunction,
+            "assetBrew.outlinedImportFunction",
+        );
+    const summary: KaplaygroundAssetBrewSummary = {
+        key,
+        name: name.slice(0, MAX_ASSET_NAME_LENGTH),
+        description: description.slice(
+            0,
+            MAX_ASSET_BREW_DESCRIPTION_LENGTH,
+        ),
+        kind,
+        tags: tags.values,
+        searchTerms: searchTerms.values,
+        animations: animations.values,
+        importFunction: importFunction.slice(
+            0,
+            MAX_ASSET_IMPORT_FUNCTION_LENGTH,
+        ),
+    };
+    if (outlinedImportFunction !== undefined) {
+        summary.outlinedImportFunction = outlinedImportFunction.slice(
+            0,
+            MAX_ASSET_IMPORT_FUNCTION_LENGTH,
+        );
+    }
+    if (
+        asset.metadataTruncated === true
+        || name.length > MAX_ASSET_NAME_LENGTH
+        || description.length > MAX_ASSET_BREW_DESCRIPTION_LENGTH
+        || importFunction.length > MAX_ASSET_IMPORT_FUNCTION_LENGTH
+        || (outlinedImportFunction?.length ?? 0)
+            > MAX_ASSET_IMPORT_FUNCTION_LENGTH
+        || tags.truncated
+        || searchTerms.truncated
+        || animations.truncated
+    ) {
+        summary.metadataTruncated = true;
+    }
+    return summary;
+}
+
+function normalizeAssetBrewList(
+    values: readonly string[],
+    name: string,
+): { values: string[]; truncated: boolean } {
+    if (!Array.isArray(values)) {
+        throw new TypeError(`${name} must be an array of strings.`);
+    }
+    const source = [...values];
+    const normalized = source
+        .slice(0, MAX_ASSET_BREW_LIST_ITEMS)
+        .map((value, index) =>
+            stringValue(value, `${name}[${index}]`).slice(
+                0,
+                MAX_ASSET_BREW_LIST_ITEM_LENGTH,
+            )
+        );
+    return {
+        values: normalized,
+        truncated: source.length > MAX_ASSET_BREW_LIST_ITEMS
+            || source.some((value) =>
+                typeof value === "string"
+                && value.length > MAX_ASSET_BREW_LIST_ITEM_LENGTH
+            ),
+    };
 }
 
 function findNewestRunId(

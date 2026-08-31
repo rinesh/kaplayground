@@ -83,6 +83,64 @@ function createAdapter() {
             url: "blob:https://example.test/zapper",
         },
     ];
+    const assetBrew = [
+        {
+            key: "bean",
+            name: "Bean",
+            description: "A bean character.",
+            kind: "sprite",
+            tags: ["crew"],
+            searchTerms: ["player"],
+            animations: [],
+            importFunction: "loadSprite(\"bean\", \"/crew/bean.png\");",
+            outlinedImportFunction:
+                "loadSprite(\"bean-o\", \"/crew/bean-o.png\");",
+            url: "https://assets.example/bean.png",
+        },
+        {
+            key: "cloud",
+            name: "Cloud",
+            description: "A cloud in the sky.",
+            kind: "sprite",
+            tags: ["objects"],
+            searchTerms: [],
+            animations: [],
+            importFunction: "loadSprite(\"cloud\", \"/crew/cloud.png\");",
+        },
+        {
+            key: "wizarding",
+            name: "Wizarding",
+            description: "Bean Wizard is casting math.",
+            kind: "sprite",
+            tags: ["emojis"],
+            searchTerms: ["bean", "magic"],
+            animations: ["anim"],
+            importFunction:
+                "loadSprite(\"wizarding\", \"/crew/wizarding.png\", { anims: {} });",
+        },
+        {
+            key: "mark_voice",
+            name: "Mark Voice",
+            description: "Mark's voice.",
+            kind: "sound",
+            tags: ["sounds", "crew"],
+            searchTerms: ["speech"],
+            animations: [],
+            importFunction:
+                "loadSound(\"mark_voice\", \"/crew/mark_voice.wav\");",
+        },
+        {
+            key: "happy",
+            name: "Happy",
+            description: "A happy bitmap font.",
+            kind: "font",
+            tags: ["fonts"],
+            searchTerms: ["typeface"],
+            animations: [],
+            importFunction:
+                "loadBitmapFont(\"happy\", \"/crew/happy.png\", 28, 37);",
+        },
+    ];
     const consoleEntries = [
         {
             timestamp: 1,
@@ -158,6 +216,7 @@ function createAdapter() {
     return {
         files,
         assets,
+        assetBrew,
         consoleEntries,
         state,
         calls,
@@ -196,6 +255,7 @@ function createAdapter() {
             },
             listFiles: () => [...files.values()],
             listAssets: () => assets,
+            listAssetBrew: () => assetBrew,
             readFile: (path) => files.get(path) ?? null,
             writeFile: (path, content, expectedProjectRevision) => {
                 assertProjectRevision(expectedProjectRevision);
@@ -642,6 +702,7 @@ describe("KAPLAYGROUND WebMCP", () => {
             "kaplayground_get_project",
             "kaplayground_list_files",
             "kaplayground_list_assets",
+            "kaplayground_search_asset_brew",
             "kaplayground_read_file",
             "kaplayground_replace_file",
             "kaplayground_create_file",
@@ -662,6 +723,11 @@ describe("KAPLAYGROUND WebMCP", () => {
         );
         assert.equal(guide.title, "KAPLAYGROUND coding-agent workflow");
         assert.match(guide.starterPrompt, /kaplayground_get_project/);
+        assert.match(guide.starterPrompt, /kaplayground_search_asset_brew/);
+        assert.equal(
+            guide.assetBrew.tool,
+            "kaplayground_search_asset_brew",
+        );
         assert.doesNotMatch(guide.starterPrompt, /gameSettings/);
         assert.ok(guide.workflow.length >= 9);
     });
@@ -689,7 +755,7 @@ describe("KAPLAYGROUND WebMCP", () => {
         applicationReady.resolve();
         await bridge.ready;
         assert.equal(bridge.status, "ready");
-        assert.equal(context.registered.length, 18);
+        assert.equal(context.registered.length, 19);
     });
 
     it("lets the agent find and open an exact game starting point", async () => {
@@ -1218,6 +1284,58 @@ describe("KAPLAYGROUND WebMCP", () => {
         assert.equal("url" in result.assets[0], false);
     });
 
+    it("searches Asset Brew metadata and ranks the strongest semantic match", async () => {
+        const context = new FakeModelContext();
+        const { adapter } = createAdapter();
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+        await bridge.ready;
+
+        const result = await execute(
+            context,
+            "kaplayground_search_asset_brew",
+            {
+                query: "magic bean",
+                kind: "sprite",
+                limit: 10,
+            },
+        );
+
+        assert.equal(result.query, "magic bean");
+        assert.equal(result.kind, "sprite");
+        assert.equal(result.total, 2);
+        assert.equal(result.assets[0].key, "wizarding");
+        assert.deepEqual(result.assets[0].animations, ["anim"]);
+        assert.match(result.assets[0].importFunction, /wizarding\.png/);
+        assert.equal("url" in result.assets[0], false);
+    });
+
+    it("filters Asset Brew by kind and exact tag", async () => {
+        const context = new FakeModelContext();
+        const { adapter } = createAdapter();
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+        await bridge.ready;
+
+        const result = await execute(
+            context,
+            "kaplayground_search_asset_brew",
+            {
+                query: "voice",
+                kind: "sound",
+                tag: "sounds",
+            },
+        );
+
+        assert.equal(result.total, 1);
+        assert.equal(result.assets[0].key, "mark_voice");
+        assert.match(result.assets[0].importFunction, /^loadSound/);
+    });
+
     it("bounds strings in asset metadata", async () => {
         const context = new FakeModelContext();
         const { adapter } = createAdapter();
@@ -1464,7 +1582,7 @@ describe("KAPLAYGROUND WebMCP", () => {
         await bridge.ready;
 
         assert.equal(connections.at(-1).status, "ready");
-        assert.equal(connections.at(-1).toolNames.length, 18);
+        assert.equal(connections.at(-1).toolNames.length, 19);
 
         await execute(context, "kaplayground_get_project");
         assert.deepEqual(

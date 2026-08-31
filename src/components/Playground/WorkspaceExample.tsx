@@ -6,6 +6,8 @@ import useConsolePane from "../../hooks/useConsolePane";
 import { useCodexPlayGuide } from "../../integrations/webmcp/useCodexPlayGuide.ts";
 import { allotmentStorage } from "../../util/allotmentStorage.ts";
 import { cn } from "../../util/cn";
+import { scrollbarSize } from "../../util/scrollbarSize.ts";
+import { AssetBrew } from "../AssetBrew/AssetBrew.tsx";
 import { ConsoleView } from "../ConsoleView/ConsoleView.tsx";
 import { Toolbar } from "../Toolbar";
 import ExampleList from "../Toolbar/ExampleList";
@@ -26,6 +28,8 @@ export const WorkspaceExample: FC<Props> = (props) => {
         "codex-play",
     );
     const consoleAllotmentRef = useRef<AllotmentHandle>(null);
+    const { scrollbarThinHeight } = scrollbarSize();
+    const assetBrewHeight = 72 + scrollbarThinHeight();
     const {
         consoleVisible,
         consoleExpandedSize,
@@ -89,7 +93,31 @@ export const WorkspaceExample: FC<Props> = (props) => {
                             className="p-px pt-0"
                         >
                             <Allotment.Pane>
-                                <MonacoEditor onMount={props.onMount} />
+                                <Allotment
+                                    vertical
+                                    defaultSizes={getAllotmentSize("brew", [
+                                        9999,
+                                        assetBrewHeight,
+                                    ])}
+                                    onChange={e => setAllotmentSize("brew", e)}
+                                    onDragStart={handleDragStart}
+                                    onDragEnd={handleDragEnd}
+                                >
+                                    <Allotment.Pane minSize={120}>
+                                        <MonacoEditor
+                                            onMount={props.onMount}
+                                        />
+                                    </Allotment.Pane>
+                                    <Allotment.Pane
+                                        className="pt-px"
+                                        snap
+                                        maxSize={assetBrewHeight + 1}
+                                        minSize={assetBrewHeight}
+                                        preferredSize={assetBrewHeight}
+                                    >
+                                        <AssetBrew />
+                                    </Allotment.Pane>
+                                </Allotment>
                             </Allotment.Pane>
                             <Allotment.Pane
                                 className="pt-px"

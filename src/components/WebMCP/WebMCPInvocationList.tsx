@@ -39,7 +39,8 @@ export const WebMCPInvocationList = ({ className }: Props) => {
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                         <span
                             className={cn("size-2 shrink-0 rounded-full", {
-                                "bg-warning animate-pulse": entry.status === "running",
+                                "bg-warning animate-pulse":
+                                    entry.status === "running",
                                 "bg-success": entry.status === "succeeded",
                                 "bg-error": entry.status === "failed",
                             })}
@@ -97,6 +98,7 @@ const friendlyActions: Record<string, string> = {
     kaplayground_get_diagnostics: "Checking for mistakes",
     kaplayground_get_console: "Making sure the game works",
     kaplayground_list_assets: "Looking through the toy box",
+    kaplayground_search_asset_brew: "Finding the right game asset",
     kaplayground_save_project: "Saving your game",
 };
 

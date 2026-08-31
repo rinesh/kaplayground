@@ -1,6 +1,7 @@
 /** Connects browser WebMCP tools to KAPLAYGROUND's live editor stores. */
 import { Decode } from "console-feed";
 import { SANDBOX_ORIGIN } from "../../config/common";
+import { assetBrewCatalog } from "../../data/assetBrewCatalog.ts";
 import { demos, getDemo } from "../../data/demos.ts";
 import { waitForPlaygroundReady } from "../../features/Projects/application/playgroundReadiness";
 import type { FileKind } from "../../features/Projects/models/FileKind";
@@ -210,6 +211,10 @@ export function registerKaplaygroundWebMCP(): () => void {
                         };
                     },
                 );
+            },
+
+            listAssetBrew() {
+                return assetBrewCatalog;
             },
 
             readFile(path) {

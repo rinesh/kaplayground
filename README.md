@@ -41,7 +41,7 @@ The full code editor stays beside the game for anyone who wants it, while techni
 
 ## WebMCP
 
-This fork registers sixteen `kaplayground_*` tools through the browser's WebMCP
+This fork registers nineteen `kaplayground_*` tools through the browser's WebMCP
 API after IndexedDB, esbuild, and the active project are ready. File mutations
 require the opaque project revision and, where applicable, the content revision
 returned by the read tools, so an agent cannot write through a project switch or
@@ -51,8 +51,9 @@ silently overwrite a newer editor change.
 verify workflow, so the user-facing coach can stay simple while the tool contract
 remains safe and explicit.
 
-KAPLAYGROUND-specific tools can persist a transient project, list bounded asset
-metadata, and inspect a bounded shallow snapshot of the running game. Preview
+KAPLAYGROUND-specific tools can persist a transient project, list bounded
+project-asset metadata, search the curated Asset Brew catalog for exact loader
+code, and inspect a bounded shallow snapshot of the running game. Preview
 runs resolve only after the sandbox acknowledges module execution, pause changes
 are explicit and acknowledged, and console reads are scoped to a preview run.
 Diagnostic responses include `available`, so a missing Monaco instance is not

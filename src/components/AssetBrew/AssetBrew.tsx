@@ -1,61 +1,12 @@
-import { assets, type CrewItem, type Tag } from "@kaplayjs/crew";
+import { assets } from "@kaplayjs/crew";
 import { useMemo, useRef, useState } from "react";
+import {
+    assetBrewCatalog,
+    searchAssetBrewEntries,
+} from "../../data/assetBrewCatalog";
 import { useIsScrolling } from "../../hooks/useIsScrolling";
 import { cn } from "../../util/cn";
 import { AssetBrewItem } from "./AssetBrewItem";
-
-const preferredOrder = [
-    "bean",
-    "bean_voice",
-    "mark",
-    "mark_voice",
-    "ghosty",
-    "ghostiny",
-    "bobo",
-    "bag",
-    "kat",
-    "tga",
-    "burpman",
-    "burp",
-];
-const preferredTagsOrder: Tag[] = [
-    "crew",
-    "animals",
-    "food",
-    "objects",
-    "tiles",
-    "icons",
-    "ui",
-    "emojis",
-    "books",
-    "brand",
-];
-
-const assetKeys = Object.keys(assets).sort((a, b) => {
-    const assetA = assets[a as keyof typeof assets];
-    const assetB = assets[b as keyof typeof assets];
-
-    const prefA = preferredOrder.indexOf(a);
-    const prefB = preferredOrder.indexOf(b);
-    if (prefA != -1 || prefB != -1) {
-        if (prefA == -1) return 1;
-        if (prefB == -1) return -1;
-        return prefA - prefB;
-    }
-
-    const tagRank = (asset: CrewItem) => {
-        if (!asset?.tags) return Infinity;
-        const ranks = asset.tags
-            .map(tag => preferredTagsOrder.indexOf(tag))
-            .filter(i => i != -1);
-        return ranks.length ? Math.min(...ranks) : Infinity;
-    };
-    const rankA = tagRank(assetA);
-    const rankB = tagRank(assetB);
-    if (rankA != rankB) return rankA - rankB;
-
-    return a.localeCompare(b);
-});
 
 export const AssetBrew = () => {
     const [search, setSearch] = useState("");
@@ -63,24 +14,11 @@ export const AssetBrew = () => {
     const isScrolling = useIsScrolling(scrollRef);
 
     const assetList = useMemo(() => {
-        return assetKeys.filter((key) => {
-            const k = key as keyof typeof assets;
-            const asset = assets[k];
-            const searchValue = search.toLowerCase();
-
-            if (search) {
-                return key.includes(searchValue)
-                    || asset?.name.includes(searchValue)
-                    || (asset?.searchTerms ?? []).some(term =>
-                        term.includes(searchValue)
-                    )
-                    || (asset?.tags as string[])?.some(tag =>
-                        tag.includes(searchValue)
-                    );
-            }
-
-            return asset.kind != "Font";
-        });
+        return searchAssetBrewEntries(assetBrewCatalog, { query: search })
+            .filter((asset) =>
+                search.trim().length > 0 || asset.kind !== "font"
+            )
+            .map((asset) => asset.key);
     }, [search]);
 
     return (
@@ -95,11 +33,13 @@ export const AssetBrew = () => {
                 >
                     <div className="sticky -left-2 -m-2 -mr-1 p-2 pr-1 bg-base-200 rounded-r-3xl z-10">
                         <input
+                            type="search"
+                            aria-label="Search Asset Brew"
                             className={"flex items-center justify-center bg-base-300 rounded-lg min-h-14 w-40 input"}
-                            defaultValue={""}
-                            placeholder={"Search..."}
+                            value={search}
+                            placeholder="Search assets..."
                             onInput={(e) => {
-                                setSearch((e.target as any).value);
+                                setSearch(e.currentTarget.value);
                             }}
                         >
                         </input>
