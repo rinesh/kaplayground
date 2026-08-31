@@ -833,6 +833,7 @@ export class KaplaygroundWebMCP {
             inputSchema: emptyObjectSchema(),
             annotations: readAnnotations(),
             execute: async (_input, signal) => {
+                await waitWithAbort(this.ready, signal);
                 throwIfAborted(signal);
                 return toSerializable(createWebMCPAgentGuide({
                     prefix: this.prefix,
@@ -2316,6 +2317,27 @@ function throwIfAborted(signal: AbortSignal): void {
     if (!signal.aborted) return;
     if (signal.reason instanceof Error) throw signal.reason;
     throw new DOMException("The WebMCP tool call was aborted.", "AbortError");
+}
+
+async function waitWithAbort<T>(
+    promise: Promise<T>,
+    signal: AbortSignal,
+): Promise<T> {
+    throwIfAborted(signal);
+
+    return await new Promise<T>((resolve, reject) => {
+        const abort = () => {
+            try {
+                throwIfAborted(signal);
+            } catch (error) {
+                reject(error);
+            }
+        };
+        signal.addEventListener("abort", abort, { once: true });
+        void promise.then(resolve, reject).finally(() => {
+            signal.removeEventListener("abort", abort);
+        });
+    });
 }
 
 function errorMessage(error: unknown): string {

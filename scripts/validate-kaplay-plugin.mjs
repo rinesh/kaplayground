@@ -16,8 +16,14 @@ const skillDirectory = resolve(
     repositoryRoot,
     "plugins/kaplayground/skills/kaplay",
 );
+const pluginVersion = "1.5.1";
+const publishedPluginVersion = "1.5.0";
 const directMarketplaceCommand =
-    "codex plugin marketplace add rinesh/kaplayground --ref kaplayground-plugin-v1.5.0";
+    `codex plugin marketplace add rinesh/kaplayground --ref kaplayground-plugin-v${publishedPluginVersion}`;
+const aggregateMarketplaceCommand =
+    "codex plugin marketplace add rinesh/game-creator --ref main";
+const aggregateMarketplaceUpgradeCommand =
+    "codex plugin marketplace upgrade game-creator";
 const failures = [];
 
 function read(relativePath) {
@@ -188,7 +194,10 @@ const webmcpReference = read(
 
 check(packageMetadata.version === "2.5.3", "app version must remain 2.5.3");
 check(pluginMetadata.name === "kaplayground", "plugin name must be kaplayground");
-check(pluginMetadata.version === "1.5.0", "plugin version must be 1.5.0");
+check(
+    pluginMetadata.version === pluginVersion,
+    `plugin version must be ${pluginVersion}`,
+);
 check(pluginMetadata.skills === "./skills/", "plugin must expose ./skills/");
 check(!("apps" in pluginMetadata), "skills-only plugin must not declare apps");
 check(
@@ -241,8 +250,17 @@ check(
     "README must identify the canonical plugin directory",
 );
 check(
-    readme.includes(directMarketplaceCommand),
-    "README must document the immutable direct marketplace command",
+    readme.includes(directMarketplaceCommand) &&
+        readme.includes(aggregateMarketplaceCommand) &&
+        readme.includes(aggregateMarketplaceUpgradeCommand),
+    "README must document the immutable direct and refreshable aggregate marketplace commands",
+);
+check(
+    readme.includes("tag is frozen") &&
+        readme.includes("refreshable aggregate channel") &&
+        readme.includes("not installable by tag") &&
+        readme.includes("repository policy fields do not override workspace policy"),
+    "README must distinguish the update channel, frozen tag, and ChatGPT workspace policy",
 );
 check(
     readme.includes("Choose one marketplace source") &&

@@ -41,6 +41,22 @@ class FakeModelContext extends EventTarget {
     }
 }
 
+class DelayedRegistrationModelContext extends FakeModelContext {
+    constructor(delayedToolName) {
+        super();
+        this.delayedToolName = delayedToolName;
+        this.delayReached = deferred();
+        this.releaseDelay = deferred();
+    }
+
+    async registerTool(tool, options) {
+        this.registered.push({ tool, options });
+        if (tool.name !== this.delayedToolName) return;
+        this.delayReached.resolve();
+        await this.releaseDelay.promise;
+    }
+}
+
 const PROJECT_REVISION = "project-revision-1";
 const FULL_TOOL_NAMES = WEBMCP_TOOL_ORDER.map((name) =>
     `kaplayground_${name}`
@@ -747,6 +763,51 @@ describe("KAPLAYGROUND WebMCP", () => {
                 "failure-recovery",
             ],
         );
+    });
+
+    it("waits for registration before returning the agent guide", async () => {
+        const context = new DelayedRegistrationModelContext(
+            "kaplayground_get_reference",
+        );
+        const { adapter } = createAdapter();
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+
+        await context.delayReached.promise;
+        assert.deepEqual(bridge.toolNames, [
+            "kaplayground_get_agent_guide",
+        ]);
+
+        let guideSettled = false;
+        const guidePromise = execute(
+            context,
+            "kaplayground_get_agent_guide",
+        ).finally(() => {
+            guideSettled = true;
+        });
+        const abortController = new AbortController();
+        const abortedGuidePromise = context.tool(
+            "kaplayground_get_agent_guide",
+        ).execute({}, { signal: abortController.signal });
+        const abortedGuideAssertion = assert.rejects(
+            abortedGuidePromise,
+            (error) => error?.name === "AbortError",
+        );
+        abortController.abort();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        const settledBeforeRelease = guideSettled;
+
+        await abortedGuideAssertion;
+
+        context.releaseDelay.resolve();
+        const guide = await guidePromise;
+        await bridge.ready;
+
+        assert.equal(settledBeforeRelease, false);
+        assert.deepEqual(guide.availableTools, bridge.toolNames);
+        assert.deepEqual(guide.availableTools, FULL_TOOL_NAMES);
     });
 
     it("derives guide capabilities and workflow blockers from a reduced adapter", async () => {

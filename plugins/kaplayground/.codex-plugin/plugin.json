@@ -1,6 +1,6 @@
 {
   "name": "kaplayground",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Create, edit, debug, and verify KAPLAY games in a WebMCP-enabled Kaplayground page.",
   "author": {
     "name": "Rinesh",

@@ -53,15 +53,32 @@ operations that the page does not expose. The app-owned live guide and focused
 references remain the zero-install entry point and the authority for the
 current page contract.
 
-The plugin is optional. To add its canonical marketplace directly, run:
+The plugin is optional. The last published direct snapshot is immutable 1.5.0:
 
 ```sh
 codex plugin marketplace add rinesh/kaplayground --ref kaplayground-plugin-v1.5.0
 ```
 
-The same `kaplayground` plugin is also advertised by the `rinesh/game-creator`
-marketplace. Choose one marketplace source and do not install the plugin from
-both, because both sources register the same `kaplay` skill.
+That tag is frozen and will remain on 1.5.0. The source tree is prepared for
+1.5.1, but it is not installable by tag until an authorized release creates the
+tag from the exact green commit. The `rinesh/game-creator` marketplace uses its
+`main` branch as the refreshable aggregate channel, so it can repin a new
+validated Kaplayground release without changing this command:
+
+```sh
+codex plugin marketplace add rinesh/game-creator --ref main
+```
+
+Refresh that aggregate later with:
+
+```sh
+codex plugin marketplace upgrade game-creator
+```
+
+Choose one marketplace source and do not install the plugin from both, because
+both sources register the same `kaplayground` plugin and `kaplay` skill. For
+ChatGPT workspace imports, configure plugin installation and authentication in
+Workspace settings; repository policy fields do not override workspace policy.
 
 `kaplayground_get_agent_guide` advertises Contract 1.1 and guide version 5 with
 the tools, capability groups, and workflow steps available in the current

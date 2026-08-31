@@ -4,7 +4,7 @@ description: Create, edit, debug, and verify KAPLAY games in a WebMCP-enabled KA
 license: MIT
 metadata:
   author: rinesh
-  version: 1.5.0
+  version: 1.5.1
   kaplayground-contract-minimum: "1.1"
   kaplayground-contract-tested-through: "1.x"
   tags: [game, 2d, kaplay, kaplayground, webmcp, browser-game]
