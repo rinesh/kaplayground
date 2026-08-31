@@ -46,12 +46,12 @@ const webMCPExample = {
     category: "basics",
     group: "basics",
     description:
-        "Grab the apples, then ask Codex to change the colors, rules, or character while you play.",
+        "Race through a moonlit orchard, then ask Codex to transform its colors, rules, or character while you play.",
     code: `// Want a different game? Ask Codex to change these values.
 const gameSettings = {
-    title: "Sweet Bean Dreams",
-    backgroundColor: "#f7a8b8",
-    beanColor: "#ff69b4",
+    title: "Moonlit Apple Run",
+    backgroundColor: "#0d1630",
+    beanColor: "#8ff1d6",
     playerSpeed: 260,
     goal: 5,
     applesAtOnce: 3,
@@ -93,15 +93,15 @@ add([
                 width: Math.max(0, width() - 24),
                 height: Math.max(0, height() - 24),
                 radius: 24,
-                color: rgb(255, 226, 235),
-                outline: { width: 2, color: rgb(255, 255, 255) },
+                color: rgb(20, 34, 65),
+                outline: { width: 2, color: rgb(57, 86, 125) },
             });
             drawRect({
                 pos: vec2(13, 13),
                 width: Math.max(0, width() - 26),
                 height: Math.min(78, Math.max(0, height() - 26)),
                 radius: 23,
-                color: rgb(255, 196, 216),
+                color: rgb(28, 48, 86),
             });
             decorations.forEach(([x, y, radius, dotColor]) => {
                 drawCircle({
@@ -121,13 +121,13 @@ const title = add([
         width: Math.max(140, width() - 48),
     }),
     pos(28, 22),
-    color("#7c3f67"),
+    color("#f8e7a1"),
 ]);
 
 const scoreLabel = add([
     text("", { size: 15 }),
     pos(29, 58),
-    color("#b04c7c"),
+    color("#8ee3ef"),
 ]);
 
 const controls = add([
@@ -138,7 +138,7 @@ const controls = add([
     }),
     anchor("bot"),
     pos(width() / 2, height() - 20),
-    color("#8a5673"),
+    color("#b7c9df"),
 ]);
 
 let score = 0;
@@ -154,14 +154,11 @@ function randomPlayPosition() {
     );
 }
 
-const normalPlayerScale = clamp(Math.min(width(), height()) / 360, 0.8, 1.35);
-let growUntil = 0;
-
 const player = add([
     sprite("bean"),
     pos(randomPlayPosition()),
     anchor("center"),
-    scale(normalPlayerScale),
+    scale(clamp(Math.min(width(), height()) / 360, 0.8, 1.35)),
     color(gameSettings.beanColor),
     area({ scale: 0.75, isSensor: true }),
     rotate(0),
@@ -193,152 +190,8 @@ function fillApples() {
     while (get("snack").length < wanted) addApple();
 }
 
-let cloudMessage = null;
-
-function showCloudMessage() {
-    const box = add([
-        rect(Math.min(390, width() - 48), 58, { radius: 16 }),
-        pos(width() / 2, 110),
-        anchor("center"),
-        color("#6d28d9"),
-        outline(3, color("#ddd6fe")),
-        z(45),
-    ]);
-    const label = add([
-        text("The cloud sneezed—apple avalanche!", {
-            size: 16,
-            align: "center",
-            width: Math.min(350, width() - 72),
-        }),
-        pos(width() / 2, 110),
-        anchor("center"),
-        color("#ffffff"),
-        z(46),
-    ]);
-
-    if (cloudMessage) {
-        destroy(cloudMessage.box);
-        destroy(cloudMessage.label);
-    }
-
-    const message = { box, label };
-    cloudMessage = message;
-    wait(1.8, () => {
-        if (cloudMessage === message) {
-            destroy(box);
-            destroy(label);
-            cloudMessage = null;
-        }
-    });
-}
-
-function oppositeCloudPosition() {
-    const bounds = playArea();
-    return vec2(
-        player.pos.x < width() / 2 ? bounds.right : bounds.left,
-        player.pos.y < height() / 2 ? bounds.bottom : bounds.top,
-    );
-}
-
-const sleepyCloud = add([
-    circle(24),
-    pos(oppositeCloudPosition()),
-    anchor("center"),
-    color("#8b5cf6"),
-    area({ scale: 1.15, isSensor: true }),
-    z(8),
-    "sleepy-cloud",
-    { chaseSpeed: 48, nextBumpAt: 0 },
-]);
-
-sleepyCloud.add([
-    circle(20),
-    pos(-22, 0),
-    anchor("center"),
-    color("#a78bfa"),
-]);
-
-sleepyCloud.add([
-    circle(23),
-    pos(2, -9),
-    anchor("center"),
-    color("#a78bfa"),
-]);
-
-sleepyCloud.add([
-    circle(18),
-    pos(25, 1),
-    anchor("center"),
-    color("#a78bfa"),
-]);
-
-sleepyCloud.add([
-    text("–  –", { size: 16 }),
-    pos(0, 2),
-    anchor("center"),
-    color("#4c1d95"),
-]);
-
-sleepyCloud.add([
-    text("z z", { size: 12 }),
-    pos(24, -32),
-    anchor("center"),
-    color("#6d28d9"),
-]);
-
-sleepyCloud.onUpdate(() => {
-    if (!won && sleepyCloud.pos.dist(player.pos) > 8) {
-        sleepyCloud.moveTo(player.pos, sleepyCloud.chaseSpeed);
-    }
-});
-
-sleepyCloud.onCollide("player", () => {
-    if (won || time() < sleepyCloud.nextBumpAt) return;
-    sleepyCloud.nextBumpAt = time() + 2.5;
-    get("snack").forEach((apple) => {
-        apple.pos = randomPlayPosition();
-    });
-    showCloudMessage();
-    sleepyCloud.pos = oppositeCloudPosition();
-});
-
 function updateScore() {
     scoreLabel.text = "Apples  " + score + " / " + gameSettings.goal;
-}
-
-function cheerfulBurst(position) {
-    const burstColors = [
-        rgb(255, 92, 162),
-        rgb(255, 201, 71),
-        rgb(125, 211, 252),
-        rgb(167, 139, 250),
-        rgb(134, 239, 172),
-    ];
-
-    for (let index = 0; index < 24; index++) {
-        const burstAngle = rand(0, Math.PI * 2);
-        const dot = add([
-            circle(rand(2, 5)),
-            pos(position),
-            anchor("center"),
-            color(choose(burstColors)),
-            opacity(1),
-            z(30),
-            lifespan(0.8, { fade: 0.35 }),
-            {
-                velocity: vec2(
-                    Math.cos(burstAngle),
-                    Math.sin(burstAngle),
-                ).scale(rand(90, 210)),
-            },
-            "celebration-dot",
-        ]);
-
-        dot.onUpdate(() => {
-            dot.move(dot.velocity);
-            dot.velocity = dot.velocity.scale(0.94);
-        });
-    }
 }
 
 function celebrate() {
@@ -349,8 +202,8 @@ function celebrate() {
         rect(Math.max(80, Math.min(360, width() - 48)), 92, { radius: 18 }),
         pos(center()),
         anchor("center"),
-        color("#5b4fc7"),
-        outline(3, color("#c4b5fd")),
+        color("#244b72"),
+        outline(3, color("#8ee3ef")),
         z(50),
     ]);
     winMessage.add([
@@ -372,8 +225,6 @@ player.onCollide("snack", (apple) => {
     play("pop", { volume: 0.35 });
     score += 1;
     updateScore();
-    cheerfulBurst(player.pos);
-    growUntil = time() + 0.3;
     addKaboom(player.pos);
     if (score >= gameSettings.goal) celebrate();
     else wait(0, fillApples);
@@ -384,16 +235,6 @@ onUpdate("snack", (apple) => {
 });
 
 player.onUpdate(() => {
-    const targetScale = time() < growUntil
-        ? normalPlayerScale * 1.35
-        : normalPlayerScale;
-    const nextScale = lerp(
-        player.scale.x,
-        targetScale,
-        clamp(dt() * 14, 0, 1),
-    );
-    player.scale = vec2(nextScale);
-
     const direction = vec2(
         (isKeyDown("right") || isKeyDown("d") ? 1 : 0)
             - (isKeyDown("left") || isKeyDown("a") ? 1 : 0),

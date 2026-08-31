@@ -337,6 +337,15 @@ describe("coding-agent play guides", () => {
         for (const step of guide.steps.filter((step) => step.prompt)) {
             assert.match(step.prompt, /@Browser/);
         }
+
+        const demoSource = readFileSync(
+            new URL("../src/data/demos.ts", import.meta.url),
+            "utf8",
+        );
+        assert.match(demoSource, /Moonlit Apple Run/);
+        assert.doesNotMatch(demoSource, /title: "Sweet Bean Dreams"/);
+        assert.doesNotMatch(demoSource, /sleepy-cloud/);
+        assert.doesNotMatch(demoSource, /cheerfulBurst/);
     });
 
     it("creates a complete, example-specific prompt path for every generated example", () => {
