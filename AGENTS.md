@@ -42,23 +42,17 @@ An absent, malformed, older, or different-major contract is inspection-only. Mis
 
 Screenshots, gameplay input, iframe evaluation, asset upload, project rename or export, arbitrary saved-project creation or selection, filesystem access, and command execution are browser- or host-owned operations rather than WebMCP capabilities.
 
-## Plugin distribution boundary
+## Plugin release boundary
 
-The separate `rinesh/game-creator` repository owns Phaser and Three.js workflows. It must not contain a copy of `skills/kaplay`, the Kaplayground contract fixtures, or local KAPLAY routing. Its Codex marketplace may aggregate this plugin through a remote `git-subdir` source pinned to the exact immutable Kaplayground commit.
-
-That marketplace entry is a distribution reference, not an npm, runtime, build, or source dependency. Kaplayground remains usable without `game-creator`, and `game-creator` remains usable for Phaser and Three.js without Kaplayground.
+This repository is the sole source and distribution owner for the `kaplayground` plugin and `kaplay` skill. Keep release metadata, tagged documentation links, fixtures, and validators synchronized with the exact immutable Kaplayground commit being released.
 
 When releasing a new plugin version:
 
 1. Update the plugin manifest, skill metadata, docs, fixtures, and validators in this repository.
 2. Run every validation below and review the exact plugin diff.
 3. Commit, push, and create a `kaplayground-plugin-v<version>` tag only when the user explicitly authorizes those actions.
-4. In `game-creator`, update the remote marketplace SHA, tagged documentation links, boundary-validator constants, and any distribution version metadata that intentionally changes.
-5. Run `npm test` in `game-creator`, then commit and push that repository only with explicit authorization.
 
-Users should add either the canonical Kaplayground marketplace or the `game-creator` aggregate marketplace, not both, because both expose the same `kaplayground` plugin and `kaplay` skill. Plugin tagging and marketplace publication do not deploy the Kaplayground Site.
-
-Release tags are immutable snapshots. Never move or overwrite `kaplayground-plugin-v1.5.0`; its tagged commit does not have a green CI run. Do not advertise a direct stable branch unless one is explicitly created, and advance any future stable branch only after the exact commit passes the full validation suite. The `game-creator` marketplace's `main` ref is the current refreshable aggregate channel.
+Plugin tagging and marketplace publication do not deploy the Kaplayground Site. Release tags are immutable snapshots. Never move or overwrite `kaplayground-plugin-v1.5.0`; its tagged commit does not have a green CI run. Do not advertise a direct stable branch unless one is explicitly created, and advance any future stable branch only after the exact commit passes the full validation suite.
 
 ## Required validation
 

@@ -20,10 +20,6 @@ const pluginVersion = "1.5.1";
 const publishedPluginVersion = "1.5.0";
 const directMarketplaceCommand =
     `codex plugin marketplace add rinesh/kaplayground --ref kaplayground-plugin-v${publishedPluginVersion}`;
-const aggregateMarketplaceCommand =
-    "codex plugin marketplace add rinesh/game-creator --ref main";
-const aggregateMarketplaceUpgradeCommand =
-    "codex plugin marketplace upgrade game-creator";
 const failures = [];
 
 function read(relativePath) {
@@ -250,22 +246,17 @@ check(
     "README must identify the canonical plugin directory",
 );
 check(
-    readme.includes(directMarketplaceCommand) &&
-        readme.includes(aggregateMarketplaceCommand) &&
-        readme.includes(aggregateMarketplaceUpgradeCommand),
-    "README must document the immutable direct and refreshable aggregate marketplace commands",
+    readme.includes(directMarketplaceCommand),
+    "README must document the immutable direct marketplace command",
 );
 check(
     readme.includes("tag is frozen") &&
-        readme.includes("refreshable aggregate channel") &&
         readme.includes("not installable by tag") &&
-        readme.includes("repository policy fields do not override workspace policy"),
-    "README must distinguish the update channel, frozen tag, and ChatGPT workspace policy",
-);
-check(
-    readme.includes("Choose one marketplace source") &&
-        /do not install the plugin from\s+both/.test(readme),
-    "README must warn users to install the plugin from only one marketplace",
+        readme.includes("canonical Kaplayground marketplace") &&
+        /repository policy\s+fields do not override workspace policy/.test(
+            readme,
+        ),
+    "README must distinguish the canonical marketplace, frozen tag, and ChatGPT workspace policy",
 );
 check(
     flowTest.includes('"$kaplay '),
