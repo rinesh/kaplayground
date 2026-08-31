@@ -3,7 +3,6 @@ import { type FC, useRef } from "react";
 import { useMediaQuery } from "react-responsive";
 import { MonacoEditor } from "../../features/Editor/components/MonacoEditor.tsx";
 import useConsolePane from "../../hooks/useConsolePane";
-import { useCodexPlayGuide } from "../../integrations/webmcp/useCodexPlayGuide.ts";
 import { allotmentStorage } from "../../util/allotmentStorage.ts";
 import { cn } from "../../util/cn";
 import { scrollbarSize } from "../../util/scrollbarSize.ts";
@@ -12,8 +11,7 @@ import { ConsoleView } from "../ConsoleView/ConsoleView.tsx";
 import { Toolbar } from "../Toolbar";
 import ExampleList from "../Toolbar/ExampleList";
 import ToolbarToolsMenu from "../Toolbar/ToolbarToolsMenu";
-import { CodexCoach } from "../WebMCP";
-import { GameView } from "./GameView";
+import { WorkspacePreview } from "./WorkspacePreview";
 
 type Props = {
     editorIsLoading: boolean;
@@ -23,7 +21,6 @@ type Props = {
 
 export const WorkspaceExample: FC<Props> = (props) => {
     const isWidescreen = useMediaQuery({ query: "(min-width: 900px)" });
-    const guide = useCodexPlayGuide();
     const { getAllotmentSize, setAllotmentSize } = allotmentStorage(
         "codex-play",
     );
@@ -68,12 +65,7 @@ export const WorkspaceExample: FC<Props> = (props) => {
                         key="codex-preview"
                         minSize={props.isPortrait ? 360 : 480}
                     >
-                        <div className="flex size-full min-h-0 flex-col gap-px p-px pt-0">
-                            <div className="min-h-0 flex-1">
-                                <GameView />
-                            </div>
-                            <CodexCoach guide={guide} />
-                        </div>
+                        <WorkspacePreview />
                     </Allotment.Pane>
                     <Allotment.Pane
                         key="codex-code"

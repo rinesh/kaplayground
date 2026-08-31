@@ -1,4 +1,4 @@
-export type Allotments = "editor" | "brew" | "console";
+export type Allotments = "editor" | "brew" | "console" | "files";
 
 const getAllotmentKey = (prefix: string, id: Allotments): string => {
     return `allotment-${prefix}-${id}`;
