@@ -41,15 +41,35 @@ The full code editor stays beside the game for anyone who wants it, while techni
 
 ## WebMCP
 
-This fork registers nineteen `kaplayground_*` tools through the browser's WebMCP
-API after IndexedDB, esbuild, and the active project are ready. File mutations
-require the opaque project revision and, where applicable, the content revision
-returned by the read tools, so an agent cannot write through a project switch or
-silently overwrite a newer editor change.
+This fork registers twenty `kaplayground_*` tools through the browser's WebMCP
+API after IndexedDB, esbuild, and the active project are ready. A compatible
+browser agent can use the page directly without installing the optional plugin
+or a separate MCP server.
 
-`kaplayground_get_agent_guide` gives the agent a private inspect → edit → run →
-verify workflow, so the user-facing coach can stay simple while the tool contract
-remains safe and explicit.
+The canonical skills-only plugin lives in `plugins/kaplayground`. It adds
+KAPLAY-specific orchestration, browser coordination, capability negotiation,
+and stronger completion checks, but it cannot add tools, permissions, or
+operations that the page does not expose. The app-owned live guide and focused
+references remain the zero-install entry point and the authority for the
+current page contract.
+
+The plugin is optional. To add its canonical marketplace directly, run:
+
+```sh
+codex plugin marketplace add rinesh/kaplayground --ref kaplayground-plugin-v1.5.0
+```
+
+The same `kaplayground` plugin is also advertised by the `rinesh/game-creator`
+marketplace. Choose one marketplace source and do not install the plugin from
+both, because both sources register the same `kaplay` skill.
+
+`kaplayground_get_agent_guide` advertises Contract 1.1 and guide version 5 with
+the tools, capability groups, and workflow steps available in the current
+adapter. `kaplayground_get_reference` returns one of six focused page-owned
+references only when it is relevant to the task. File mutations require the
+opaque project revision and, where applicable, the content revision returned by
+the read tools, so an agent cannot write through a project switch or silently
+overwrite a newer editor change.
 
 KAPLAYGROUND-specific tools can persist a transient project, list bounded
 project-asset metadata, search the curated Asset Brew catalog for exact loader
@@ -67,7 +87,7 @@ Monaco, preview, diagnostics, console, and activity integrations live in
 `src/integrations/webmcp` and `src/components/WebMCP` because they depend on the
 editor's application state.
 
-Run the complete WebMCP verification suite with:
+Run the WebMCP and optional-plugin verification suite with:
 
 ```sh
 npm run verify:webmcp

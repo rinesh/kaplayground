@@ -4,7 +4,14 @@ import {
     type AssetBrewCatalogEntry,
     searchAssetBrewEntries,
 } from "../../data/assetBrewCatalog.ts";
-import { type CodexPlayStep, WEBMCP_AGENT_GUIDE } from "./agentGuide.ts";
+import {
+    createWebMCPAgentGuide,
+    createWebMCPReference,
+    isWebMCPReferenceTopic,
+    WEBMCP_REFERENCE_TOPICS,
+    WEBMCP_TOOL_ORDER,
+} from "./agentContract.ts";
+import { type CodexPlayStep } from "./agentGuide.ts";
 
 const DEFAULT_PREFIX = "kaplayground";
 const DEFAULT_MAX_FILE_BYTES = 512 * 1024;
@@ -231,6 +238,8 @@ export interface KaplaygroundAdapter {
 
 export interface KaplaygroundWebMCPOptions {
     adapter: KaplaygroundAdapter;
+    /** Application version reported by the page-owned guide and references. */
+    appVersion?: string;
     /** Prefix applied to every tool name. Defaults to `kaplayground`. */
     prefix?: string;
     /** Maximum UTF-8 size accepted or returned for one file. Defaults to 512 KiB. */
@@ -278,6 +287,7 @@ export class KaplaygroundWebMCP {
     readonly supported: boolean;
 
     private readonly adapter: KaplaygroundAdapter;
+    private readonly appVersion: string | undefined;
     private readonly context: WebMCP.ModelContext | undefined;
     private readonly prefix: string;
     private readonly maxFileBytes: number;
@@ -299,6 +309,7 @@ export class KaplaygroundWebMCP {
 
     constructor(options: KaplaygroundWebMCPOptions) {
         this.adapter = options.adapter;
+        this.appVersion = options.appVersion;
         this.context = options.modelContext ?? getDocumentModelContext();
         this.prefix = validateNamePart(
             options.prefix ?? DEFAULT_PREFIX,
@@ -372,7 +383,8 @@ export class KaplaygroundWebMCP {
                 this.registrationController.signal,
             );
             throwIfAborted(this.registrationController.signal);
-            for (const tool of this.createTools()) {
+            const tools = this.createTools();
+            for (const tool of tools) {
                 if (this.currentStatus === "destroyed") return;
                 await this.register(tool);
             }
@@ -552,57 +564,98 @@ export class KaplaygroundWebMCP {
     }
 
     private createTools(): EditorTool[] {
-        const tools: EditorTool[] = [
+        const guidanceTools: EditorTool[] = [
             this.createGetAgentGuideTool(),
+            this.createGetReferenceTool(),
+        ];
+
+        const startingPointTools: EditorTool[] = [];
+        if (this.adapter.listExamples) {
+            startingPointTools.push(this.createListExamplesTool());
+        }
+        if (this.adapter.listExamples && this.adapter.openExample) {
+            startingPointTools.push(this.createOpenExampleTool());
+        }
+
+        const projectReadTools: EditorTool[] = [
             this.createGetProjectTool(),
             this.createListFilesTool(),
+        ];
+        const assetTools: EditorTool[] = [];
+        if (this.adapter.listAssets) {
+            assetTools.push(this.createListAssetsTool());
+        }
+        if (this.adapter.listAssetBrew) {
+            assetTools.push(this.createSearchAssetBrewTool());
+        }
+
+        const fileTools: EditorTool[] = [
             this.createReadFileTool(),
             this.createReplaceFileTool(),
         ];
+        if (this.adapter.createFile) fileTools.push(this.createFileTool());
+        if (this.adapter.removeFile) {
+            fileTools.push(this.createRemoveFileTool());
+        }
+        if (this.adapter.selectFile) {
+            fileTools.push(this.createSelectFileTool());
+        }
 
-        if (this.adapter.listExamples) {
-            tools.splice(1, 0, this.createListExamplesTool());
+        const persistenceTools: EditorTool[] = [];
+        if (this.adapter.saveProject) {
+            persistenceTools.push(this.createSaveProjectTool());
         }
-        if (this.adapter.listExamples && this.adapter.openExample) {
-            tools.splice(2, 0, this.createOpenExampleTool());
+
+        const previewTools: EditorTool[] = [];
+        if (this.adapter.runPreview) {
+            previewTools.push(this.createRunPreviewTool());
         }
-        if (this.adapter.listAssets || this.adapter.listAssetBrew) {
-            const listFilesIndex = tools.findIndex((tool) =>
-                tool.name === "list_files"
-            );
-            let insertionIndex = listFilesIndex + 1;
-            if (this.adapter.listAssets) {
-                tools.splice(insertionIndex, 0, this.createListAssetsTool());
-                insertionIndex += 1;
-            }
-            if (this.adapter.listAssetBrew) {
-                tools.splice(
-                    insertionIndex,
-                    0,
-                    this.createSearchAssetBrewTool(),
-                );
-            }
-        }
-        if (this.adapter.createFile) tools.push(this.createFileTool());
-        if (this.adapter.removeFile) tools.push(this.createRemoveFileTool());
-        if (this.adapter.selectFile) tools.push(this.createSelectFileTool());
-        if (this.adapter.saveProject) tools.push(this.createSaveProjectTool());
-        if (this.adapter.runPreview) tools.push(this.createRunPreviewTool());
         if (this.adapter.setPreviewPaused) {
-            tools.push(this.createSetPreviewPausedTool());
+            previewTools.push(this.createSetPreviewPausedTool());
         }
-        if (this.adapter.stopPreview) tools.push(this.createStopPreviewTool());
+        if (this.adapter.stopPreview) {
+            previewTools.push(this.createStopPreviewTool());
+        }
         if (this.adapter.inspectPreview) {
-            tools.push(this.createInspectPreviewTool());
+            previewTools.push(this.createInspectPreviewTool());
         }
+
+        const diagnosticTools: EditorTool[] = [];
         if (this.adapter.getDiagnostics) {
-            tools.push(this.createGetDiagnosticsTool());
+            diagnosticTools.push(this.createGetDiagnosticsTool());
         }
         if (this.adapter.getConsoleEntries) {
-            tools.push(this.createGetConsoleTool());
+            diagnosticTools.push(this.createGetConsoleTool());
         }
 
-        return tools;
+        const configuredTools = [
+            ...guidanceTools,
+            ...startingPointTools,
+            ...projectReadTools,
+            ...assetTools,
+            ...fileTools,
+            ...persistenceTools,
+            ...previewTools,
+            ...diagnosticTools,
+        ];
+        const toolsByName = new Map(
+            configuredTools.map((tool) => [tool.name, tool]),
+        );
+        const orderedTools = WEBMCP_TOOL_ORDER.flatMap((name) => {
+            const tool = toolsByName.get(name);
+            return tool ? [tool] : [];
+        });
+        if (orderedTools.length !== configuredTools.length) {
+            const unknownTools = configuredTools
+                .map(({ name }) => name)
+                .filter((name) => !WEBMCP_TOOL_ORDER.includes(
+                    name as (typeof WEBMCP_TOOL_ORDER)[number],
+                ));
+            throw new Error(
+                `WebMCP contract registry is missing configured tools: ${unknownTools.join(", ")}`,
+            );
+        }
+        return orderedTools;
     }
 
     private createListExamplesTool(): EditorTool {
@@ -781,7 +834,46 @@ export class KaplaygroundWebMCP {
             annotations: readAnnotations(),
             execute: async (_input, signal) => {
                 throwIfAborted(signal);
-                return toSerializable(WEBMCP_AGENT_GUIDE);
+                return toSerializable(createWebMCPAgentGuide({
+                    prefix: this.prefix,
+                    availableTools: this.toolNames,
+                    appVersion: this.appVersion,
+                }));
+            },
+        };
+    }
+
+    private createGetReferenceTool(): EditorTool {
+        return {
+            name: "get_reference",
+            title: "Read focused KAPLAYGROUND agent guidance",
+            description:
+                "Read one focused, page-owned reference for file editing, preview verification, KAPLAY patterns, assets, persistence, or failure recovery.",
+            inputSchema: {
+                type: "object",
+                properties: {
+                    topic: {
+                        type: "string",
+                        enum: WEBMCP_REFERENCE_TOPICS.map(({ topic }) => topic),
+                        description:
+                            "Exact reference topic advertised by get_agent_guide.",
+                    },
+                },
+                required: ["topic"],
+                additionalProperties: false,
+            },
+            annotations: readAnnotations(),
+            execute: async (input, signal) => {
+                const topic = stringValue(input.topic, "topic");
+                if (!isWebMCPReferenceTopic(topic)) {
+                    throw new RangeError(
+                        `Unknown reference topic "${topic}". Call get_agent_guide for the current topics.`,
+                    );
+                }
+                throwIfAborted(signal);
+                return toSerializable(createWebMCPReference(topic, {
+                    appVersion: this.appVersion,
+                }));
             },
         };
     }

@@ -1,0 +1,34 @@
+{
+  "name": "kaplayground",
+  "version": "1.5.0",
+  "description": "Create, edit, debug, and verify KAPLAY games in a WebMCP-enabled Kaplayground page.",
+  "author": {
+    "name": "Rinesh",
+    "url": "https://github.com/rinesh"
+  },
+  "homepage": "https://kaplayground-webmcp.rinesht.chatgpt.site/",
+  "repository": "https://github.com/rinesh/kaplayground",
+  "license": "MIT",
+  "keywords": [
+    "kaplay",
+    "kaplayground",
+    "webmcp",
+    "browser-game",
+    "game-development"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Kaplayground",
+    "shortDescription": "Build and verify KAPLAY games in Kaplayground.",
+    "longDescription": "Adds the optional KAPLAY workflow for discovering the active Kaplayground page, negotiating its live Contract 1.1 WebMCP capabilities, editing safely, and verifying the preview.",
+    "developerName": "Rinesh",
+    "category": "Development",
+    "capabilities": [],
+    "websiteURL": "https://kaplayground-webmcp.rinesht.chatgpt.site/",
+    "defaultPrompt": [
+      "Build a KAPLAY game in the open Kaplayground.",
+      "Improve and verify the current Kaplayground game.",
+      "Debug the current Kaplayground preview."
+    ]
+  }
+}

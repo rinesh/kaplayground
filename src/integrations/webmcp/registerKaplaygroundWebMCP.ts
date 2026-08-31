@@ -1,6 +1,6 @@
 /** Connects browser WebMCP tools to KAPLAYGROUND's live editor stores. */
 import { Decode } from "console-feed";
-import { SANDBOX_ORIGIN } from "../../config/common";
+import { SANDBOX_ORIGIN, VERSION } from "../../config/common";
 import { assetBrewCatalog } from "../../data/assetBrewCatalog.ts";
 import { demos, getDemo } from "../../data/demos.ts";
 import { waitForPlaygroundReady } from "../../features/Projects/application/playgroundReadiness";
@@ -86,6 +86,7 @@ export function registerKaplaygroundWebMCP(): () => void {
     });
 
     const bridge = createKaplaygroundWebMCP({
+        appVersion: VERSION,
         onStatusChange(status, toolNames) {
             useWebMCPActivity.getState().setConnection(status, toolNames);
         },

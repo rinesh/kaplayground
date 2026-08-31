@@ -1,0 +1,20 @@
+{
+  "name": "kaplayground",
+  "interface": {
+    "displayName": "Kaplayground"
+  },
+  "plugins": [
+    {
+      "name": "kaplayground",
+      "source": {
+        "source": "local",
+        "path": "./plugins/kaplayground"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Development"
+    }
+  ]
+}

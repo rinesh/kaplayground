@@ -16,6 +16,7 @@ import {
     createKaplaygroundWebMCP,
     kaplaygroundContentRevision,
 } from "../src/integrations/webmcp/kaplaygroundWebMCP.ts";
+import { WEBMCP_TOOL_ORDER } from "../src/integrations/webmcp/agentContract.ts";
 import { collectMonacoDiagnostics } from "../src/integrations/webmcp/monacoDiagnostics.ts";
 import {
     resetWebMCPActivityOnProjectReplacement,
@@ -41,6 +42,13 @@ class FakeModelContext extends EventTarget {
 }
 
 const PROJECT_REVISION = "project-revision-1";
+const FULL_TOOL_NAMES = WEBMCP_TOOL_ORDER.map((name) =>
+    `kaplayground_${name}`
+);
+const KAPLAY_PLUGIN_FIXTURE = JSON.parse(readFileSync(
+    new URL("./fixtures/kaplay-plugin-contract.json", import.meta.url),
+    "utf8",
+));
 
 function createAdapter() {
     const files = new Map([
@@ -690,38 +698,25 @@ describe("KAPLAYGROUND WebMCP", () => {
         const { adapter } = createAdapter();
         const bridge = createKaplaygroundWebMCP({
             adapter,
+            appVersion: "2.5.3",
             modelContext: context,
         });
 
         await bridge.ready;
 
-        assert.deepEqual(bridge.toolNames, [
-            "kaplayground_get_agent_guide",
-            "kaplayground_list_examples",
-            "kaplayground_open_example",
-            "kaplayground_get_project",
-            "kaplayground_list_files",
-            "kaplayground_list_assets",
-            "kaplayground_search_asset_brew",
-            "kaplayground_read_file",
-            "kaplayground_replace_file",
-            "kaplayground_create_file",
-            "kaplayground_remove_file",
-            "kaplayground_select_file",
-            "kaplayground_save_project",
-            "kaplayground_run_preview",
-            "kaplayground_set_preview_paused",
-            "kaplayground_stop_preview",
-            "kaplayground_inspect_preview",
-            "kaplayground_get_diagnostics",
-            "kaplayground_get_console",
-        ]);
+        assert.deepEqual(bridge.toolNames, FULL_TOOL_NAMES);
+        assert.deepEqual(bridge.toolNames, KAPLAY_PLUGIN_FIXTURE.fullSurface);
 
         const guide = await execute(
             context,
             "kaplayground_get_agent_guide",
         );
         assert.equal(guide.title, "KAPLAYGROUND coding-agent workflow");
+        assert.equal(guide.contractVersion, "1.1");
+        assert.equal(guide.guideVersion, 5);
+        assert.equal(guide.appVersion, "2.5.3");
+        assert.equal(Object.hasOwn(guide, "version"), false);
+        assert.deepEqual(guide.availableTools, bridge.toolNames);
         assert.match(guide.starterPrompt, /kaplayground_get_project/);
         assert.match(guide.starterPrompt, /kaplayground_search_asset_brew/);
         assert.equal(
@@ -730,6 +725,189 @@ describe("KAPLAYGROUND WebMCP", () => {
         );
         assert.doesNotMatch(guide.starterPrompt, /gameSettings/);
         assert.ok(guide.workflow.length >= 9);
+        assert.equal(guide.capabilities.guidance.complete, true);
+        assert.equal(guide.capabilities.browser.available, false);
+        assert.ok(
+            guide.capabilities.browser.unsupportedOperations.includes(
+                "screenshots",
+            ),
+        );
+        assert.equal(
+            guide.workflow.find(({ id }) => id === "inspect").available,
+            true,
+        );
+        assert.deepEqual(
+            guide.referenceTopics.map(({ topic }) => topic),
+            [
+                "file-editing",
+                "preview-verification",
+                "kaplay-patterns",
+                "assets",
+                "persistence",
+                "failure-recovery",
+            ],
+        );
+    });
+
+    it("derives guide capabilities and workflow blockers from a reduced adapter", async () => {
+        const context = new FakeModelContext();
+        const { adapter } = createAdapter();
+        for (
+            const capability of [
+                "listExamples",
+                "openExample",
+                "listAssets",
+                "listAssetBrew",
+                "createFile",
+                "removeFile",
+                "selectFile",
+                "saveProject",
+                "runPreview",
+                "setPreviewPaused",
+                "stopPreview",
+                "inspectPreview",
+                "getDiagnostics",
+                "getConsoleEntries",
+                "getPreviewRunId",
+            ]
+        ) {
+            delete adapter[capability];
+        }
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+
+        await bridge.ready;
+
+        assert.deepEqual(bridge.toolNames, [
+            "kaplayground_get_agent_guide",
+            "kaplayground_get_reference",
+            "kaplayground_get_project",
+            "kaplayground_list_files",
+            "kaplayground_read_file",
+            "kaplayground_replace_file",
+        ]);
+        const guide = await execute(
+            context,
+            "kaplayground_get_agent_guide",
+        );
+        assert.equal(guide.appVersion, null);
+        assert.deepEqual(guide.availableTools, bridge.toolNames);
+        assert.equal(guide.capabilities.guidance.complete, true);
+        assert.equal(guide.capabilities.projects.available, true);
+        assert.equal(guide.capabilities.projects.complete, false);
+        assert.equal(guide.capabilities.assets.available, false);
+        assert.equal(guide.capabilities.preview.available, false);
+        assert.equal(guide.capabilities.diagnostics.available, false);
+        assert.doesNotMatch(guide.starterPrompt, /search_asset_brew/);
+        assert.doesNotMatch(guide.starterPrompt, /list_examples/);
+        assert.match(
+            guide.starterPrompt,
+            /runtime verification is unavailable/,
+        );
+        assert.equal(
+            guide.workflow.find(({ id }) => id === "inspect").available,
+            true,
+        );
+        assert.equal(
+            guide.workflow.find(({ id }) => id === "edit").available,
+            true,
+        );
+        const runStep = guide.workflow.find(({ id }) => id === "run");
+        assert.equal(runStep.available, false);
+        assert.deepEqual(runStep.missingTools, [
+            "kaplayground_run_preview",
+        ]);
+        const discoverStep = guide.workflow.find(({ id }) => id === "discover");
+        assert.equal(discoverStep.available, false);
+        assert.deepEqual(discoverStep.missingTools, [
+            "kaplayground_list_examples",
+            "kaplayground_open_example",
+        ]);
+    });
+
+    it("returns six static focused references without project-derived content", async () => {
+        const context = new FakeModelContext();
+        const { adapter } = createAdapter();
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            appVersion: "2.5.3",
+            modelContext: context,
+        });
+        await bridge.ready;
+
+        const topics = [
+            "file-editing",
+            "preview-verification",
+            "kaplay-patterns",
+            "assets",
+            "persistence",
+            "failure-recovery",
+        ];
+        for (const topic of topics) {
+            const reference = await execute(
+                context,
+                "kaplayground_get_reference",
+                { topic },
+            );
+            assert.equal(reference.contractVersion, "1.1");
+            assert.equal(reference.guideVersion, 5);
+            assert.equal(reference.appVersion, "2.5.3");
+            assert.equal(reference.topic, topic);
+            assert.equal(Object.hasOwn(reference, "version"), false);
+            assert.ok(reference.guidance.summary.length > 0);
+            assert.ok(reference.guidance.steps.length > 0);
+            assert.ok(reference.guidance.invariants.length > 0);
+            assert.ok(reference.guidance.failureCases.length > 0);
+            assert.deepEqual(reference.kaplayVersions.families, [
+                "3001.0",
+                "4000.0",
+                "master",
+            ]);
+            assert.doesNotMatch(
+                JSON.stringify(reference),
+                /Agent game|project-revision-1|main\.js.*add\(/,
+            );
+        }
+
+        await assert.rejects(
+            execute(context, "kaplayground_get_reference", {
+                topic: "not-a-topic",
+            }),
+            /Unknown reference topic/,
+        );
+    });
+
+    it("marks every project and guidance read as read-only untrusted content", async () => {
+        const context = new FakeModelContext();
+        const { adapter } = createAdapter();
+        const bridge = createKaplaygroundWebMCP({
+            adapter,
+            modelContext: context,
+        });
+        await bridge.ready;
+
+        for (
+            const toolName of [
+                "kaplayground_get_agent_guide",
+                "kaplayground_get_reference",
+                "kaplayground_list_examples",
+                "kaplayground_get_project",
+                "kaplayground_list_files",
+                "kaplayground_list_assets",
+                "kaplayground_search_asset_brew",
+                "kaplayground_read_file",
+                "kaplayground_inspect_preview",
+                "kaplayground_get_diagnostics",
+                "kaplayground_get_console",
+            ]
+        ) {
+            assert.deepEqual(context.tool(toolName).annotations, {
+                readOnlyHint: true,
+                untrustedContentHint: true,
+            });
+        }
     });
 
     it("waits for application readiness before registering tools", async () => {
@@ -755,7 +933,7 @@ describe("KAPLAYGROUND WebMCP", () => {
         applicationReady.resolve();
         await bridge.ready;
         assert.equal(bridge.status, "ready");
-        assert.equal(context.registered.length, 19);
+        assert.equal(context.registered.length, 20);
     });
 
     it("lets the agent find and open an exact game starting point", async () => {
@@ -1582,7 +1760,7 @@ describe("KAPLAYGROUND WebMCP", () => {
         await bridge.ready;
 
         assert.equal(connections.at(-1).status, "ready");
-        assert.equal(connections.at(-1).toolNames.length, 19);
+        assert.equal(connections.at(-1).toolNames.length, 20);
 
         await execute(context, "kaplayground_get_project");
         assert.deepEqual(
