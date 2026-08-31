@@ -19,7 +19,7 @@
     "prepare": "cd kaplay && npm i && cd .. && npm run generate:lib",
     "sandbox:build": "cd sandbox && vite build",
     "sandbox:deploy": "cd sandbox && wrangler pages deploy --branch=main",
-    "test:webmcp": "node --experimental-strip-types --test tests/webmcp.test.mjs",
+    "test:webmcp": "npm run generate:examples && node --experimental-strip-types --test tests/webmcp.test.mjs",
     "test:kaplay-plugin": "node --experimental-strip-types scripts/validate-kaplay-plugin.mjs",
     "test:starter-url": "node --experimental-strip-types --test tests/starterDemoUrl.test.mjs",
     "verify:webmcp": "npm run test:webmcp && npm run test:kaplay-plugin && npm run test:starter-url && npm run check && npm run sandbox:build && npm run build",
