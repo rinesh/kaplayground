@@ -2,7 +2,10 @@ import {
     difficulties as difficultiesData,
     tags,
 } from "../../kaplay/examples/examples.json";
+import { WEBMCP_EXAMPLE_NAME } from "../integrations/webmcp/constants";
 import examplesList from "./exampleList.json";
+
+export { WEBMCP_EXAMPLE_NAME } from "../integrations/webmcp/constants";
 
 export type ExamplesDataRecord = Record<string, {
     displayName?: string;
@@ -35,8 +38,6 @@ export type Example = {
     updatedAt: string;
     locked?: boolean;
 };
-
-export const WEBMCP_EXAMPLE_NAME = "webmcpAgent";
 
 const webMCPExample = {
     id: -1,

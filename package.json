@@ -20,7 +20,8 @@
     "sandbox:build": "cd sandbox && vite build",
     "sandbox:deploy": "cd sandbox && wrangler pages deploy --branch=main",
     "test:webmcp": "node --experimental-strip-types --test tests/webmcp.test.mjs",
-    "verify:webmcp": "npm run test:webmcp && npm run check && npm run sandbox:build && npm run build",
+    "test:starter-url": "node --experimental-strip-types --test tests/starterDemoUrl.test.mjs",
+    "verify:webmcp": "npm run test:webmcp && npm run test:starter-url && npm run check && npm run sandbox:build && npm run build",
     "neu": "neu"
   },
   "dependencies": {

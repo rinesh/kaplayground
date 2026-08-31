@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useCodexPlayGuide } from "../../integrations/webmcp/useCodexPlayGuide";
 import { useWebMCPActivity } from "../../integrations/webmcp/webMCPActivity";
 import { cn } from "../../util/cn";
@@ -34,6 +35,9 @@ const statusDetails = {
 };
 
 export const WebMCPDialog = () => {
+    const [copyStatus, setCopyStatus] = useState<
+        "idle" | "copied" | "failed"
+    >("idle");
     const status = useWebMCPActivity((state) => state.status);
     const entries = useWebMCPActivity((state) => state.entries);
     const clearInvocations = useWebMCPActivity((state) =>
@@ -41,6 +45,15 @@ export const WebMCPDialog = () => {
     );
     const details = statusDetails[status];
     const guide = useCodexPlayGuide();
+
+    const copyPageLink = async () => {
+        try {
+            await navigator.clipboard.writeText(window.location.href);
+            setCopyStatus("copied");
+        } catch {
+            setCopyStatus("failed");
+        }
+    };
 
     return (
         <Dialog
@@ -61,8 +74,15 @@ export const WebMCPDialog = () => {
                             Remix {guide.subjectTitle} with Codex
                         </h2>
                         <p className="mt-1 text-sm leading-relaxed text-slate-300">
-                            Pick one idea, copy it into Codex, then play the
-                            updated game. Repeat until it feels like yours.
+                            {status === "unsupported"
+                                ? "Open this game in Codex's Browser to remix it with Codex."
+                                : (
+                                    <>
+                                        Pick one idea, copy it into Codex, then
+                                        play the updated game. Repeat until it
+                                        feels like yours.
+                                    </>
+                                )}
                         </p>
                     </div>
                 </div>
@@ -73,48 +93,98 @@ export const WebMCPDialog = () => {
             </header>
 
             <div className="p-4 sm:p-6">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
-                    <div className="flex items-center gap-2.5">
-                        <span
-                            className={cn("size-2 rounded-full", details.dot)}
-                            aria-hidden="true"
-                        />
-                        <div>
-                            <p className="text-xs font-bold text-white">
-                                {details.label}
+                {status === "unsupported"
+                    ? (
+                        <div className="rounded-xl border border-white/10 bg-white/[0.04] p-5 sm:p-6">
+                            <h3 className="text-lg font-bold text-white">
+                                Remixing with Codex isn't available in this
+                                browser
+                            </h3>
+                            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300">
+                                Copy this page's link, open Codex's Browser, and
+                                visit the link there so Codex can change the
+                                game. You can keep playing and editing in this
+                                browser.
                             </p>
-                            <p className="text-xs text-white/50">
-                                {details.description}
-                            </p>
+                            <div className="mt-5 flex flex-wrap items-center gap-3">
+                                <button
+                                    type="button"
+                                    className="btn btn-sm btn-primary"
+                                    onClick={copyPageLink}
+                                    aria-live="polite"
+                                >
+                                    {copyStatus === "copied"
+                                        ? "Link copied"
+                                        : "Copy link"}
+                                </button>
+                                <form method="dialog">
+                                    <button className="btn btn-sm btn-ghost">
+                                        Keep playing
+                                    </button>
+                                </form>
+                                {copyStatus === "failed" && (
+                                    <p
+                                        className="text-xs text-error"
+                                        role="status"
+                                    >
+                                        Couldn't copy the link. Copy it from
+                                        your browser's address bar instead.
+                                    </p>
+                                )}
+                            </div>
                         </div>
-                    </div>
-                </div>
+                    )
+                    : (
+                        <>
+                            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                                <div className="flex items-center gap-2.5">
+                                    <span
+                                        className={cn(
+                                            "size-2 rounded-full",
+                                            details.dot,
+                                        )}
+                                        aria-hidden="true"
+                                    />
+                                    <div>
+                                        <p className="text-xs font-bold text-white">
+                                            {details.label}
+                                        </p>
+                                        <p className="text-xs text-white/50">
+                                            {details.description}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
 
-                <WebMCPTutorial key={guide.key} guide={guide} />
+                            <WebMCPTutorial key={guide.key} guide={guide} />
+                        </>
+                    )}
             </div>
 
-            <details className="border-t border-white/10 bg-black/15">
-                <summary className="cursor-pointer px-5 py-3 text-xs font-semibold text-white/45 sm:px-7">
-                    Advanced details{" "}
-                    {entries.length > 0 && `(${entries.length})`}
-                </summary>
-                <div className="border-t border-white/10">
-                    <div className="flex items-center justify-between gap-3 px-5 py-2 sm:px-7">
-                        <p className="text-xs text-white/45">
-                            A behind-the-scenes history of Codex's actions.
-                        </p>
-                        <button
-                            type="button"
-                            className="btn btn-ghost btn-xs"
-                            disabled={entries.length === 0}
-                            onClick={clearInvocations}
-                        >
-                            Clear
-                        </button>
+            {status !== "unsupported" && (
+                <details className="border-t border-white/10 bg-black/15">
+                    <summary className="cursor-pointer px-5 py-3 text-xs font-semibold text-white/45 sm:px-7">
+                        Advanced details{" "}
+                        {entries.length > 0 && `(${entries.length})`}
+                    </summary>
+                    <div className="border-t border-white/10">
+                        <div className="flex items-center justify-between gap-3 px-5 py-2 sm:px-7">
+                            <p className="text-xs text-white/45">
+                                A behind-the-scenes history of Codex's actions.
+                            </p>
+                            <button
+                                type="button"
+                                className="btn btn-ghost btn-xs"
+                                disabled={entries.length === 0}
+                                onClick={clearInvocations}
+                            >
+                                Clear
+                            </button>
+                        </div>
+                        <WebMCPInvocationList className="max-h-56" />
                     </div>
-                    <WebMCPInvocationList className="max-h-56" />
-                </div>
-            </details>
+                </details>
+            )}
         </Dialog>
     );
 };
