@@ -67,6 +67,35 @@ Monaco, preview, diagnostics, console, and activity integrations live in
 `src/integrations/webmcp` and `src/components/WebMCP` because they depend on the
 editor's application state.
 
+### Agent-system design
+
+The nineteen tools above are the **current baseline**. The target design treats
+the coach, editor, WebMCP control surface, project state, preview sandbox,
+evidence, and persistence as one proof-carrying co-creation system. Its common
+loop is: orient in one coherent workspace snapshot, make one bounded atomic
+change set, run that exact revision, collect independent evidence, and issue a
+criterion-by-criterion verification receipt.
+
+The design set is intentionally explicit about what exists today versus what is
+planned:
+
+- [`docs/agent-system/ARCHITECTURE.md`](./docs/agent-system/ARCHITECTURE.md) —
+  system constitution, linked abstraction tower, and invariants.
+- [`docs/agent-system/CONTRACTS.md`](./docs/agent-system/CONTRACTS.md) —
+  capability, state, transaction, evidence, verification, and compatibility contracts.
+- [`docs/agent-system/DECISIONS.md`](./docs/agent-system/DECISIONS.md) —
+  stable architectural choices and consequences.
+- [`docs/agent-system/ROADMAP.md`](./docs/agent-system/ROADMAP.md) —
+  incremental migration plan with exit criteria.
+- [`docs/agent-system/EVALUATION.md`](./docs/agent-system/EVALUATION.md) —
+  correctness, safety, ergonomics, and resource-efficiency gates.
+
+The migration preserves current tool compatibility while extracting a shared
+capability manifest and domain services. Target capabilities such as coherent
+context queries, atomic multi-file change sets, checkpoints, evidence ledgers,
+and verification receipts are plans until their roadmap milestones and tests
+land; this documentation does not advertise them as shipped behavior.
+
 Run the complete WebMCP verification suite with:
 
 ```sh
@@ -98,6 +127,8 @@ legacy server is retained only as migration history.
 
 ## 📚 Resources
 
+- [Agent-system design](./docs/agent-system/README.md) -
+  Understand the current baseline and target human-agent architecture.
 - [Roadmap](https://github.com/orgs/kaplayjs/projects/14/views/1) -
   See what features are planned for the future.
 - [KAPLAYGROUND Wiki](https://github.com/kaplayjs/kaplayground/wiki) -
