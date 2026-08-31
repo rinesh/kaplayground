@@ -1,0 +1,23 @@
+name: Delete temporary agent-system branch
+
+on:
+  push:
+    branches:
+      - docs/agent-system-design
+    paths:
+      - .github/workflows/delete-agent-system-design-branch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  delete-branch:
+    if: github.ref_name == 'docs/agent-system-design'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete this temporary branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+        run: gh api --method DELETE "repos/${REPOSITORY}/git/refs/heads/${REF_NAME}"
