@@ -12,16 +12,28 @@ import { waitForPlaygroundReady } from "../../features/Projects/application/play
 import type { File } from "../../features/Projects/models/File";
 import { useProject } from "../../features/Projects/stores/useProject";
 import { useEditor } from "../../hooks/useEditor";
+import { confirm } from "../../util/confirm";
 import { createBoundedConsoleCapture } from "./boundedConsoleCapture";
 import {
     assertGameRevision,
-    gamePath,
-    gameRevision,
+    classifyGameRun,
+    createSerialTaskQueue,
     type GameChange,
-    KAPLAYGROUND_WEBMCP_TOOL_NAMES,
-    MAX_GAME_CHANGES,
-    MAX_GAME_FILE_BYTES,
+    gamePath,
+    gameReadSize,
+    gameRevision,
+    type KaplaygroundToolName,
+    kaplaygroundToolSurface,
+    MAX_ASSET_RESULTS,
+    MAX_CONSOLE_RESULTS,
+    MAX_EXAMPLE_RESULTS,
+    MAX_FILES_PER_READ,
+    MAX_LISTED_FILES,
+    MAX_PREVIEW_OBJECTS,
+    MAX_RESULT_OFFSET,
     prepareGameUpdate,
+    registerGameToolDefinitions,
+    requiresExampleDiscardConfirmation,
 } from "./gameTools.ts";
 import { collectMonacoDiagnostics } from "./monacoDiagnostics";
 import {
@@ -30,13 +42,7 @@ import {
 } from "./webMCPActivity";
 
 const MAX_RETAINED_LOGS = 500;
-const MAX_FILES_PER_READ = 20;
-const MAX_LISTED_FILES = 500;
-const MAX_ASSET_RESULTS = 50;
-const MAX_EXAMPLE_RESULTS = 100;
-const MAX_CONSOLE_RESULTS = 200;
 const MAX_DIAGNOSTIC_RESULTS = 200;
-const MAX_PREVIEW_OBJECTS = 50;
 const MAX_VISIBLE_STRING = 10_000;
 const NEVER_ABORTED_SIGNAL = new AbortController().signal;
 
@@ -92,7 +98,7 @@ export interface KaplaygroundDiagnosticsCapture {
     diagnostics: readonly KaplaygroundDiagnostic[];
 }
 
-type ToolName = (typeof KAPLAYGROUND_WEBMCP_TOOL_NAMES)[number];
+type ToolName = KaplaygroundToolName;
 
 type ToolDefinition = {
     name: ToolName;
@@ -122,6 +128,7 @@ export function registerKaplaygroundWebMCP(): () => void {
     const registeredNames: string[] = [];
     let invocationSerial = 0;
     let transientBaselineRevision = useProject.getState().projectRevision;
+    let cleanedUp = false;
 
     const hasUnsavedChanges = () => {
         const projectStore = useProject.getState();
@@ -182,68 +189,84 @@ export function registerKaplaygroundWebMCP(): () => void {
     const tools = createTools(consoleCapture, hasUnsavedChanges);
 
     void registerTools().catch((error: unknown) => {
-        if (controller.signal.aborted) return;
+        if (cleanedUp) return;
         console.error("[webmcp] KAPLAYGROUND registration failed", error);
-        useWebMCPActivity.getState().setConnection("error", []);
+        cleanup("error");
     });
+
+    function cleanup(status: "error" | "destroyed"): void {
+        if (!controller.signal.aborted) controller.abort();
+        if (!cleanedUp) {
+            cleanedUp = true;
+            unsubscribeProject();
+            window.removeEventListener("message", handleMessage);
+        }
+        registeredNames.length = 0;
+        useWebMCPActivity.getState().setConnection(status, []);
+    }
 
     async function registerTools(): Promise<void> {
         await waitWithAbort(waitForPlaygroundReady(), controller.signal);
-        for (const tool of tools) {
-            throwIfAborted(controller.signal);
-            await context.registerTool({
-                name: tool.name,
-                title: tool.title,
-                description: tool.description,
-                inputSchema: tool.inputSchema,
-                annotations: tool.annotations,
-                execute: async (input, options) => {
-                    const signal = options?.signal ?? NEVER_ABORTED_SIGNAL;
-                    const startedAt = Date.now();
-                    const invocation: KaplaygroundWebMCPInvocation = {
-                        id: `${startedAt}-${++invocationSerial}`,
-                        toolName: tool.name,
-                        input: toRecord(input),
-                        startedAt,
-                        status: "running",
-                    };
-                    useWebMCPActivity.getState().recordInvocation(invocation);
+        const definitions = tools.map((tool): WebMCP.ModelContextTool => ({
+            name: tool.name,
+            title: tool.title,
+            description: tool.description,
+            inputSchema: tool.inputSchema,
+            annotations: tool.annotations,
+            execute: async (input, options) => {
+                const signal = options?.signal ?? NEVER_ABORTED_SIGNAL;
+                const startedAt = Date.now();
+                const invocation: KaplaygroundWebMCPInvocation = {
+                    id: `${startedAt}-${++invocationSerial}`,
+                    toolName: tool.name,
+                    input: toRecord(input),
+                    startedAt,
+                    status: "running",
+                };
+                useWebMCPActivity.getState().recordInvocation(invocation);
 
-                    try {
-                        throwIfAborted(signal);
-                        const result = await tool.execute(invocation.input, signal);
-                        throwIfAborted(signal);
-                        useWebMCPActivity.getState().recordInvocation({
-                            ...invocation,
-                            status: "succeeded",
-                            durationMs: Date.now() - startedAt,
-                        });
-                        return result;
-                    } catch (error) {
-                        useWebMCPActivity.getState().recordInvocation({
-                            ...invocation,
-                            status: "failed",
-                            durationMs: Date.now() - startedAt,
-                            error: errorMessage(error),
-                        });
-                        throw error;
-                    }
-                },
-            }, { signal: controller.signal });
-            registeredNames.push(tool.name);
+                try {
+                    throwIfAborted(signal);
+                    const result = await tool.execute(invocation.input, signal);
+                    useWebMCPActivity.getState().recordInvocation({
+                        ...invocation,
+                        status: "succeeded",
+                        durationMs: Date.now() - startedAt,
+                    });
+                    return result;
+                } catch (error) {
+                    useWebMCPActivity.getState().recordInvocation({
+                        ...invocation,
+                        status: "failed",
+                        durationMs: Date.now() - startedAt,
+                        error: errorMessage(error),
+                    });
+                    throw error;
+                }
+            },
+        }));
+        await registerGameToolDefinitions(
+            context,
+            definitions,
+            controller,
+            (name) => {
+                registeredNames.push(name);
+                useWebMCPActivity.getState().setConnection(
+                    "registering",
+                    registeredNames,
+                );
+            },
+        );
+        if (!controller.signal.aborted) {
             useWebMCPActivity.getState().setConnection(
-                "registering",
+                "ready",
                 registeredNames,
             );
         }
-        useWebMCPActivity.getState().setConnection("ready", registeredNames);
     }
 
     return () => {
-        controller.abort();
-        unsubscribeProject();
-        window.removeEventListener("message", handleMessage);
-        useWebMCPActivity.getState().setConnection("destroyed", []);
+        cleanup("destroyed");
     };
 }
 
@@ -251,20 +274,40 @@ function createTools(
     consoleCapture: ReturnType<typeof createBoundedConsoleCapture>,
     hasUnsavedChanges: () => boolean,
 ): ToolDefinition[] {
+    const projectMutations = createSerialTaskQueue();
+    const previewRevisions = new Map<string, string>();
+
     return [
         {
-            name: "kaplayground_inspect_game",
-            title: "Inspect the open KAPLAYGROUND game",
-            description:
-                "Use this before changing the game. Returns the current game, files, editor state, and one revision value required by update, run, save, and example-opening tools.",
-            inputSchema: emptyObjectSchema(),
-            annotations: readAnnotations(),
-            execute: async (_input, signal) => {
+            ...kaplaygroundToolSurface("kaplayground_inspect_game"),
+            execute: async (input, signal) => {
                 throwIfAborted(signal);
+                const fileOffset = boundedInteger(
+                    input.fileOffset,
+                    "fileOffset",
+                    0,
+                    MAX_RESULT_OFFSET,
+                    0,
+                );
+                const fileLimit = boundedInteger(
+                    input.fileLimit,
+                    "fileLimit",
+                    1,
+                    MAX_LISTED_FILES,
+                    MAX_LISTED_FILES,
+                );
                 const projectStore = useProject.getState();
                 const editor = useEditor.getState();
                 const files = [...projectStore.project.files.values()]
                     .sort((left, right) => left.path.localeCompare(right.path));
+                const filePage = files.slice(
+                    fileOffset,
+                    fileOffset + fileLimit,
+                );
+                const nextFileOffset =
+                    fileOffset + filePage.length < files.length
+                        ? fileOffset + filePage.length
+                        : null;
                 return {
                     revision: gameRevision(projectStore),
                     name: projectStore.project.name,
@@ -283,8 +326,11 @@ function createTools(
                         : "unknown",
                     hasUnsavedChanges: hasUnsavedChanges(),
                     fileCount: files.length,
-                    filesTruncated: files.length > MAX_LISTED_FILES,
-                    files: files.slice(0, MAX_LISTED_FILES).map((file) => ({
+                    fileOffset,
+                    fileLimit,
+                    filesTruncated: nextFileOffset !== null,
+                    nextFileOffset,
+                    files: filePage.map((file) => ({
                         path: file.path,
                         language: file.language,
                         kind: file.kind,
@@ -295,12 +341,7 @@ function createTools(
             },
         },
         {
-            name: "kaplayground_read_files",
-            title: "Read KAPLAYGROUND game files",
-            description:
-                "Read up to twenty exact files from the open game in one call. Use the revision from inspect_game and read every file needed for the requested change before updating.",
-            inputSchema: readFilesSchema(),
-            annotations: readAnnotations(),
+            ...kaplaygroundToolSurface("kaplayground_read_files"),
             execute: async (input, signal) => {
                 const expectedRevision = requiredString(
                     input.expectedRevision,
@@ -318,15 +359,14 @@ function createTools(
 
                 const before = useProject.getState();
                 assertGameRevision(before, expectedRevision);
-                const files = paths.map((path) => {
+                const selectedFiles = paths.map((path) => {
                     const file = before.project.files.get(path);
                     if (!file) throw new Error(`Game file not found: ${path}`);
+                    return file;
+                });
+                const totalBytes = gameReadSize(selectedFiles);
+                const files = selectedFiles.map((file) => {
                     const sizeBytes = utf8Size(file.value);
-                    if (sizeBytes > MAX_GAME_FILE_BYTES) {
-                        throw new Error(
-                            `"${path}" is too large to read through this tool.`,
-                        );
-                    }
                     return {
                         path: file.path,
                         language: file.language,
@@ -337,59 +377,75 @@ function createTools(
                 });
                 throwIfAborted(signal);
                 assertGameRevision(useProject.getState(), expectedRevision);
-                return { revision: expectedRevision, files };
+                return { revision: expectedRevision, totalBytes, files };
             },
         },
         {
-            name: "kaplayground_update_game",
-            title: "Update the KAPLAYGROUND game",
-            description:
-                "Apply all related file replacements, creations, and removals together. The update succeeds completely or changes nothing. It does not run the game; call run_game afterward with the returned revision.",
-            inputSchema: updateGameSchema(),
+            ...kaplaygroundToolSurface("kaplayground_update_game"),
             execute: async (input, signal) => {
-                const expectedRevision = requiredString(
-                    input.expectedRevision,
-                    "expectedRevision",
-                );
-                const changes = parseGameChanges(input.changes);
-                const current = useProject.getState();
-                assertGameRevision(current, expectedRevision);
-                const prepared = prepareGameUpdate(
-                    current.project.files,
-                    changes,
-                );
+                return await projectMutations.run(async () => {
+                    throwIfAborted(signal);
+                    const expectedRevision = requiredString(
+                        input.expectedRevision,
+                        "expectedRevision",
+                    );
+                    const changes = parseGameChanges(input.changes);
+                    const focusPath = input.focusPath === undefined
+                        ? undefined
+                        : gamePath(
+                            requiredString(input.focusPath, "focusPath"),
+                        );
+                    const current = useProject.getState();
+                    assertGameRevision(current, expectedRevision);
+                    const prepared = prepareGameUpdate(
+                        current.project.files,
+                        changes,
+                    );
+                    if (focusPath && !prepared.files.has(focusPath)) {
+                        throw new Error(
+                            `The focus file does not exist after this update: ${focusPath}`,
+                        );
+                    }
 
-                throwIfAborted(signal);
-                assertGameRevision(useProject.getState(), expectedRevision);
-                useProject.getState().setProject({
-                    files: prepared.files as Map<string, File>,
+                    throwIfAborted(signal);
+                    assertGameRevision(useProject.getState(), expectedRevision);
+                    useProject.getState().setProject({
+                        files: prepared.files as Map<string, File>,
+                    });
+                    const editorSync = synchronizeEditorModels(
+                        prepared.files,
+                        prepared.changes,
+                        focusPath,
+                    );
+
+                    const revision = gameRevision(useProject.getState());
+                    return {
+                        updated: true,
+                        committed: true,
+                        previousRevision: expectedRevision,
+                        revision,
+                        changeCount: prepared.changes.length,
+                        totalBytes: prepared.totalBytes,
+                        changes: prepared.changes,
+                        focusPath: focusPath ?? null,
+                        editorSync,
+                        previewRan: false,
+                    };
                 });
-                synchronizeEditorModels(prepared.files, prepared.changes);
-
-                const revision = gameRevision(useProject.getState());
-                return {
-                    updated: true,
-                    previousRevision: expectedRevision,
-                    revision,
-                    changeCount: prepared.changes.length,
-                    totalBytes: prepared.totalBytes,
-                    changes: prepared.changes,
-                    previewRan: false,
-                };
             },
         },
         {
-            name: "kaplayground_run_game",
-            title: "Run and check the KAPLAYGROUND game",
-            description:
-                "Build and start the exact requested game revision, then check editor errors, console errors, and a bounded snapshot of the running scene. Use this after update_game.",
-            inputSchema: runGameSchema(),
-            annotations: { untrustedContentHint: true },
+            ...kaplaygroundToolSurface("kaplayground_run_game"),
             execute: async (input, signal) => {
                 const expectedRevision = requiredString(
                     input.expectedRevision,
                     "expectedRevision",
                 );
+                const mode = optionalEnum(
+                    input.mode,
+                    "mode",
+                    ["restart-and-check", "check-current"] as const,
+                ) ?? "restart-and-check";
                 const inspectTag = input.inspectTag === undefined
                     ? undefined
                     : boundedString(input.inspectTag, "inspectTag", 128);
@@ -409,34 +465,84 @@ function createTools(
                 );
 
                 assertGameRevision(useProject.getState(), expectedRevision);
-                // Verification only concerns the run started by this call. Without
-                // resetting the bounded capture, evictions from older runs would
-                // make every later run look incomplete.
-                consoleCapture.clear();
                 let runId: string | null = null;
-                try {
-                    const run = await useEditor.getState().runWithSignal(signal);
-                    runId = run.runId;
-                } catch (error) {
-                    return {
-                        status: "failed",
-                        revision: gameRevision(useProject.getState()),
-                        runId: previewRunId(error),
-                        summary: "The game could not start.",
-                        error: errorMessage(error),
-                        notChecked: ["Playing the controls", "Visual quality"],
-                    };
-                }
+                if (mode === "restart-and-check") {
+                    // Verification only concerns the run started by this call.
+                    // Resetting prevents evictions from older runs making every
+                    // later run look incomplete.
+                    consoleCapture.clear();
+                    previewRevisions.clear();
+                    try {
+                        const run = await useEditor.getState().runWithSignal(
+                            signal,
+                        );
+                        runId = run.runId;
+                    } catch (error) {
+                        if (signal.aborted) throw abortReason(signal);
+                        return {
+                            status: "failed",
+                            mode,
+                            revision: gameRevision(useProject.getState()),
+                            runId: previewRunId(error),
+                            summary: "The game could not start.",
+                            error: errorMessage(error),
+                            notChecked: [
+                                "Playing the controls",
+                                "Visual quality",
+                            ],
+                        };
+                    }
 
-                if (gameRevision(useProject.getState()) !== expectedRevision) {
-                    return {
-                        status: "failed",
-                        revision: gameRevision(useProject.getState()),
-                        runId,
-                        summary:
-                            "The game changed while it was starting, so this run no longer matches the requested revision.",
-                        notChecked: ["Playing the controls", "Visual quality"],
-                    };
+                    if (
+                        gameRevision(useProject.getState()) !== expectedRevision
+                    ) {
+                        return {
+                            status: "failed",
+                            mode,
+                            revision: gameRevision(useProject.getState()),
+                            runId,
+                            summary:
+                                "The game changed while it was starting, so this run no longer matches the requested revision.",
+                            notChecked: [
+                                "Playing the controls",
+                                "Visual quality",
+                            ],
+                        };
+                    }
+                    previewRevisions.set(runId, expectedRevision);
+                } else {
+                    const editor = useEditor.getState();
+                    runId = editor.previewRunId;
+                    if (editor.stopped || runId === null) {
+                        return {
+                            status: "failed",
+                            mode,
+                            revision: expectedRevision,
+                            runId: null,
+                            summary:
+                                "There is no current game run to inspect. Restart and check the game first.",
+                            notChecked: [
+                                "Playing the controls",
+                                "Visual quality",
+                            ],
+                        };
+                    }
+                    const runRevision = previewRevisions.get(runId);
+                    if (runRevision && runRevision !== expectedRevision) {
+                        return {
+                            status: "failed",
+                            mode,
+                            revision: expectedRevision,
+                            runId,
+                            summary:
+                                "The current game run belongs to an older revision. Restart it before checking this revision.",
+                            runRevision,
+                            notChecked: [
+                                "Playing the controls",
+                                "Visual quality",
+                            ],
+                        };
+                    }
                 }
 
                 await settleEditor(signal);
@@ -461,11 +567,15 @@ function createTools(
                     level === "error"
                 );
                 const consoleTruncated = runEntries.length > consoleLimit;
-                const consoleEntries = runEntries.slice(-consoleLimit).map((entry) => ({
+                const consoleEntries = runEntries.slice(-consoleLimit).map((
+                    entry,
+                ) => ({
                     timestamp: entry.timestamp,
                     runId: entry.runId ?? null,
                     level: entry.level,
-                    values: entry.values.map((value) => safeSerializable(value)),
+                    values: entry.values.map((value) =>
+                        safeSerializable(value)
+                    ),
                 }));
 
                 let scene: Record<string, unknown> = {
@@ -480,6 +590,7 @@ function createTools(
                         ),
                     ) as Record<string, unknown>;
                 } catch (error) {
+                    if (signal.aborted) throw abortReason(signal);
                     scene = {
                         available: false,
                         runId,
@@ -490,6 +601,7 @@ function createTools(
                 if (gameRevision(useProject.getState()) !== expectedRevision) {
                     return {
                         status: "failed",
+                        mode,
                         revision: gameRevision(useProject.getState()),
                         runId,
                         summary:
@@ -498,49 +610,70 @@ function createTools(
                     };
                 }
 
-                const incompleteReasons = [
-                    ...!diagnosticsCapture.available
-                        ? ["Editor error checking was unavailable."]
-                        : [],
-                    ...consoleTruncated
-                        ? ["Only the newest console messages were returned."]
-                        : [],
-                    ...consoleSnapshot.droppedCount > 0
-                        ? ["Some older console messages were no longer available."]
-                        : [],
-                    ...scene.available !== true
-                        ? ["The running scene could not be inspected."]
-                        : [],
-                    ...scene.available === true && scene.runId !== runId
-                        ? ["The scene snapshot belonged to a different run."]
-                        : [],
-                    ...scene.objectsTruncated === true
-                        ? ["Only part of the running scene was inspected."]
-                        : [],
-                ];
-                const status = diagnosticErrors.length > 0
-                        || consoleErrors.length > 0
-                    ? "failed"
-                    : incompleteReasons.length > 0
-                    ? "incomplete"
-                    : "passed";
+                const incompleteReasons: string[] = [];
+                if (
+                    mode === "check-current"
+                    && runId !== null
+                    && !previewRevisions.has(runId)
+                ) {
+                    incompleteReasons.push(
+                        "The current run was not started by this browser-agent connection, so its source revision could not be verified.",
+                    );
+                }
+                if (!diagnosticsCapture.available) {
+                    incompleteReasons.push(
+                        "Editor error checking was unavailable.",
+                    );
+                }
+                if (consoleTruncated) {
+                    incompleteReasons.push(
+                        "Only the newest console messages were returned.",
+                    );
+                }
+                if (consoleSnapshot.droppedCount > 0) {
+                    incompleteReasons.push(
+                        "Some older console messages were no longer available.",
+                    );
+                }
+                if (scene.available !== true) {
+                    incompleteReasons.push(
+                        "The running scene could not be inspected.",
+                    );
+                }
+                if (scene.available === true && scene.runId !== runId) {
+                    incompleteReasons.push(
+                        "The scene snapshot belonged to a different run.",
+                    );
+                }
+                if (scene.objectsTruncated === true) {
+                    incompleteReasons.push(
+                        "Only part of the running scene was inspected.",
+                    );
+                }
+                const status = classifyGameRun(
+                    diagnosticErrors.length,
+                    consoleErrors.length,
+                    incompleteReasons,
+                );
 
                 return {
                     status,
+                    mode,
                     revision: expectedRevision,
                     runId,
                     summary: status === "passed"
-                        ? "The game started without detected code or console errors."
+                        ? mode === "restart-and-check"
+                            ? "The game started without detected code or console errors."
+                            : "The current game run has no detected code or console errors."
                         : status === "failed"
-                        ? "The game started, but errors were detected."
-                        : "The game started, but some checks were unavailable.",
+                        ? "The game run has detected errors."
+                        : "The game run was checked, but some checks were unavailable.",
                     diagnostics: {
                         available: diagnosticsCapture.available,
                         errorCount: diagnosticErrors.length,
                         total: diagnosticsCapture.diagnostics.length,
-                        truncated:
-                            diagnosticsCapture.diagnostics.length
-                                > MAX_DIAGNOSTIC_RESULTS,
+                        truncated: diagnosticsCapture.diagnostics.length
+                            > MAX_DIAGNOSTIC_RESULTS,
                         items: diagnostics,
                     },
                     console: {
@@ -558,12 +691,7 @@ function createTools(
             },
         },
         {
-            name: "kaplayground_find_assets",
-            title: "Find KAPLAYGROUND game assets",
-            description:
-                "Find matching assets already in the game and reusable items from KAPLAYGROUND's built-in library. Returns metadata and exact loader code, never binary files or hidden URLs.",
-            inputSchema: findAssetsSchema(),
-            annotations: readAnnotations(),
+            ...kaplaygroundToolSurface("kaplayground_find_assets"),
             execute: async (input, signal) => {
                 const query = optionalBoundedString(input.query, "query", 120)
                     ?.toLowerCase() ?? "";
@@ -584,13 +712,22 @@ function createTools(
                     MAX_ASSET_RESULTS,
                     20,
                 );
+                const offset = boundedInteger(
+                    input.offset,
+                    "offset",
+                    0,
+                    MAX_RESULT_OFFSET,
+                    0,
+                );
 
                 const before = useProject.getState();
                 const revision = gameRevision(before);
                 const gameAssets = source === "library"
                     ? []
                     : [...before.project.assets.values()]
-                        .filter((asset) => kind === undefined || asset.kind === kind)
+                        .filter((asset) =>
+                            kind === undefined || asset.kind === kind
+                        )
                         .filter((asset) =>
                             query.length === 0
                             || `${asset.name} ${asset.path} ${asset.kind}`
@@ -599,10 +736,13 @@ function createTools(
                         )
                         .map((asset) => ({
                             source: "game",
-                            name: asset.name,
-                            path: asset.path,
+                            name: asset.name.slice(0, 256),
+                            path: asset.path.slice(0, 512),
                             kind: asset.kind,
-                            importFunction: asset.importFunction,
+                            importFunction: asset.importFunction.slice(
+                                0,
+                                2_048,
+                            ),
                             storage: assetSource(asset.url),
                             sizeBytes: embeddedAssetSize(asset.url) ?? null,
                         }));
@@ -621,9 +761,14 @@ function createTools(
                         animations: asset.animations.slice(0, 50),
                         importFunction: asset.importFunction.slice(0, 2_048),
                         outlinedImportFunction:
-                            asset.outlinedImportFunction?.slice(0, 2_048) ?? null,
+                            asset.outlinedImportFunction?.slice(0, 2_048)
+                                ?? null,
                     }));
                 const results = [...gameAssets, ...libraryAssets];
+                const page = results.slice(offset, offset + limit);
+                const nextOffset = offset + page.length < results.length
+                    ? offset + page.length
+                    : null;
                 throwIfAborted(signal);
                 assertGameRevision(useProject.getState(), revision);
                 return {
@@ -632,28 +777,28 @@ function createTools(
                     kind: kind ?? null,
                     source,
                     total: results.length,
-                    truncated: results.length > limit,
-                    assets: results.slice(0, limit),
+                    offset,
+                    limit,
+                    truncated: nextOffset !== null,
+                    nextOffset,
+                    assets: page,
                 };
             },
         },
         {
-            name: "kaplayground_save_game",
-            title: "Save the KAPLAYGROUND game",
-            description:
-                "Save the current game after checking that it still matches the requested revision. Temporary work becomes a saved project; existing saved projects are flushed to storage.",
-            inputSchema: revisionSchema(),
+            ...kaplaygroundToolSurface("kaplayground_save_game"),
             execute: async (input, signal) => {
                 const expectedRevision = requiredString(
                     input.expectedRevision,
                     "expectedRevision",
                 );
                 assertGameRevision(useProject.getState(), expectedRevision);
-                const projectId = await useProject.getState().persistActiveProject();
                 throwIfAborted(signal);
-                assertGameRevision(useProject.getState(), expectedRevision);
+                const projectId = await useProject.getState()
+                    .persistActiveProject();
                 return {
                     saved: true,
+                    committed: true,
                     revision: expectedRevision,
                     projectId,
                     storage: "autosaved",
@@ -661,12 +806,7 @@ function createTools(
             },
         },
         {
-            name: "kaplayground_find_examples",
-            title: "Find KAPLAYGROUND starting games",
-            description:
-                "Find ready-made games and examples by idea or tag when the user asks for a different starting point.",
-            inputSchema: findExamplesSchema(),
-            annotations: readAnnotations(),
+            ...kaplaygroundToolSurface("kaplayground_find_examples"),
             execute: async (input, signal) => {
                 const query = optionalBoundedString(input.query, "query", 120)
                     ?.toLowerCase() ?? "";
@@ -677,6 +817,13 @@ function createTools(
                     1,
                     MAX_EXAMPLE_RESULTS,
                     30,
+                );
+                const offset = boundedInteger(
+                    input.offset,
+                    "offset",
+                    0,
+                    MAX_RESULT_OFFSET,
+                    0,
                 );
                 const revision = gameRevision(useProject.getState());
                 const examples = demos
@@ -695,52 +842,121 @@ function createTools(
                     .map((example) => ({
                         key: example.key,
                         title: example.formattedName,
-                        description: example.description,
-                        tags: example.tags.map(({ name }) => name),
+                        description: example.description?.slice(0, 1_000)
+                            ?? null,
+                        tags: example.tags.slice(0, 30).map(({ name }) => name),
                     }));
+                const page = examples.slice(offset, offset + limit);
+                const nextOffset = offset + page.length < examples.length
+                    ? offset + page.length
+                    : null;
                 throwIfAborted(signal);
                 assertGameRevision(useProject.getState(), revision);
                 return {
                     revision,
                     total: examples.length,
-                    truncated: examples.length > limit,
-                    examples: examples.slice(0, limit),
+                    offset,
+                    limit,
+                    truncated: nextOffset !== null,
+                    nextOffset,
+                    examples: page,
                 };
             },
         },
         {
-            name: "kaplayground_open_example",
-            title: "Open a KAPLAYGROUND starting game",
-            description:
-                "Replace the open game with one exact result from find_examples. Unsaved work is preserved unless the user explicitly approves discarding it.",
-            inputSchema: openExampleSchema(),
+            ...kaplaygroundToolSurface("kaplayground_open_example"),
             execute: async (input, signal) => {
-                const expectedRevision = requiredString(
-                    input.expectedRevision,
-                    "expectedRevision",
-                );
-                const key = boundedString(input.key, "key", 128);
-                const discardUnsavedChanges = optionalBoolean(
-                    input.discardUnsavedChanges,
-                    false,
-                );
-                assertGameRevision(useProject.getState(), expectedRevision);
-                if (hasUnsavedChanges() && !discardUnsavedChanges) {
-                    throw new Error(
-                        "The open game has unsaved changes. Save it first, or discard it only after the user explicitly agrees.",
+                return await projectMutations.run(async () => {
+                    throwIfAborted(signal);
+                    const expectedRevision = requiredString(
+                        input.expectedRevision,
+                        "expectedRevision",
                     );
-                }
-                if (!getDemo(key)) {
-                    throw new Error(
-                        `Starting game not found: ${key}. Find examples again before opening one.`,
+                    const key = boundedString(input.key, "key", 128);
+                    const discardUnsavedChanges = optionalBoolean(
+                        input.discardUnsavedChanges,
+                        false,
                     );
-                }
-                await useProject.getState().createNewProject("ex", {}, key);
-                throwIfAborted(signal);
-                return {
-                    opened: key,
-                    revision: gameRevision(useProject.getState()),
-                };
+                    assertGameRevision(useProject.getState(), expectedRevision);
+                    const example = getDemo(key);
+                    if (!example) {
+                        throw new Error(
+                            `Starting game not found: ${key}. Find examples again before opening one.`,
+                        );
+                    }
+
+                    if (
+                        requiresExampleDiscardConfirmation(
+                            hasUnsavedChanges(),
+                            discardUnsavedChanges,
+                        )
+                    ) {
+                        let approved: boolean;
+                        try {
+                            approved = await waitWithAbort(
+                                confirm(
+                                    `Open ${example.formattedName}?`,
+                                    "This replaces the open game and discards its unsaved changes. The page requires your confirmation before continuing.",
+                                    {
+                                        type: "warning",
+                                        confirmText: "Discard and open",
+                                        dismissText: "Keep my game",
+                                    },
+                                ),
+                                signal,
+                            );
+                        } catch (error) {
+                            document.querySelector<HTMLDialogElement>(
+                                "#confirm-dialog",
+                            )?.close();
+                            throw error;
+                        }
+                        if (!approved) {
+                            return {
+                                opened: null,
+                                committed: false,
+                                revision: expectedRevision,
+                                reason: "user_declined",
+                            };
+                        }
+                    }
+
+                    throwIfAborted(signal);
+                    assertGameRevision(useProject.getState(), expectedRevision);
+                    const generationBefore =
+                        useProject.getState().projectGeneration;
+                    let postCommitWarning: string | null = null;
+                    try {
+                        await useProject.getState().createNewProject(
+                            "ex",
+                            {},
+                            key,
+                            false,
+                            () => {
+                                throwIfAborted(signal);
+                                assertGameRevision(
+                                    useProject.getState(),
+                                    expectedRevision,
+                                );
+                            },
+                        );
+                    } catch (error) {
+                        const state = useProject.getState();
+                        if (
+                            state.projectGeneration <= generationBefore
+                            || state.demoKey !== key
+                        ) {
+                            throw error;
+                        }
+                        postCommitWarning = errorMessage(error);
+                    }
+                    return {
+                        opened: key,
+                        committed: true,
+                        revision: gameRevision(useProject.getState()),
+                        postCommitWarning,
+                    };
+                });
             },
         },
     ];
@@ -749,213 +965,77 @@ function createTools(
 function synchronizeEditorModels(
     files: ReadonlyMap<string, { value: string; language: string }>,
     changes: readonly { action: GameChange["action"]; path: string }[],
-): void {
+    focusPath?: string,
+): { available: boolean; complete: boolean; errors: string[] } {
     const editorStore = useEditor.getState();
     const { monaco, currentFile } = editorStore.runtime;
-    if (!monaco) return;
+    const errors: string[] = [];
+    if (!monaco) {
+        if (focusPath) {
+            try {
+                editorStore.setCurrentFile(focusPath);
+            } catch (error) {
+                errors.push(`${focusPath}: ${errorMessage(error)}`);
+            }
+        }
+        return {
+            available: false,
+            complete: errors.length === 0,
+            errors,
+        };
+    }
 
     for (const change of changes) {
-        const uri = monaco.Uri.file(change.path);
-        const model = monaco.editor.getModel(uri);
-        if (change.action === "remove") {
-            model?.dispose();
-            if (currentFile === change.path) editorStore.setCurrentFile("main.js");
-            continue;
-        }
+        try {
+            const uri = monaco.Uri.file(change.path);
+            const model = monaco.editor.getModel(uri);
+            if (change.action === "remove") {
+                model?.dispose();
+                if (currentFile === change.path) {
+                    editorStore.setCurrentFile("main.js");
+                }
+                continue;
+            }
 
-        const file = files.get(change.path);
-        if (!file) continue;
-        if (model) {
-            if (model.getValue() !== file.value) model.setValue(file.value);
-        } else {
-            monaco.editor.createModel(file.value, file.language, uri);
+            const file = files.get(change.path);
+            if (!file) continue;
+            if (model) {
+                if (model.getValue() !== file.value) model.setValue(file.value);
+            } else {
+                monaco.editor.createModel(file.value, file.language, uri);
+            }
+        } catch (error) {
+            errors.push(`${change.path}: ${errorMessage(error)}`);
         }
     }
-}
 
-function readFilesSchema(): object {
-    return {
-        type: "object",
-        properties: {
-            expectedRevision: revisionProperty(),
-            paths: {
-                type: "array",
-                minItems: 1,
-                maxItems: MAX_FILES_PER_READ,
-                items: {
-                    type: "string",
-                    minLength: 1,
-                    maxLength: 512,
-                },
+    if (focusPath) {
+        try {
+            editorStore.setCurrentFile(focusPath);
+        } catch (error) {
+            errors.push(`${focusPath}: ${errorMessage(error)}`);
+        }
+    }
+
+    if (errors.length > 0) {
+        console.error(
+            "[webmcp] Project committed but editor synchronization failed",
+            {
+                errors,
             },
-        },
-        required: ["expectedRevision", "paths"],
-        additionalProperties: false,
-    };
-}
-
-function updateGameSchema(): object {
-    const path = { type: "string", minLength: 1, maxLength: 512 };
-    const content = { type: "string", maxLength: MAX_GAME_FILE_BYTES };
-    return {
-        type: "object",
-        properties: {
-            expectedRevision: revisionProperty(),
-            changes: {
-                type: "array",
-                minItems: 1,
-                maxItems: MAX_GAME_CHANGES,
-                items: {
-                    oneOf: [
-                        {
-                            type: "object",
-                            properties: {
-                                action: { type: "string", enum: ["replace"] },
-                                path,
-                                content,
-                            },
-                            required: ["action", "path", "content"],
-                            additionalProperties: false,
-                        },
-                        {
-                            type: "object",
-                            properties: {
-                                action: { type: "string", enum: ["create"] },
-                                path,
-                                content,
-                            },
-                            required: ["action", "path", "content"],
-                            additionalProperties: false,
-                        },
-                        {
-                            type: "object",
-                            properties: {
-                                action: { type: "string", enum: ["remove"] },
-                                path,
-                            },
-                            required: ["action", "path"],
-                            additionalProperties: false,
-                        },
-                    ],
-                },
-            },
-        },
-        required: ["expectedRevision", "changes"],
-        additionalProperties: false,
-    };
-}
-
-function runGameSchema(): object {
-    return {
-        type: "object",
-        properties: {
-            expectedRevision: revisionProperty(),
-            inspectTag: {
-                type: "string",
-                minLength: 1,
-                maxLength: 128,
-            },
-            consoleLimit: {
-                type: "integer",
-                minimum: 1,
-                maximum: MAX_CONSOLE_RESULTS,
-                default: 50,
-            },
-            objectLimit: {
-                type: "integer",
-                minimum: 1,
-                maximum: MAX_PREVIEW_OBJECTS,
-                default: MAX_PREVIEW_OBJECTS,
-            },
-        },
-        required: ["expectedRevision"],
-        additionalProperties: false,
-    };
-}
-
-function findAssetsSchema(): object {
-    return {
-        type: "object",
-        properties: {
-            query: { type: "string", maxLength: 120 },
-            kind: { type: "string", enum: ["sprite", "sound", "font"] },
-            source: {
-                type: "string",
-                enum: ["all", "game", "library"],
-                default: "all",
-            },
-            limit: {
-                type: "integer",
-                minimum: 1,
-                maximum: MAX_ASSET_RESULTS,
-                default: 20,
-            },
-        },
-        additionalProperties: false,
-    };
-}
-
-function findExamplesSchema(): object {
-    return {
-        type: "object",
-        properties: {
-            query: { type: "string", maxLength: 120 },
-            tag: { type: "string", maxLength: 64 },
-            limit: {
-                type: "integer",
-                minimum: 1,
-                maximum: MAX_EXAMPLE_RESULTS,
-                default: 30,
-            },
-        },
-        additionalProperties: false,
-    };
-}
-
-function openExampleSchema(): object {
-    return {
-        type: "object",
-        properties: {
-            expectedRevision: revisionProperty(),
-            key: { type: "string", minLength: 1, maxLength: 128 },
-            discardUnsavedChanges: { type: "boolean", default: false },
-        },
-        required: ["expectedRevision", "key"],
-        additionalProperties: false,
-    };
-}
-
-function revisionSchema(): object {
-    return {
-        type: "object",
-        properties: { expectedRevision: revisionProperty() },
-        required: ["expectedRevision"],
-        additionalProperties: false,
-    };
-}
-
-function revisionProperty(): object {
-    return {
-        type: "string",
-        minLength: 3,
-        maxLength: 64,
-        description: "Revision returned by inspect_game or update_game.",
-    };
-}
-
-function emptyObjectSchema(): object {
-    return { type: "object", properties: {}, additionalProperties: false };
-}
-
-function readAnnotations(): WebMCP.ToolAnnotations {
-    return { readOnlyHint: true, untrustedContentHint: true };
+        );
+    }
+    return { available: true, complete: errors.length === 0, errors };
 }
 
 function parseGameChanges(value: unknown): GameChange[] {
     if (!Array.isArray(value)) throw new TypeError("changes must be an array.");
     return value.map((item, index) => {
         const change = toRecord(item);
-        const action = requiredString(change.action, `changes[${index}].action`);
+        const action = requiredString(
+            change.action,
+            `changes[${index}].action`,
+        );
         const path = requiredString(change.path, `changes[${index}].path`);
         if (action === "remove") return { action, path };
         if (action === "replace" || action === "create") {
@@ -1026,7 +1106,8 @@ function embeddedAssetSize(url: string): number | undefined {
     const data = url.slice(separator + 1);
     if (!metadata.endsWith(";base64")) {
         try {
-            return new TextEncoder().encode(decodeURIComponent(data)).byteLength;
+            return new TextEncoder().encode(decodeURIComponent(data))
+                .byteLength;
         } catch {
             return undefined;
         }
@@ -1053,7 +1134,9 @@ function toRecord(value: unknown): Record<string, unknown> {
 }
 
 function stringValue(value: unknown, name: string): string {
-    if (typeof value !== "string") throw new TypeError(`${name} must be a string.`);
+    if (typeof value !== "string") {
+        throw new TypeError(`${name} must be a string.`);
+    }
     return value;
 }
 
@@ -1063,10 +1146,16 @@ function requiredString(value: unknown, name: string): string {
     return result;
 }
 
-function boundedString(value: unknown, name: string, maxLength: number): string {
+function boundedString(
+    value: unknown,
+    name: string,
+    maxLength: number,
+): string {
     const result = requiredString(value, name);
     if (result.length > maxLength) {
-        throw new RangeError(`${name} must contain at most ${maxLength} characters.`);
+        throw new RangeError(
+            `${name} must contain at most ${maxLength} characters.`,
+        );
     }
     return result;
 }
@@ -1079,7 +1168,9 @@ function optionalBoundedString(
     if (value === undefined) return undefined;
     const result = stringValue(value, name).trim();
     if (result.length > maxLength) {
-        throw new RangeError(`${name} must contain at most ${maxLength} characters.`);
+        throw new RangeError(
+            `${name} must contain at most ${maxLength} characters.`,
+        );
     }
     return result;
 }
@@ -1096,7 +1187,9 @@ function stringArray(
             `${name} must contain between ${minimum} and ${maximum} items.`,
         );
     }
-    return value.map((item, index) => requiredString(item, `${name}[${index}]`));
+    return value.map((item, index) =>
+        requiredString(item, `${name}[${index}]`)
+    );
 }
 
 function boundedInteger(
@@ -1107,7 +1200,10 @@ function boundedInteger(
     fallback: number,
 ): number {
     if (value === undefined) return fallback;
-    if (!Number.isInteger(value) || Number(value) < minimum || Number(value) > maximum) {
+    if (
+        !Number.isInteger(value) || Number(value) < minimum
+        || Number(value) > maximum
+    ) {
         throw new RangeError(
             `${name} must be an integer between ${minimum} and ${maximum}.`,
         );

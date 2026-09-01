@@ -1,28 +1,8 @@
 name: Validate WebMCP
 
 on:
-  push:
-    paths:
-      - ".github/workflows/validate-webmcp.yml"
-      - "README.md"
-      - "package.json"
-      - "package-lock.json"
-      - "src/integrations/webmcp/**"
-      - "src/components/WebMCP/**"
-      - "src/main.tsx"
-      - "src/types/**"
-      - "tests/webmcp.test.mjs"
-  pull_request:
-    paths:
-      - ".github/workflows/validate-webmcp.yml"
-      - "README.md"
-      - "package.json"
-      - "package-lock.json"
-      - "src/integrations/webmcp/**"
-      - "src/components/WebMCP/**"
-      - "src/main.tsx"
-      - "src/types/**"
-      - "tests/webmcp.test.mjs"
+  push: {}
+  pull_request: {}
 
 jobs:
   validate:

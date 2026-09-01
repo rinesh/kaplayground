@@ -108,12 +108,14 @@ export interface ProjectSlice {
      * @param mode - Project mode, example or project
      * @param replace - Optional project to replace in creation
      * @param demoName - Optional demo name to load as a demo
+     * @param beforeCommit - Optional final guard run immediately before replacement
      */
     createNewProject(
         mode: ProjectMode,
         replace?: Partial<Project>,
         demoName?: string,
         isShared?: boolean,
+        beforeCommit?: () => void,
     ): Promise<void>;
     /**
      * Get project metadata compatible with example demos
@@ -394,6 +396,7 @@ export const createProjectSlice: StateCreator<
         replace,
         demoName,
         isShared,
+        beforeCommit,
     ) {
         const files = new Map<string, File>();
         const assets = new Map<string, Asset>();
@@ -447,6 +450,7 @@ export const createProjectSlice: StateCreator<
         const name = demoProjectName
             ?? await get().generateName(mode, isShared);
 
+        beforeCommit?.();
         set((state) => ({
             projectGeneration: state.projectGeneration + 1,
             projectRevision: state.projectRevision + 1,

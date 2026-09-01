@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { summarizeWebMCPActivityInput } from "../src/integrations/webmcp/activitySummary.ts";
 import { CODEX_PLAY_STEPS } from "../src/integrations/webmcp/agentGuide.ts";
 import { createBoundedConsoleCapture } from "../src/integrations/webmcp/boundedConsoleCapture.ts";
 import {
@@ -10,15 +11,59 @@ import {
 import { EXAMPLE_COACH_PROMPTS } from "../src/integrations/webmcp/exampleCoachPrompts.ts";
 import {
     assertGameRevision,
+    classifyGameRun,
+    createSerialTaskQueue,
+    gameReadSize,
     gameRevision,
     KAPLAYGROUND_WEBMCP_TOOL_NAMES,
+    KAPLAYGROUND_WEBMCP_TOOL_SURFACE,
+    MAX_TOTAL_READ_BYTES,
     prepareGameUpdate,
+    registerGameToolDefinitions,
+    requiresExampleDiscardConfirmation,
 } from "../src/integrations/webmcp/gameTools.ts";
 import { collectMonacoDiagnostics } from "../src/integrations/webmcp/monacoDiagnostics.ts";
-import { summarizeWebMCPActivityInput } from "../src/integrations/webmcp/activitySummary.ts";
 
 const FRIENDLY_PROMPT_FORBIDDEN =
     /@Browser|WebMCP|kaplayground_|contract|revision|\btool\b/i;
+
+class FakeModelContext {
+    constructor(failOnName = null) {
+        this.failOnName = failOnName;
+        this.registered = [];
+        this.active = new Map();
+    }
+
+    async registerTool(tool, options = {}) {
+        if (tool.name === this.failOnName) {
+            throw new Error(`Registration rejected for ${tool.name}`);
+        }
+        this.registered.push({ tool, options });
+        this.active.set(tool.name, tool);
+        options.signal?.addEventListener(
+            "abort",
+            () => this.active.delete(tool.name),
+            { once: true },
+        );
+    }
+
+    tool(name) {
+        const tool = this.active.get(name);
+        assert.ok(tool, `Missing active tool: ${name}`);
+        return tool;
+    }
+}
+
+function executableSurface(executions = []) {
+    return KAPLAYGROUND_WEBMCP_TOOL_SURFACE.map((tool) => ({
+        ...tool,
+        async execute(input, options) {
+            executions.push({ name: tool.name, input, signal: options.signal });
+            options.signal.throwIfAborted();
+            return { name: tool.name, input };
+        },
+    }));
+}
 
 describe("simple KAPLAYGROUND browser tools", () => {
     it("exposes one small tool surface", () => {
@@ -32,6 +77,103 @@ describe("simple KAPLAYGROUND browser tools", () => {
             "kaplayground_find_examples",
             "kaplayground_open_example",
         ]);
+        assert.deepEqual(
+            KAPLAYGROUND_WEBMCP_TOOL_SURFACE.map(({ name }) => name),
+            KAPLAYGROUND_WEBMCP_TOOL_NAMES,
+        );
+        assert.equal(KAPLAYGROUND_WEBMCP_TOOL_SURFACE.length, 8);
+    });
+
+    it("publishes bounded, self-describing schemas and trust annotations", () => {
+        for (const tool of KAPLAYGROUND_WEBMCP_TOOL_SURFACE) {
+            assert.equal(tool.inputSchema.type, "object", tool.name);
+            assert.equal(
+                tool.inputSchema.additionalProperties,
+                false,
+                tool.name,
+            );
+            assert.doesNotThrow(() => JSON.stringify(tool.inputSchema));
+        }
+
+        const read = KAPLAYGROUND_WEBMCP_TOOL_SURFACE.find(({ name }) =>
+            name === "kaplayground_read_files"
+        );
+        assert.equal(read.inputSchema.properties.paths.uniqueItems, true);
+        assert.equal(read.inputSchema.properties.paths.maxItems, 10);
+        assert.equal(read.annotations.readOnlyHint, true);
+        assert.equal(read.annotations.untrustedContentHint, true);
+
+        const run = KAPLAYGROUND_WEBMCP_TOOL_SURFACE.find(({ name }) =>
+            name === "kaplayground_run_game"
+        );
+        assert.deepEqual(run.inputSchema.properties.mode.enum, [
+            "restart-and-check",
+            "check-current",
+        ]);
+
+        const update = KAPLAYGROUND_WEBMCP_TOOL_SURFACE.find(({ name }) =>
+            name === "kaplayground_update_game"
+        );
+        assert.equal(
+            update.inputSchema.properties.expectedRevision.pattern,
+            "^[0-9]+:[0-9]+$",
+        );
+        assert.match(
+            update.inputSchema.properties.focusPath.description,
+            /show in the editor/i,
+        );
+    });
+
+    it("registers the complete production surface and forwards cancellation", async () => {
+        const context = new FakeModelContext();
+        const controller = new AbortController();
+        const registeredNames = [];
+        const executions = [];
+
+        await registerGameToolDefinitions(
+            context,
+            executableSurface(executions),
+            controller,
+            name => registeredNames.push(name),
+        );
+
+        assert.deepEqual(registeredNames, KAPLAYGROUND_WEBMCP_TOOL_NAMES);
+        assert.equal(context.active.size, 8);
+        assert.equal(
+            new Set(context.registered.map(({ options }) => options.signal))
+                .size,
+            1,
+        );
+
+        const invocation = new AbortController();
+        const result = await context.tool("kaplayground_read_files").execute(
+            { expectedRevision: "1:0", paths: ["main.js"] },
+            { signal: invocation.signal },
+        );
+        assert.equal(result.name, "kaplayground_read_files");
+        assert.equal(executions[0].signal, invocation.signal);
+
+        controller.abort();
+        assert.equal(context.active.size, 0);
+    });
+
+    it("rolls back every registered tool when one registration fails", async () => {
+        const rejectedName = KAPLAYGROUND_WEBMCP_TOOL_NAMES[4];
+        const context = new FakeModelContext(rejectedName);
+        const controller = new AbortController();
+
+        await assert.rejects(
+            registerGameToolDefinitions(
+                context,
+                executableSurface(),
+                controller,
+            ),
+            /registration rejected/i,
+        );
+
+        assert.equal(controller.signal.aborted, true);
+        assert.equal(context.registered.length, 4);
+        assert.equal(context.active.size, 0);
     });
 
     it("uses one revision token for project replacement and content changes", () => {
@@ -142,6 +284,85 @@ describe("simple KAPLAYGROUND browser tools", () => {
                     { action: "remove", path: "main.js" },
                 ]),
             /only JavaScript or TypeScript files/i,
+        );
+    });
+
+    it("bounds aggregate multi-file reads", () => {
+        assert.equal(
+            gameReadSize([
+                { path: "main.js", value: "kaplay();\n" },
+                { path: "scenes/game.js", value: "scene('game', () => {});\n" },
+            ]),
+            35,
+        );
+        assert.throws(
+            () =>
+                gameReadSize([
+                    { path: "scenes/one.js", value: "a".repeat(300_000) },
+                    { path: "scenes/two.js", value: "b".repeat(300_000) },
+                ]),
+            new RegExp(`${MAX_TOTAL_READ_BYTES}-byte read limit`),
+        );
+    });
+
+    it("serializes project mutations so a queued stale replacement cannot win", async () => {
+        const queue = createSerialTaskQueue();
+        const firstCanCommit = Promise.withResolvers();
+        let revision = "1:0";
+        const commits = [];
+
+        const first = queue.run(async () => {
+            assert.equal(revision, "1:0");
+            await firstCanCommit.promise;
+            assert.equal(revision, "1:0");
+            revision = "2:0";
+            commits.push("first");
+        });
+        const second = queue.run(async () => {
+            assert.equal(revision, "1:0", "queued revision must be rechecked");
+            revision = "3:0";
+            commits.push("second");
+        });
+
+        firstCanCommit.resolve();
+        await first;
+        await assert.rejects(second, /queued revision must be rechecked/);
+        assert.deepEqual(commits, ["first"]);
+        assert.equal(revision, "2:0");
+    });
+
+    it("classifies every run-check outcome without overstating incomplete checks", () => {
+        assert.equal(classifyGameRun(0, 0, []), "passed");
+        assert.equal(classifyGameRun(1, 0, []), "failed");
+        assert.equal(classifyGameRun(0, 1, []), "failed");
+        assert.equal(
+            classifyGameRun(0, 0, ["Editor error checking was unavailable."]),
+            "incomplete",
+        );
+        assert.equal(
+            classifyGameRun(0, 0, ["Only part of the scene was inspected."]),
+            "incomplete",
+        );
+        assert.equal(
+            classifyGameRun(1, 0, [
+                "Only the newest console messages were returned.",
+            ]),
+            "failed",
+        );
+    });
+
+    it("treats the discard argument as a request for page confirmation", () => {
+        assert.equal(
+            requiresExampleDiscardConfirmation(false, false),
+            false,
+        );
+        assert.throws(
+            () => requiresExampleDiscardConfirmation(true, false),
+            /request a page confirmation/i,
+        );
+        assert.equal(
+            requiresExampleDiscardConfirmation(true, true),
+            true,
         );
     });
 });

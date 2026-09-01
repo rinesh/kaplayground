@@ -51,11 +51,13 @@ inspect the game → read the needed files → update the game → run and check
 
 The page exposes one revision value for the open game. It changes whenever the active project or its contents change. Updates must include the revision they were based on, preventing the agent from overwriting a newer user edit.
 
-`kaplayground_update_game` accepts several related file changes and applies them together. Every path and size is validated before the project is changed, so an invalid multi-file update changes nothing. Running remains a separate step, making it clear whether an edit failed or the updated game failed to start.
+`kaplayground_inspect_game` pages file metadata in groups of at most 100, and `kaplayground_read_files` reads at most ten exact paths within a 512 KiB aggregate response budget. This keeps discovery and source responses bounded without splitting the normal workflow into more tools.
 
-`kaplayground_run_game` builds and starts the requested revision, then checks editor diagnostics, run-specific console errors, and a bounded snapshot of the running scene. It reports `passed`, `failed`, or `incomplete`. Playing the controls and judging visual quality remain browser-level checks rather than hidden claims made by the page.
+`kaplayground_update_game` accepts several related file changes and applies them together. Every path and size is validated before the project is changed, so an invalid multi-file update changes nothing. It may focus one requested file for the user after committing, while editor-model synchronization errors are reported separately from the already-committed project update. Running remains a separate step, making it clear whether an edit failed or the updated game failed to start.
 
-The remaining tools find reusable assets, save the game, and find or open ready-made examples. Source file contents are hidden from the visible activity history; the panel retains only useful details such as paths, counts, timing, and errors.
+`kaplayground_run_game` normally builds and starts the requested revision, then checks editor diagnostics, run-specific console errors, and a bounded snapshot of the running scene. Its `check-current` mode performs the same checks after the user has played without restarting the game. It reports `passed`, `failed`, or `incomplete`; playing the controls and judging visual quality remain browser-level checks rather than hidden claims made by the page.
+
+The remaining tools page through reusable assets and examples, save the game, and open a selected example. File updates and example replacements are serialized, and replacements recheck their revision at the commit point. Replacing unsaved work requires a confirmation clicked in the page—the tool's Boolean argument can request that prompt but cannot approve it. Source file contents are hidden from the visible activity history; the panel retains only useful details such as paths, counts, timing, and errors.
 
 The Codex coach deliberately uses ordinary creative requests. Its copied prompts do not mention WebMCP, tool names, revision values, or browser-routing syntax.
 
