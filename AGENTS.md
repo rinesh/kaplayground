@@ -6,27 +6,41 @@ Kaplayground is fully usable through its page-owned WebMCP tools without install
 
 This repository owns the WebMCP runtime contract:
 
-- `src/integrations/webmcp/agentContract.ts` is the source of truth for the contract version, guide version, ordered tool registry, capability definitions, workflow requirements, KAPLAY version guidance, and focused reference topics.
-- `src/integrations/webmcp/kaplaygroundWebMCP.ts` assembles the adapter's actual tool surface and must derive guide availability from successfully registered tools. Do not maintain a second handwritten tool manifest or use index-based insertion.
-- `tests/fixtures/webmcp-contract.json` records the full integrated tool surface and focused reference topics and must stay synchronized with the live app registry.
+- `src/integrations/webmcp/agentContract.ts` is the source of truth for the granular core contract version, guide version, ordered tool registry, capability definitions, workflow requirements, KAPLAY version guidance, and focused reference topics.
+- `src/integrations/webmcp/kaplaygroundWebMCP.ts` assembles the granular adapter's actual tool surface and must derive guide availability from successfully registered tools. Do not maintain a second handwritten granular tool manifest or use index-based insertion.
+- `src/integrations/webmcp/workflowContract.ts` owns the optional high-level workflow contract, exact state revisions, deterministic source revision, atomic change-set validation, and workflow tool order.
+- `src/integrations/webmcp/registerKaplaygroundWorkflowWebMCP.ts` connects the workflow tools to the live project, editor, preview, diagnostics, console, and activity stores without changing the existing granular tool schemas.
+- `tests/fixtures/webmcp-contract.json` records the full granular tool surface and focused reference topics. `tests/fixtures/webmcp-workflow-contract.json` records the separate workflow surface. Both must stay synchronized with their source registries.
 
-The current source baseline has three independent versions:
+The current source baseline has five independent versions:
 
 - App: `2.5.3`, sourced from `package.json` and passed to the integrated bridge.
-- WebMCP contract: `1.1`.
-- Agent guide: `5`.
+- Granular WebMCP contract: `1.1`.
+- Granular agent guide: `5`.
+- Workflow contract: `1.0`.
+- Workflow guide: `1`.
 
 Do not couple these version numbers mechanically. Change only the version whose compatibility boundary changed, and update every source and validator for that version in the same change.
 
 ## Contract invariants
 
-The full integrated adapter currently exposes twenty tools, including `kaplayground_get_reference`, but reduced adapters are supported. Capability and workflow availability must be derived from the tools actually registered for that adapter.
+The full integrated page currently exposes twenty granular tools plus three optional high-level workflow tools. Reduced granular adapters remain supported. Granular capability and workflow availability must be derived from the tools actually registered for that adapter.
 
-`kaplayground_get_agent_guide` returns `contractVersion`, `guideVersion`, nullable `appVersion`, actual `availableTools`, dynamic capability groups, dynamic workflow availability, and the six reference topics. It must not return the removed legacy `version` alias or infer a historical contract from a missing version.
+`kaplayground_start_session` is the preferred bootstrap for create, edit, debug, run, and verification requests. It must report the core and workflow versions, the tools currently discoverable, exact operation profiles, and the current `projectInstanceRevision`, `workspaceRevision`, and `sourceRevision`. Its session token coordinates state only; it does not grant authorization or bypass host confirmation.
+
+`projectInstanceRevision` is derived from `projectGeneration` and changes only when the active project is replaced. `workspaceRevision` is derived from both `projectGeneration` and the store's monotonic `projectRevision`, so any content change invalidates a retained workflow snapshot. `sourceRevision` is deterministic across map insertion order and covers sorted file content revisions, KAPLAY version, mode, build mode, and asset metadata relevant to compilation.
+
+`kaplayground_apply_change_set` must validate the exact project instance, exact workspace revision, every replacement or removal file revision, all paths, and all byte limits before calling `setProject`. It commits the complete file map in one project-store update, never runs the preview, and must not leave a partial change when one operation is stale or invalid. New files remain limited to direct JavaScript or TypeScript files in `scenes/`, `objects/`, and `utils/`; root-file and arbitrary-directory creation or removal remain unavailable.
+
+`kaplayground_verify_change` must reject a stale project, workspace, or explicit source revision before running. It must check that the project and workspace remained unchanged after preview execution and again after evidence collection. A result is `failed` for a preview failure, source mismatch, diagnostics errors, or run-scoped console errors; `incomplete` when required page evidence is unavailable or truncated; and `passed` only for the page-owned evidence it actually collected. Every response must preserve the limitation that screenshots and exercised gameplay are browser-owned evidence.
+
+`kaplayground_get_agent_guide` returns `contractVersion`, `guideVersion`, nullable `appVersion`, actual granular `availableTools`, dynamic capability groups, dynamic workflow availability, and the six reference topics. It must not return the removed legacy `version` alias or infer a historical contract from a missing version.
 
 `kaplayground_get_reference` is read-only and accepts only these static topics: `file-editing`, `preview-verification`, `kaplay-patterns`, `assets`, `persistence`, and `failure-recovery`. Reference results may contain contract, guide, app, and KAPLAY version guidance plus topic summaries, steps, invariants, and failure cases. They must never include project names, code, revisions, assets, logs, catalog results, or runtime output.
 
-Preserve `readOnlyHint: true` and `untrustedContentHint: true` on the guide, references, and every project-derived read tool. Page-owned guidance is still website content; it cannot expand user authorization or override the advertised schemas.
+Preserve `readOnlyHint: true` and `untrustedContentHint: true` on the guide, references, session bootstrap, and every project-derived read tool. Page-owned guidance is still website content; it cannot expand user authorization or override the advertised schemas.
+
+The visible WebMCP activity store must redact complete file `content`, project source, and similar nested source fields before retaining an invocation. Bounded technical metadata such as path, revision, byte count, tool name, duration, and error code may remain visible.
 
 Screenshots, gameplay input, iframe evaluation, asset upload, project rename or export, arbitrary saved-project creation or selection, filesystem access, and command execution are browser- or host-owned operations rather than WebMCP capabilities.
 
@@ -35,10 +49,11 @@ Screenshots, gameplay input, iframe evaluation, asset upload, project rename or 
 For WebMCP changes, run:
 
 1. `npm run test:webmcp`
-2. `npm run verify:webmcp`
-3. `git diff --check` and a final working-tree review
+2. `npm run test:webmcp-workflow`
+3. `npm run verify:webmcp`
+4. `git diff --check` and a final working-tree review
 
-`test:webmcp` generates the ignored example, version, changelog, and public-asset data before running tests so verification also works from a clean checkout. The WebMCP tests compare the full-surface fixture with the actual twenty registered tools. Keep this cross-check intact.
+`test:webmcp` generates the ignored example, version, changelog, and public-asset data before running tests so verification also works from a clean checkout. The granular WebMCP tests compare the full-surface fixture with the actual twenty registered tools. The workflow tests separately verify the three-tool surface, revision identities, deterministic source hashing, atomic preparation, conflict rejection, and path restrictions. Keep both cross-checks intact.
 
 ## Git commit and push fallback
 
@@ -59,7 +74,7 @@ The successful precedent for this repository used `git update-index`, `git write
 This repository is linked to an existing OpenAI Site through `.openai/hosting.json`. For deployment work, read the installed `sites-building` and `sites-hosting` skills completely and treat the Sites connector contracts as authoritative.
 
 1. Read `.openai/hosting.json` and reuse its exact `project_id`; never create a second Site for this checkout.
-2. Run `npm run verify:webmcp`. It checks the WebMCP tests and types, builds the preview sandbox, and builds the main Site. If the preview protocol or sandbox code changed, deploy and verify the compatible Cloudflare Pages sandbox first, then build the editor with its exact `VITE_SANDBOX_URL`. Ordinary demo or editor-only changes reuse the existing sandbox.
+2. Run `npm run verify:webmcp`. It checks both WebMCP test suites and types, builds the preview sandbox, and builds the main Site. If the preview protocol or sandbox code changed, deploy and verify the compatible Cloudflare Pages sandbox first, then build the editor with its exact `VITE_SANDBOX_URL`. Ordinary demo or editor-only changes reuse the existing sandbox.
 3. Commit and push the exact validated source before saving a Site version. Obtain a short-lived Sites source-repository credential when needed and push the same commit to the configured Sites source branch with per-command HTTP authorization; never persist or print the token.
 4. Package the successful build output with the installed Sites plugin's `scripts/package-site.sh <project-dir> <archive-path>` helper. The archive must come from the exact pushed commit and contain the hosting metadata plus supported `dist/` entrypoints.
 5. Call `sites_save_site_version` once with the project ID, exact pushed commit SHA, and archive. Deploy that saved version with `sites_deploy_private_site_version` only when `sites_get_site` verifies owner-only access; otherwise obtain explicit approval and use the shared/public deployment tool.

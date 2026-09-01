@@ -83,6 +83,9 @@ export const WebMCPInvocationList = ({ className }: Props) => {
 };
 
 const friendlyActions: Record<string, string> = {
+    kaplayground_start_session: "Planning a safe workflow",
+    kaplayground_apply_change_set: "Applying one complete change",
+    kaplayground_verify_change: "Verifying the exact result",
     kaplayground_get_agent_guide: "Getting ready to help",
     kaplayground_get_reference: "Reading focused guidance",
     kaplayground_get_project: "Looking at your game",

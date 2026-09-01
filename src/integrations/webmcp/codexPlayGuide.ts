@@ -1,7 +1,7 @@
 import { CODEX_PLAY_STEPS, type CodexPlayStep } from "./agentGuide.ts";
 
 const BROWSER_PROMPT_PREFIX =
-    "Use @Browser to work with the KAPLAYGROUND game already open.";
+    "Use @Browser to work with the KAPLAYGROUND game already open. First call kaplayground_start_session and follow the live workflow it returns.";
 
 export type CodexPlayPresentation = "interactive" | "visual" | "output";
 

@@ -8,8 +8,12 @@ on:
       - "package.json"
       - "package-lock.json"
       - "src/integrations/webmcp/**"
+      - "src/components/WebMCP/**"
+      - "src/main.tsx"
       - "tests/fixtures/webmcp-contract.json"
+      - "tests/fixtures/webmcp-workflow-contract.json"
       - "tests/webmcp.test.mjs"
+      - "tests/webmcp-workflow.test.mjs"
   pull_request:
     paths:
       - ".github/workflows/validate-webmcp.yml"
@@ -17,8 +21,12 @@ on:
       - "package.json"
       - "package-lock.json"
       - "src/integrations/webmcp/**"
+      - "src/components/WebMCP/**"
+      - "src/main.tsx"
       - "tests/fixtures/webmcp-contract.json"
+      - "tests/fixtures/webmcp-workflow-contract.json"
       - "tests/webmcp.test.mjs"
+      - "tests/webmcp-workflow.test.mjs"
 
 jobs:
   validate:

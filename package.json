@@ -20,8 +20,9 @@
     "sandbox:build": "cd sandbox && vite build",
     "sandbox:deploy": "cd sandbox && wrangler pages deploy --branch=main",
     "test:webmcp": "npm run generate:all && node --experimental-strip-types --test tests/webmcp.test.mjs",
+    "test:webmcp-workflow": "node --experimental-strip-types --test tests/webmcp-workflow.test.mjs",
     "test:starter-url": "node --experimental-strip-types --test tests/starterDemoUrl.test.mjs",
-    "verify:webmcp": "npm run test:webmcp && npm run test:starter-url && npm run check && npm run sandbox:build && npm run build",
+    "verify:webmcp": "npm run test:webmcp && npm run test:webmcp-workflow && npm run test:starter-url && npm run check && npm run sandbox:build && npm run build",
     "neu": "neu"
   },
   "dependencies": {
@@ -74,7 +75,6 @@
     "@tailwindcss/typography": "^0.5.19",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^22.7.5",
-    "@types/pako": "^2.0.3",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",
     "@openai/sites-vite-plugin": "^0.2.0",
