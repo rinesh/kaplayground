@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
-import { registerKaplaygroundWebMCP } from "./integrations/webmcp/registerKaplaygroundWebMCP";
+import { registerKaplaygroundWebMCP } from "./integrations/webmcp/kaplaygroundWebMCP";
 import { getStarterDemoUrl } from "./integrations/webmcp/starterDemoUrl";
 
 const starterDemoUrl = getStarterDemoUrl(window.location.href);

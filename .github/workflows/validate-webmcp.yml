@@ -8,7 +8,9 @@ on:
       - "package.json"
       - "package-lock.json"
       - "src/integrations/webmcp/**"
-      - "tests/fixtures/webmcp-contract.json"
+      - "src/components/WebMCP/**"
+      - "src/main.tsx"
+      - "src/types/**"
       - "tests/webmcp.test.mjs"
   pull_request:
     paths:
@@ -17,7 +19,9 @@ on:
       - "package.json"
       - "package-lock.json"
       - "src/integrations/webmcp/**"
-      - "tests/fixtures/webmcp-contract.json"
+      - "src/components/WebMCP/**"
+      - "src/main.tsx"
+      - "src/types/**"
       - "tests/webmcp.test.mjs"
 
 jobs:

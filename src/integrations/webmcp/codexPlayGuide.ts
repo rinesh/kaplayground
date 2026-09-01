@@ -1,8 +1,5 @@
 import { CODEX_PLAY_STEPS, type CodexPlayStep } from "./agentGuide.ts";
 
-const BROWSER_PROMPT_PREFIX =
-    "Use @Browser to work with the KAPLAYGROUND game already open.";
-
 export type CodexPlayPresentation = "interactive" | "visual" | "output";
 
 export type CodexPlaySubject = {
@@ -56,18 +53,18 @@ export function createCodexPlayGuide(
                 eyebrow: "ASK CODEX",
                 title: "Find out what you can try",
                 description:
-                    "You do not need to understand the code. Ask Codex for a quick tour of what is already on screen.",
+                    "You do not need to understand the code. Ask Codex for a quick tour and a few playful possibilities.",
                 prompt:
-                    `${BROWSER_PROMPT_PREFIX} The open starting point is “${title}”. Inspect the game, its source, and any live output. Tell me in plain language what it does and what it could become in a game. Keep it short, do not teach me code, and leave the game running.`,
+                    `Tell me what “${title}” does in plain language and suggest three playful ways I could turn it into a game. Keep it short and leave it ready to try.`,
             },
             {
                 id: "remix",
                 eyebrow: "FIRST REMIX",
                 title: "Give it your own look",
                 description:
-                    "Choose the feeling and let Codex handle the implementation while you keep the part that makes this example useful.",
+                    "Choose the feeling and let Codex handle the implementation while keeping the useful part of the example.",
                 prompt:
-                    `${BROWSER_PROMPT_PREFIX} Remix “${title}”. First inspect what makes this starting point distinct, then keep that behavior working while you add a playful theme, clear on-screen instructions, and satisfying feedback. Run it so I can try it, then fix anything that breaks.`,
+                    `Give “${title}” a playful new theme. Keep its main behavior working, add clear on-screen instructions and satisfying feedback, then let me try it.`,
             },
             {
                 id: "build",
@@ -76,16 +73,16 @@ export function createCodexPlayGuide(
                 description:
                     "The example is your building block. Codex can add the goal, controls, and playful details around it.",
                 prompt:
-                    `${BROWSER_PROMPT_PREFIX} Turn “${title}” into a tiny complete game. First inspect the behavior it demonstrates, then build a simple goal, easy controls, a win or lose moment, and one fun surprise around that behavior. Run it, try it, and fix anything that breaks so I can play immediately.`,
+                    `Turn “${title}” into a tiny complete game with an easy goal, simple controls, a win or lose moment, and one fun surprise. Make it ready to play.`,
             },
             {
                 id: "invent",
                 eyebrow: "YOUR TURN",
                 title: "Describe the version you want",
                 description:
-                    "Name a theme and one fun addition. You can stay focused on the result and let Codex work out the code.",
+                    "Name a theme and one fun addition. You can stay focused on the result and let Codex work out the details.",
                 prompt:
-                    `${BROWSER_PROMPT_PREFIX} Use “${title}” as the starting point. Make it feel like [a theme or place I love], add [a character, power, sound, or challenge], keep its original main behavior working, and run it so I can try the result. Fix anything that breaks.`,
+                    `Use “${title}” as the starting point. Make it feel like [a theme or place I love], add [a character, power, sound, or challenge], keep its main behavior working, and let me try the result.`,
             },
         ],
     };
@@ -99,9 +96,7 @@ function classifyPresentation(source: string): CodexPlayPresentation {
     const executableSource = stripCommentsAndStrings(source);
     const hasVisualOutput =
         /\b(?:add(?:[A-Z]\w*)?|draw[A-Z]\w*|loadBean|loadSprite|scene|setBackground)\s*\(/
-            .test(
-                executableSource,
-            )
+            .test(executableSource)
         || /\bkaplay\s*\(\s*{[\s\S]{0,500}\bbackground\s*:/.test(
             executableSource,
         );
@@ -109,9 +104,7 @@ function classifyPresentation(source: string): CodexPlayPresentation {
 
     const hasInteraction =
         /\b(?:onKey|onMouse|onClick|onHover|onScroll|onTouch|onGamepad|onButton|onCharInput|onTextInput|textInput|isKey|isMouse|isButton|keyDown|mousePos)/
-            .test(
-                executableSource,
-            );
+            .test(executableSource);
     return hasInteraction ? "interactive" : "visual";
 }
 

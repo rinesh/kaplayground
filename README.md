@@ -36,69 +36,44 @@ The full code editor stays beside the game for anyone who wants it, while techni
 - 🛠️ **Code Editor**\
   Use a modern, powerful code editor based in VS Code, with features like auto-completion, syntax highlighting and special KAPLAY snippets and autocompletion.
 
-- 🤖 **WebMCP Agent Tools**\
-  Let compatible browser agents inspect the current project, read and safely replace files, select files, run or stop the preview, and inspect diagnostics and console output.
+- 🤖 **Browser agent tools**\
+  Let a compatible agent inspect, update, run, check, and save the game directly in the open page.
 
 ## WebMCP
 
-This fork registers twenty `kaplayground_*` tools through the browser's WebMCP
-API after IndexedDB, esbuild, and the active project are ready. A compatible
-browser agent can use the page directly without installing a skill, plugin, or
-separate MCP server. The app-owned live guide and focused references are the
-zero-install entry point and the authority for the current page contract.
+KAPLAYGROUND registers eight focused tools through the browser's WebMCP API. A compatible browser agent can work with the page directly without a separate MCP server, plugin, or skill installation.
 
-`kaplayground_get_agent_guide` advertises Contract 1.1 and guide version 5 with
-the tools, capability groups, and workflow steps available in the current
-adapter. `kaplayground_get_reference` returns one of six focused page-owned
-references only when it is relevant to the task. File mutations require the
-opaque project revision and, where applicable, the content revision returned by
-the read tools, so an agent cannot write through a project switch or silently
-overwrite a newer editor change.
+The normal flow is intentionally small:
 
-KAPLAYGROUND-specific tools can persist a transient project, list bounded
-project-asset metadata, search the curated Asset Brew catalog for exact loader
-code, and inspect a bounded shallow snapshot of the running game. Preview
-runs resolve only after the sandbox acknowledges module execution, pause changes
-are explicit and acknowledged, and console reads are scoped to a preview run.
-Diagnostic responses include `available`, so a missing Monaco instance is not
-reported as a clean project. Console responses likewise include `available`,
-plus `truncated` for per-call result limits and a bounded `droppedCount` for the
-500-entry capture buffer. WebMCP capture stays active when the visible console
-preference is disabled; that preference only controls the console panel.
+```text
+inspect the game → read the needed files → update the game → run and check it
+```
 
-The WebMCP implementation is intentionally scoped to KAPLAYGROUND. Its Zustand,
-Monaco, preview, diagnostics, console, and activity integrations live in
-`src/integrations/webmcp` and `src/components/WebMCP` because they depend on the
-editor's application state.
+The page exposes one revision value for the open game. It changes whenever the active project or its contents change. Updates must include the revision they were based on, preventing the agent from overwriting a newer user edit.
 
-Run the WebMCP verification suite with:
+`kaplayground_update_game` accepts several related file changes and applies them together. Every path and size is validated before the project is changed, so an invalid multi-file update changes nothing. Running remains a separate step, making it clear whether an edit failed or the updated game failed to start.
+
+`kaplayground_run_game` builds and starts the requested revision, then checks editor diagnostics, run-specific console errors, and a bounded snapshot of the running scene. It reports `passed`, `failed`, or `incomplete`. Playing the controls and judging visual quality remain browser-level checks rather than hidden claims made by the page.
+
+The remaining tools find reusable assets, save the game, and find or open ready-made examples. Source file contents are hidden from the visible activity history; the panel retains only useful details such as paths, counts, timing, and errors.
+
+The Codex coach deliberately uses ordinary creative requests. Its copied prompts do not mention WebMCP, tool names, revision values, or browser-routing syntax.
+
+Run the verification suite with:
 
 ```sh
 npm run verify:webmcp
 ```
 
-The app and preview sandbox use a versioned message protocol and must be
-released together. Deploy `sandbox/` with `npm run sandbox:deploy`, then set
-`VITE_SANDBOX_URL` to that deployment when building the app; an older sandbox
-is rejected before project code is sent, because it cannot acknowledge runs,
-pause state, or inspection requests.
+The app and preview sandbox use a versioned message protocol and must be released together. Deploy `sandbox/` with `npm run sandbox:deploy`, then set `VITE_SANDBOX_URL` to that deployment when building the app. An older sandbox is rejected before project code is sent because it cannot acknowledge runs, pause state, or inspection requests.
 
 ## Hosting
 
-This fork is deployed through OpenAI Sites. The Sites Vite plugin copies
-`.openai/hosting.json` into the production artifact, while the Cloudflare Vite
-plugin and `worker/index.ts` serve the generated assets with a single-page-app
-fallback. The Sites plugin requires Vite 8, so the Vite, React plugin, and
-static-copy upgrades are part of the hosting configuration rather than the
-WebMCP feature itself.
+This fork is deployed through OpenAI Sites. The Sites Vite plugin copies `.openai/hosting.json` into the production artifact, while the Cloudflare Vite plugin and `worker/index.ts` serve the generated assets with a single-page-app fallback. The Sites plugin requires Vite 8, so the Vite, React plugin, and static-copy upgrades are part of the hosting configuration rather than the WebMCP feature itself.
 
-If the OpenAI Sites deployment is retired, remove the Sites and Cloudflare
-plugins, the worker and hosting metadata together, then restore the upstream
-Vite dependencies and configuration.
+If the OpenAI Sites deployment is retired, remove the Sites and Cloudflare plugins, the worker and hosting metadata together, then restore the upstream Vite dependencies and configuration.
 
-The former private `rinesh/kaplay-connect` repository contained an earlier
-stdio bridge. Browser-native KAPLAYGROUND integration now belongs here; the
-legacy server is retained only as migration history.
+The former private `rinesh/kaplay-connect` repository contained an earlier stdio bridge. Browser-native KAPLAYGROUND integration now belongs here; the legacy server is retained only as migration history.
 
 ## 📚 Resources
 

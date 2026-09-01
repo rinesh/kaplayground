@@ -1,44 +1,54 @@
 # Repository agent notes
 
-## WebMCP contract ownership
+## Browser agent integration
 
-Kaplayground is fully usable through its page-owned WebMCP tools without installing a skill, plugin, or separate MCP server.
+KAPLAYGROUND is usable through page-owned WebMCP tools without installing a skill, plugin, or separate MCP server.
 
-This repository owns the WebMCP runtime contract:
+Keep the integration small and application-specific:
 
-- `src/integrations/webmcp/agentContract.ts` is the source of truth for the contract version, guide version, ordered tool registry, capability definitions, workflow requirements, KAPLAY version guidance, and focused reference topics.
-- `src/integrations/webmcp/kaplaygroundWebMCP.ts` assembles the adapter's actual tool surface and must derive guide availability from successfully registered tools. Do not maintain a second handwritten tool manifest or use index-based insertion.
-- `tests/fixtures/webmcp-contract.json` records the full integrated tool surface and focused reference topics and must stay synchronized with the live app registry.
+- `src/integrations/webmcp/kaplaygroundWebMCP.ts` owns registration and connects the tools to the project, editor, preview, diagnostics, console, examples, assets, persistence, and visible activity state.
+- `src/integrations/webmcp/gameTools.ts` contains the small pure surface definition, the single game revision helper, path limits, and atomic multi-file update validation.
+- `src/integrations/webmcp/activitySummary.ts` removes source contents before invocation details enter visible application state.
+- `tests/webmcp.test.mjs` covers the tool list, revision behavior, atomic updates, safe paths, prompt language, activity redaction, console bounds, and diagnostics availability.
 
-The current source baseline has three independent versions:
+The page exposes these eight tools:
 
-- App: `2.5.3`, sourced from `package.json` and passed to the integrated bridge.
-- WebMCP contract: `1.1`.
-- Agent guide: `5`.
+1. `kaplayground_inspect_game`
+2. `kaplayground_read_files`
+3. `kaplayground_update_game`
+4. `kaplayground_run_game`
+5. `kaplayground_find_assets`
+6. `kaplayground_save_game`
+7. `kaplayground_find_examples`
+8. `kaplayground_open_example`
 
-Do not couple these version numbers mechanically. Change only the version whose compatibility boundary changed, and update every source and validator for that version in the same change.
+Do not add version negotiation, a second registration layer, a separate workflow bootstrap, or a duplicate manifest before a released client actually needs compatibility guarantees.
 
-## Contract invariants
+## Integration rules
 
-The full integrated adapter currently exposes twenty tools, including `kaplayground_get_reference`, but reduced adapters are supported. Capability and workflow availability must be derived from the tools actually registered for that adapter.
+`inspect_game` is the normal first operation. It returns one revision token representing both the active project and its current contents. Every mutation, run, save, or example replacement must reject a stale revision.
 
-`kaplayground_get_agent_guide` returns `contractVersion`, `guideVersion`, nullable `appVersion`, actual `availableTools`, dynamic capability groups, dynamic workflow availability, and the six reference topics. It must not return the removed legacy `version` alias or infer a historical contract from a missing version.
+`read_files` reads several exact paths in one call. Keep reads bounded and reject aliases, traversal, backslashes, missing files, and oversized source.
 
-`kaplayground_get_reference` is read-only and accepts only these static topics: `file-editing`, `preview-verification`, `kaplay-patterns`, `assets`, `persistence`, and `failure-recovery`. Reference results may contain contract, guide, app, and KAPLAY version guidance plus topic summaries, steps, invariants, and failure cases. They must never include project names, code, revisions, assets, logs, catalog results, or runtime output.
+`update_game` validates every change before committing one complete replacement file map. A failed create, replace, remove, path, duplicate, or size check must leave the project untouched. Creating or removing files remains limited to direct JavaScript or TypeScript files inside `scenes/`, `objects/`, and `utils/`. Root files may be replaced when they already exist but not created or removed through the agent tools. Updating never runs the preview.
 
-Preserve `readOnlyHint: true` and `untrustedContentHint: true` on the guide, references, and every project-derived read tool. Page-owned guidance is still website content; it cannot expand user authorization or override the advertised schemas.
+`run_game` must verify that the requested revision remains current before and after the run. Keep preview acknowledgement, diagnostics, console output, and scene inspection distinct in the response. Report `failed` for detected code or console errors, `incomplete` when checks are unavailable or bounded, and `passed` only for checks actually completed. Do not claim that controls were played or that visuals were judged without browser-level evidence.
 
-Screenshots, gameplay input, iframe evaluation, asset upload, project rename or export, arbitrary saved-project creation or selection, filesystem access, and command execution are browser- or host-owned operations rather than WebMCP capabilities.
+Asset results may include bounded metadata and exact built-in loader code, but never hidden asset URLs or binary contents. Opening an example replaces the active project and may discard unsaved work only after explicit user approval.
+
+Read-only tools and project-derived output must preserve `readOnlyHint: true` and `untrustedContentHint: true`. Sandbox console messages must validate both the configured origin and the active iframe window.
+
+Coach prompts are for new users. They must describe the creative result in ordinary language and must not contain `@Browser`, WebMCP, tool names, revisions, contracts, capability negotiation, or other integration jargon.
 
 ## Required validation
 
-For WebMCP changes, run:
+For browser-agent changes, run:
 
 1. `npm run test:webmcp`
 2. `npm run verify:webmcp`
 3. `git diff --check` and a final working-tree review
 
-`test:webmcp` generates the ignored example, version, changelog, and public-asset data before running tests so verification also works from a clean checkout. The WebMCP tests compare the full-surface fixture with the actual twenty registered tools. Keep this cross-check intact.
+`test:webmcp` generates ignored example, version, changelog, and public-asset data before running the tests, so verification also works from a clean checkout.
 
 ## Git commit and push fallback
 
@@ -59,7 +69,7 @@ The successful precedent for this repository used `git update-index`, `git write
 This repository is linked to an existing OpenAI Site through `.openai/hosting.json`. For deployment work, read the installed `sites-building` and `sites-hosting` skills completely and treat the Sites connector contracts as authoritative.
 
 1. Read `.openai/hosting.json` and reuse its exact `project_id`; never create a second Site for this checkout.
-2. Run `npm run verify:webmcp`. It checks the WebMCP tests and types, builds the preview sandbox, and builds the main Site. If the preview protocol or sandbox code changed, deploy and verify the compatible Cloudflare Pages sandbox first, then build the editor with its exact `VITE_SANDBOX_URL`. Ordinary demo or editor-only changes reuse the existing sandbox.
+2. Run `npm run verify:webmcp`. It checks the browser-agent tests and types, builds the preview sandbox, and builds the main Site. If the preview protocol or sandbox code changed, deploy and verify the compatible Cloudflare Pages sandbox first, then build the editor with its exact `VITE_SANDBOX_URL`. Ordinary demo or editor-only changes reuse the existing sandbox.
 3. Commit and push the exact validated source before saving a Site version. Obtain a short-lived Sites source-repository credential when needed and push the same commit to the configured Sites source branch with per-command HTTP authorization; never persist or print the token.
 4. Package the successful build output with the installed Sites plugin's `scripts/package-site.sh <project-dir> <archive-path>` helper. The archive must come from the exact pushed commit and contain the hosting metadata plus supported `dist/` entrypoints.
 5. Call `sites_save_site_version` once with the project ID, exact pushed commit SHA, and archive. Deploy that saved version with `sites_deploy_private_site_version` only when `sites_get_site` verifies owner-only access; otherwise obtain explicit approval and use the shared/public deployment tool.
