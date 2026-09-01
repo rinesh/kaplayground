@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { summarizeWebMCPActivityInput } from "./activitySummary";
+import { summarizeWebMCPActivityInput } from "./activitySummary.ts";
 import type {
     KaplaygroundWebMCPInvocation,
     KaplaygroundWebMCPStatus,
