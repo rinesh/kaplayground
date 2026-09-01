@@ -409,6 +409,10 @@ function createTools(
                 );
 
                 assertGameRevision(useProject.getState(), expectedRevision);
+                // Verification only concerns the run started by this call. Without
+                // resetting the bounded capture, evictions from older runs would
+                // make every later run look incomplete.
+                consoleCapture.clear();
                 let runId: string | null = null;
                 try {
                     const run = await useEditor.getState().runWithSignal(signal);

@@ -234,6 +234,23 @@ describe("bounded agent-visible data", () => {
         assert.equal(snapshot.droppedCount, 1);
     });
 
+    it("resets console eviction state before checking a new run", () => {
+        const capture = createBoundedConsoleCapture(1);
+        capture.add({ timestamp: 1, runId: "old", level: "log", values: [1] });
+        capture.add({ timestamp: 2, runId: "old", level: "log", values: [2] });
+
+        capture.clear();
+        capture.add({ timestamp: 3, runId: "new", level: "log", values: [3] });
+
+        assert.deepEqual(capture.snapshot(), {
+            available: true,
+            entries: [
+                { timestamp: 3, runId: "new", level: "log", values: [3] },
+            ],
+            droppedCount: 0,
+        });
+    });
+
     it("distinguishes unavailable diagnostics from a clean editor", () => {
         assert.deepEqual(collectMonacoDiagnostics(undefined, new Map()), {
             available: false,
