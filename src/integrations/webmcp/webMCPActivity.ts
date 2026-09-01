@@ -47,9 +47,7 @@ export const useWebMCPActivity = create<WebMCPActivityStore>((set) => ({
                     entries: [
                         {
                             ...invocation,
-                            input: summarizeWebMCPActivityInput(
-                                invocation.input,
-                            ),
+                            input: summarizeWebMCPActivityInput(invocation.input),
                         },
                         ...state.entries,
                     ].slice(0, MAX_ACTIVITY_ENTRIES),
@@ -78,7 +76,6 @@ export function resetWebMCPActivityOnProjectReplacement(
     clearConsoleEntries: () => void,
 ): void {
     if (state.projectGeneration === previous.projectGeneration) return;
-
     clearConsoleEntries();
     useWebMCPActivity.getState().clearInvocations();
 }

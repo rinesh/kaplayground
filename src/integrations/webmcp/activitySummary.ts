@@ -1,15 +1,8 @@
-const MAX_VISIBLE_STRING = 800;
+const MAX_VISIBLE_STRING = 300;
 const MAX_VISIBLE_ITEMS = 20;
-const REDACTED_INPUT_KEYS = new Set([
-    "content",
-    "projectSource",
-    "sourceCode",
-]);
+const REDACTED_KEYS = new Set(["content", "sourceCode", "projectSource"]);
 
-/**
- * Produces the bounded, source-redacted input shown in the visible WebMCP
- * activity trail. This runs before an invocation enters application state.
- */
+/** Keeps the visible activity trail useful without retaining source files. */
 export function summarizeWebMCPActivityInput(
     input: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -26,24 +19,24 @@ function summarizeValue(
     depth: number,
     key?: string,
 ): unknown {
-    if (key !== undefined && REDACTED_INPUT_KEYS.has(key)) {
-        if (typeof value === "string") {
-            return `[redacted ${value.length} characters]`;
-        }
-        return "[redacted]";
+    if (key !== undefined && REDACTED_KEYS.has(key)) {
+        return typeof value === "string"
+            ? `[${value.length} characters hidden]`
+            : "[hidden]";
     }
     if (typeof value === "string") {
-        if (value.length <= MAX_VISIBLE_STRING) return value;
-        return `${value.slice(0, MAX_VISIBLE_STRING)}\n… [${value.length} characters]`;
+        return value.length <= MAX_VISIBLE_STRING
+            ? value
+            : `${value.slice(0, MAX_VISIBLE_STRING)}…`;
     }
     if (value === null || typeof value !== "object") return value;
-    if (depth >= 4) return "[Max depth]";
+    if (depth >= 4) return "[more details hidden]";
     if (Array.isArray(value)) {
         const items = value.slice(0, MAX_VISIBLE_ITEMS).map((item) =>
             summarizeValue(item, depth + 1)
         );
         if (value.length > MAX_VISIBLE_ITEMS) {
-            items.push(`… [${value.length - MAX_VISIBLE_ITEMS} more items]`);
+            items.push(`… ${value.length - MAX_VISIBLE_ITEMS} more`);
         }
         return items;
     }

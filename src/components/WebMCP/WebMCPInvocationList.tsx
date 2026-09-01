@@ -83,27 +83,14 @@ export const WebMCPInvocationList = ({ className }: Props) => {
 };
 
 const friendlyActions: Record<string, string> = {
-    kaplayground_start_session: "Planning a safe workflow",
-    kaplayground_apply_change_set: "Applying one complete change",
-    kaplayground_verify_change: "Verifying the exact result",
-    kaplayground_get_agent_guide: "Getting ready to help",
-    kaplayground_get_reference: "Reading focused guidance",
-    kaplayground_get_project: "Looking at your game",
-    kaplayground_list_files: "Finding the game pieces",
-    kaplayground_read_file: "Reading the current game",
-    kaplayground_replace_file: "Changing the game",
-    kaplayground_create_file: "Adding something new",
-    kaplayground_remove_file: "Removing an old game piece",
-    kaplayground_select_file: "Opening part of the game",
-    kaplayground_run_preview: "Starting your updated game",
-    kaplayground_stop_preview: "Pausing the game",
-    kaplayground_set_preview_paused: "Changing the pause state",
-    kaplayground_inspect_preview: "Checking the new result",
-    kaplayground_get_diagnostics: "Checking for mistakes",
-    kaplayground_get_console: "Making sure the game works",
-    kaplayground_list_assets: "Looking through the toy box",
-    kaplayground_search_asset_brew: "Finding the right game asset",
-    kaplayground_save_project: "Saving your game",
+    kaplayground_inspect_game: "Looking at your game",
+    kaplayground_read_files: "Reading the game",
+    kaplayground_update_game: "Changing the game",
+    kaplayground_run_game: "Starting and checking the game",
+    kaplayground_find_assets: "Looking through the toy box",
+    kaplayground_save_game: "Saving your game",
+    kaplayground_find_examples: "Finding a starting game",
+    kaplayground_open_example: "Opening a starting game",
 };
 
 function friendlyAction(toolName: string): string {

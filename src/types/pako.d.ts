@@ -1,26 +1,14 @@
 declare module "pako" {
-    export type Data = string | ArrayBuffer | Uint8Array;
-
-    export interface InflateOptions {
+    interface InflateOptions {
         to?: "string";
     }
 
-    export function deflate(data: Data): Uint8Array;
+    interface Pako {
+        deflate(input: string | Uint8Array): Uint8Array;
+        inflate(input: Uint8Array, options: { to: "string" }): string;
+        inflate(input: Uint8Array, options?: InflateOptions): Uint8Array | string;
+    }
 
-    export function inflate(
-        data: Data,
-        options: InflateOptions & { to: "string" },
-    ): string;
-
-    export function inflate(
-        data: Data,
-        options?: InflateOptions,
-    ): Uint8Array;
-
-    const pako: {
-        deflate: typeof deflate;
-        inflate: typeof inflate;
-    };
-
+    const pako: Pako;
     export default pako;
 }
