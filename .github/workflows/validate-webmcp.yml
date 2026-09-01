@@ -1,31 +1,23 @@
-name: Validate WebMCP and Kaplayground plugin
+name: Validate WebMCP
 
 on:
   push:
     paths:
-      - ".github/workflows/validate-webmcp-plugin.yml"
-      - ".agents/plugins/marketplace.json"
+      - ".github/workflows/validate-webmcp.yml"
       - "README.md"
       - "package.json"
       - "package-lock.json"
-      - "plugins/kaplayground/**"
-      - "scripts/validate-kaplay-plugin.mjs"
       - "src/integrations/webmcp/**"
-      - "tests/fixtures/kaplay-plugin-contract.json"
-      - "tests/flows/kaplayground-plugin.md"
+      - "tests/fixtures/webmcp-contract.json"
       - "tests/webmcp.test.mjs"
   pull_request:
     paths:
-      - ".github/workflows/validate-webmcp-plugin.yml"
-      - ".agents/plugins/marketplace.json"
+      - ".github/workflows/validate-webmcp.yml"
       - "README.md"
       - "package.json"
       - "package-lock.json"
-      - "plugins/kaplayground/**"
-      - "scripts/validate-kaplay-plugin.mjs"
       - "src/integrations/webmcp/**"
-      - "tests/fixtures/kaplay-plugin-contract.json"
-      - "tests/flows/kaplayground-plugin.md"
+      - "tests/fixtures/webmcp-contract.json"
       - "tests/webmcp.test.mjs"
 
 jobs:

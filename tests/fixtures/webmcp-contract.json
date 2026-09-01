@@ -1,0 +1,32 @@
+{
+  "referenceTopics": [
+    "file-editing",
+    "preview-verification",
+    "kaplay-patterns",
+    "assets",
+    "persistence",
+    "failure-recovery"
+  ],
+  "fullSurface": [
+    "kaplayground_get_agent_guide",
+    "kaplayground_get_reference",
+    "kaplayground_list_examples",
+    "kaplayground_open_example",
+    "kaplayground_get_project",
+    "kaplayground_list_files",
+    "kaplayground_list_assets",
+    "kaplayground_search_asset_brew",
+    "kaplayground_read_file",
+    "kaplayground_replace_file",
+    "kaplayground_create_file",
+    "kaplayground_remove_file",
+    "kaplayground_select_file",
+    "kaplayground_save_project",
+    "kaplayground_run_preview",
+    "kaplayground_set_preview_paused",
+    "kaplayground_stop_preview",
+    "kaplayground_inspect_preview",
+    "kaplayground_get_diagnostics",
+    "kaplayground_get_console"
+  ]
+}

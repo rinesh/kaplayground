@@ -43,28 +43,9 @@ The full code editor stays beside the game for anyone who wants it, while techni
 
 This fork registers twenty `kaplayground_*` tools through the browser's WebMCP
 API after IndexedDB, esbuild, and the active project are ready. A compatible
-browser agent can use the page directly without installing the optional plugin
-or a separate MCP server.
-
-The canonical skills-only plugin lives in `plugins/kaplayground`. It adds
-KAPLAY-specific orchestration, browser coordination, capability negotiation,
-and stronger completion checks, but it cannot add tools, permissions, or
-operations that the page does not expose. The app-owned live guide and focused
-references remain the zero-install entry point and the authority for the
-current page contract.
-
-The plugin is optional. The last published direct snapshot is immutable 1.5.0:
-
-```sh
-codex plugin marketplace add rinesh/kaplayground --ref kaplayground-plugin-v1.5.0
-```
-
-That tag is frozen and will remain on 1.5.0. The source tree is prepared for
-1.5.1, but it is not installable by tag until an authorized release creates the
-tag from the exact green commit. Future releases remain available directly from
-the canonical Kaplayground marketplace. For ChatGPT workspace imports, configure
-plugin installation and authentication in Workspace settings; repository policy
-fields do not override workspace policy.
+browser agent can use the page directly without installing a skill, plugin, or
+separate MCP server. The app-owned live guide and focused references are the
+zero-install entry point and the authority for the current page contract.
 
 `kaplayground_get_agent_guide` advertises Contract 1.1 and guide version 5 with
 the tools, capability groups, and workflow steps available in the current
@@ -90,7 +71,7 @@ Monaco, preview, diagnostics, console, and activity integrations live in
 `src/integrations/webmcp` and `src/components/WebMCP` because they depend on the
 editor's application state.
 
-Run the WebMCP and optional-plugin verification suite with:
+Run the WebMCP verification suite with:
 
 ```sh
 npm run verify:webmcp

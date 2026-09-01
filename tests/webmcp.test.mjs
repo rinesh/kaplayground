@@ -61,8 +61,8 @@ const PROJECT_REVISION = "project-revision-1";
 const FULL_TOOL_NAMES = WEBMCP_TOOL_ORDER.map((name) =>
     `kaplayground_${name}`
 );
-const KAPLAY_PLUGIN_FIXTURE = JSON.parse(readFileSync(
-    new URL("./fixtures/kaplay-plugin-contract.json", import.meta.url),
+const WEBMCP_CONTRACT_FIXTURE = JSON.parse(readFileSync(
+    new URL("./fixtures/webmcp-contract.json", import.meta.url),
     "utf8",
 ));
 
@@ -721,7 +721,7 @@ describe("KAPLAYGROUND WebMCP", () => {
         await bridge.ready;
 
         assert.deepEqual(bridge.toolNames, FULL_TOOL_NAMES);
-        assert.deepEqual(bridge.toolNames, KAPLAY_PLUGIN_FIXTURE.fullSurface);
+        assert.deepEqual(bridge.toolNames, WEBMCP_CONTRACT_FIXTURE.fullSurface);
 
         const guide = await execute(
             context,
@@ -754,14 +754,7 @@ describe("KAPLAYGROUND WebMCP", () => {
         );
         assert.deepEqual(
             guide.referenceTopics.map(({ topic }) => topic),
-            [
-                "file-editing",
-                "preview-verification",
-                "kaplay-patterns",
-                "assets",
-                "persistence",
-                "failure-recovery",
-            ],
+            WEBMCP_CONTRACT_FIXTURE.referenceTopics,
         );
     });
 
