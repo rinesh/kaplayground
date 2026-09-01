@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { CODEX_PLAY_STEPS } from "../src/integrations/webmcp/agentGuide.ts";
 import { createBoundedConsoleCapture } from "../src/integrations/webmcp/boundedConsoleCapture.ts";
@@ -6,6 +7,7 @@ import {
     createCodexPlayGuide,
     createCodexPlayGuideKey,
 } from "../src/integrations/webmcp/codexPlayGuide.ts";
+import { EXAMPLE_COACH_PROMPTS } from "../src/integrations/webmcp/exampleCoachPrompts.ts";
 import {
     assertGameRevision,
     gameRevision,
@@ -167,6 +169,43 @@ describe("new-player Codex prompts", () => {
             assert.match(step.prompt, /Tiny Platformer/);
             assert.doesNotMatch(step.prompt, FRIENDLY_PROMPT_FORBIDDEN);
         }
+    });
+
+    it("gives every built-in example its own grounded prompt set", () => {
+        const examples = JSON.parse(readFileSync(
+            new URL("../src/data/exampleList.json", import.meta.url),
+            "utf8",
+        ));
+        const expectedKeys = examples.map(example => example.name).sort();
+        const promptKeys = Object.keys(EXAMPLE_COACH_PROMPTS).sort();
+
+        assert.deepEqual(promptKeys, expectedKeys);
+        for (const prompts of Object.values(EXAMPLE_COACH_PROMPTS)) {
+            assert.equal(Object.keys(prompts).length, 4);
+            assert.equal(new Set(Object.values(prompts)).size, 4);
+            for (const prompt of Object.values(prompts)) {
+                assert.doesNotMatch(prompt, FRIENDLY_PROMPT_FORBIDDEN);
+                assert.doesNotMatch(prompt, /[“”]/);
+                assert.ok(prompt.length < 400);
+            }
+        }
+    });
+
+    it("uses the prompt set supplied for a built-in example", () => {
+        const prompts = EXAMPLE_COACH_PROMPTS.basicsStart;
+        const guide = createCodexPlayGuide({
+            key: "basics-start",
+            title: "Create your first game",
+            source: "kaplay({ background: '#5ba675' });",
+            prompts,
+        });
+
+        assert.match(prompts.explain, /green canvas/);
+        assert.doesNotMatch(prompts.explain, /Create your first game/);
+        assert.deepEqual(
+            guide.steps.slice(1).map(step => step.prompt),
+            [prompts.explain, prompts.remix, prompts.build, prompts.invent],
+        );
     });
 
     it("keeps one guide identity when temporary work is saved", () => {

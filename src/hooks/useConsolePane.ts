@@ -1,10 +1,7 @@
 import { useEffect, useState } from "react";
 import { useConfig } from "./useConfig";
 
-export const useConsolePane = (
-    consoleSize = 34,
-    consoleExpandedSize = 180,
-) => {
+export const useConsolePane = (consoleSize = 34) => {
     const consoleVisible = useConfig((s) => s.config.console);
     const [consoleMinSize, setConsoleMinSize] = useState(
         consoleVisible ? consoleSize : 0,
@@ -16,7 +13,6 @@ export const useConsolePane = (
     return {
         consoleVisible,
         consoleSize,
-        consoleExpandedSize,
         consoleMinSize,
     };
 };

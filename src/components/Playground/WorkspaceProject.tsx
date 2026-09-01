@@ -1,5 +1,5 @@
-import { Allotment, type AllotmentHandle, LayoutPriority } from "allotment";
-import { type CSSProperties, type FC, useRef, useState } from "react";
+import { Allotment, LayoutPriority } from "allotment";
+import { type CSSProperties, type FC, useState } from "react";
 import { useMediaQuery } from "react-responsive";
 import { useDebouncedCallback } from "use-debounce";
 import { MonacoEditor } from "../../features/Editor/components/MonacoEditor.tsx";
@@ -25,11 +25,8 @@ const projectWorkspaceStorage = allotmentStorage("project-agent");
 
 export const WorkspaceProject: FC<Props> = (props) => {
     const isWidescreen = useMediaQuery({ query: "(min-width: 900px)" });
-    const consoleAllotmentRef = useRef<AllotmentHandle>(null);
-
     const {
         consoleVisible,
-        consoleExpandedSize,
         consoleMinSize,
         consoleSize,
     } = useConsolePane();
@@ -97,7 +94,6 @@ export const WorkspaceProject: FC<Props> = (props) => {
                         snap
                     >
                         <Allotment
-                            ref={consoleAllotmentRef}
                             vertical
                             defaultSizes={consoleVisible
                                 ? projectWorkspaceStorage.getAllotmentSize(
@@ -176,13 +172,7 @@ export const WorkspaceProject: FC<Props> = (props) => {
                                 preferredSize={consoleSize}
                                 visible={consoleVisible}
                             >
-                                <ConsoleView
-                                    onSelectWebMCP={() =>
-                                        consoleAllotmentRef.current?.resize([
-                                            9999,
-                                            consoleExpandedSize,
-                                        ])}
-                                />
+                                <ConsoleView />
                             </Allotment.Pane>
                         </Allotment>
                     </Allotment.Pane>

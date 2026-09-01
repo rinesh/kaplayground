@@ -1,4 +1,5 @@
 import { CODEX_PLAY_STEPS, type CodexPlayStep } from "./agentGuide.ts";
+import type { ExampleCoachPrompts } from "./exampleCoachPrompts.ts";
 
 export type CodexPlayPresentation = "interactive" | "visual" | "output";
 
@@ -7,6 +8,7 @@ export type CodexPlaySubject = {
     title: string;
     source?: string;
     isStarter?: boolean;
+    prompts?: ExampleCoachPrompts;
 };
 
 export type CodexPlayGuide = {
@@ -41,6 +43,8 @@ export function createCodexPlayGuide(
 
     const presentation = classifyPresentation(subject.source ?? "");
     const playStep = createPlayStep(title, presentation);
+    const prompts = subject.prompts
+        ?? createFallbackCoachPrompts(title, presentation);
 
     return {
         key: subject.key,
@@ -53,38 +57,55 @@ export function createCodexPlayGuide(
                 eyebrow: "ASK CODEX",
                 title: "Find out what you can try",
                 description:
-                    "You do not need to understand the code. Ask Codex for a quick tour and a few playful possibilities.",
-                prompt:
-                    `Tell me what “${title}” does in plain language and suggest three playful ways I could turn it into a game. Keep it short and leave it ready to try.`,
+                    "Start with what is already on screen, then make one small change you can see or play.",
+                prompt: prompts.explain,
             },
             {
                 id: "remix",
                 eyebrow: "FIRST REMIX",
                 title: "Give it your own look",
                 description:
-                    "Choose the feeling and let Codex handle the implementation while keeping the useful part of the example.",
-                prompt:
-                    `Give “${title}” a playful new theme. Keep its main behavior working, add clear on-screen instructions and satisfying feedback, then let me try it.`,
+                    "Keep the useful behavior and give it a concrete new look, reaction, or personality.",
+                prompt: prompts.remix,
             },
             {
                 id: "build",
                 eyebrow: "BUILD A GAME",
                 title: "Turn this idea into a tiny game",
                 description:
-                    "The example is your building block. Codex can add the goal, controls, and playful details around it.",
-                prompt:
-                    `Turn “${title}” into a tiny complete game with an easy goal, simple controls, a win or lose moment, and one fun surprise. Make it ready to play.`,
+                    "Use the example as the main mechanic for a short game with a clear finish.",
+                prompt: prompts.build,
             },
             {
                 id: "invent",
                 eyebrow: "YOUR TURN",
                 title: "Describe the version you want",
                 description:
-                    "Name a theme and one fun addition. You can stay focused on the result and let Codex work out the details.",
-                prompt:
-                    `Use “${title}” as the starting point. Make it feel like [a theme or place I love], add [a character, power, sound, or challenge], keep its main behavior working, and let me try the result.`,
+                    "Replace the bracketed parts with your own choices and keep the example's central idea.",
+                prompt: prompts.invent,
             },
         ],
+    };
+}
+
+function createFallbackCoachPrompts(
+    title: string,
+    presentation: CodexPlayPresentation,
+): ExampleCoachPrompts {
+    const explain = presentation === "interactive"
+        ? `Help me explore ${title}. Tell me exactly what to click or press, explain the main behavior in plain language, and make one small visible change so I can compare the result.`
+        : presentation === "visual"
+        ? `Help me explore ${title}. Describe what changes on screen, explain the main behavior in plain language, and make one small visible change so I can compare the result.`
+        : `Help me explore ${title}. Read the game messages, explain the result in plain language, and add a simple on-screen view that makes the behavior easy to see.`;
+
+    return {
+        explain,
+        remix:
+            `Remix ${title} with a clear new theme, stronger visual feedback, and on-screen guidance. Preserve its central behavior and leave the result ready to try.`,
+        build:
+            `Build a tiny game around the main behavior in ${title}. Add one clear goal, simple controls, a short win or lose moment, and one playful surprise.`,
+        invent:
+            `Keep the central behavior from ${title}, but make it feel like [a theme or place I love] and add [one character, sound, power, or challenge] that fits it.`,
     };
 }
 

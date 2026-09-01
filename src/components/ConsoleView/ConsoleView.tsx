@@ -15,11 +15,7 @@ type LogMessageEvent = MessageEvent<{
     log: Message[];
 }>;
 
-type Props = {
-    onSelectWebMCP?: () => void;
-};
-
-export const ConsoleView = ({ onSelectWebMCP }: Props) => {
+export const ConsoleView = () => {
     const [logs, setLogs] = useState<any[]>([]);
     const [activeTab, setActiveTab] = useState<"console" | "webmcp">("webmcp");
     const projectKey = useProject((s) => s.projectKey || s.demoKey);
@@ -39,7 +35,6 @@ export const ConsoleView = ({ onSelectWebMCP }: Props) => {
 
     const handleSelectWebMCP = () => {
         setActiveTab("webmcp");
-        onSelectWebMCP?.();
     };
 
     const handleExpandLogs: MouseEventHandler = (e) => {

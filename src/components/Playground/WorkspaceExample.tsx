@@ -1,5 +1,5 @@
-import { Allotment, type AllotmentHandle } from "allotment";
-import { type FC, useRef } from "react";
+import { Allotment } from "allotment";
+import { type FC } from "react";
 import { useMediaQuery } from "react-responsive";
 import { MonacoEditor } from "../../features/Editor/components/MonacoEditor.tsx";
 import useConsolePane from "../../hooks/useConsolePane";
@@ -24,12 +24,10 @@ export const WorkspaceExample: FC<Props> = (props) => {
     const { getAllotmentSize, setAllotmentSize } = allotmentStorage(
         "codex-play",
     );
-    const consoleAllotmentRef = useRef<AllotmentHandle>(null);
     const { scrollbarThinHeight } = scrollbarSize();
     const assetBrewHeight = 72 + scrollbarThinHeight();
     const {
         consoleVisible,
-        consoleExpandedSize,
         consoleMinSize,
         consoleSize,
     } = useConsolePane();
@@ -73,7 +71,6 @@ export const WorkspaceExample: FC<Props> = (props) => {
                         snap
                     >
                         <Allotment
-                            ref={consoleAllotmentRef}
                             vertical
                             defaultSizes={consoleVisible
                                 ? getAllotmentSize("console", [
@@ -118,13 +115,7 @@ export const WorkspaceExample: FC<Props> = (props) => {
                                 preferredSize={consoleSize}
                                 visible={consoleVisible}
                             >
-                                <ConsoleView
-                                    onSelectWebMCP={() =>
-                                        consoleAllotmentRef.current?.resize([
-                                            9999,
-                                            consoleExpandedSize,
-                                        ])}
-                                />
+                                <ConsoleView />
                             </Allotment.Pane>
                         </Allotment>
                     </Allotment.Pane>
