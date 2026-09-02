@@ -5,7 +5,7 @@ import { useEditor } from "../../../hooks/useEditor";
 import { confirm } from "../../../util/confirm";
 import { debug } from "../../../util/logs";
 import { siteStorageUsage } from "../../../util/siteStorageUsage";
-import { clearModels } from "../../Editor/application/clearModels";
+import { synchronizeProjectModels } from "../../Editor/application/projectModels";
 import { useProject } from "../stores/useProject";
 
 export const loadProject = async (projectKey: string) => {
@@ -96,9 +96,8 @@ export const loadProject = async (projectKey: string) => {
         return;
     }
 
-    if (editorStore.runtime.editor) {
-        clearModels();
-    }
+    const files = new Map(project.files);
+    const assets = new Map(project.assets);
 
     useProject.setState((state) => ({
         projectGeneration: state.projectGeneration + 1,
@@ -108,13 +107,15 @@ export const loadProject = async (projectKey: string) => {
         demoKey: null,
         project: {
             ...project,
-            files: new Map(project.files),
-            assets: new Map(project.assets),
+            files,
+            assets,
             buildMode: project.buildMode || "legacy",
             favicon: project.favicon ?? "",
         },
     }));
 
+    const monaco = editorStore.runtime.monaco;
+    if (monaco) synchronizeProjectModels(monaco, files);
     editorStore.setCurrentFile("main.js");
 
     configStore.setConfig({
