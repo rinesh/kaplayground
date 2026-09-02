@@ -10,6 +10,7 @@ import { ToolbarSeparator } from "./ToolbarSeparator";
 import { AboutButton } from "./ToolButtons/AboutButton";
 import { ConfigButton } from "./ToolButtons/ConfigButton";
 import { ShareButton } from "./ToolButtons/ShareButton";
+import { WorkspaceViewButton } from "./WorkspaceViewButton";
 
 const ToolbarToolsMenu = () => {
     const canShareLink = useProject(state =>
@@ -19,6 +20,7 @@ const ToolbarToolsMenu = () => {
     return (
         <div className="col-span-3 flex h-11 shrink-0 items-center justify-end bg-base-300 min-[900px]:ml-auto">
             <WebMCPButton />
+            <WorkspaceViewButton />
             <ToolbarButton
                 icon={assets.play.outlined}
                 iconFirst

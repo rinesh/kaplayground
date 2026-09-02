@@ -358,6 +358,59 @@ async function main() {
             null,
             beforeLayout?.error ?? "Test ended before layout checks.",
         );
+        const pageValue = async expression => {
+            const response = await client.send("Runtime.evaluate", {
+                expression,
+                returnByValue: true,
+                awaitPromise: true,
+            });
+            assert(
+                !response.exceptionDetails,
+                JSON.stringify(response.exceptionDetails),
+            );
+            return response.result.value;
+        };
+        const clickControl = async selector => {
+            const point = await pageValue(`(() => {
+                const r = document.querySelector(${
+                JSON.stringify(selector)
+            }).getBoundingClientRect();
+                return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+            })()`);
+            for (const type of ["mousePressed", "mouseReleased"]) {
+                await client.send("Input.dispatchMouseEvent", {
+                    type,
+                    ...point,
+                    button: "left",
+                    clickCount: 1,
+                });
+            }
+            await delay(100);
+        };
+        const assertExpandedGame = async () => {
+            const state = await pageValue(`(() => {
+                const r = document.querySelector('#game-view').getBoundingClientRect();
+                const area = document.querySelector('main.workspace-main').getBoundingClientRect();
+                return {
+                    game: { width: r.width, height: r.height, top: r.top, bottom: r.bottom },
+                    area: { width: area.width, height: area.height, top: area.top, bottom: area.bottom },
+                    viewportHeight: innerHeight,
+                    toolsInert: document.querySelector('#workspace-columns-second').inert,
+                    tipsInert: document.querySelector('#workspace-preview-second').inert,
+                    restore: !!document.querySelector('button[aria-label="Restore panels"]'),
+                };
+            })()`);
+            assert(
+                Math.abs(state.game.width - state.area.width) <= 2
+                    && Math.abs(state.game.height - state.area.height) <= 2
+                    && Math.abs(state.game.top - state.area.top) <= 1
+                    && Math.abs(state.game.bottom - state.viewportHeight) <= 2
+                    && state.toolsInert && state.tipsInert && state.restore,
+                `The expanded game doesn't fill the workspace: ${
+                    JSON.stringify(state)
+                }`,
+            );
+        };
         const layoutChecks = [];
         for (
             const [width, height] of [[1042, 936], [1440, 1000], [390, 844], [
@@ -378,7 +431,7 @@ async function main() {
                         const box = document.querySelector(selector)?.getBoundingClientRect();
                         return box && { x: box.x, y: box.y, width: box.width, height: box.height, bottom: box.bottom, right: box.right };
                     };
-                    return { preview: rect('#game-view'), coach: rect('aside[aria-label="Codex tips"]'), toolbar: rect('[role="toolbar"]'), panel: rect('[aria-label="Workspace panels"]'), output: rect('#console-wrapper'), width: innerWidth, scrollWidth: document.documentElement.scrollWidth, editors: document.querySelectorAll('.monaco-editor').length };
+                    return { preview: rect('#game-view'), coach: rect('aside[aria-label="Codex tips"]'), coachPane: rect('#workspace-preview-second'), toolbar: rect('[role="toolbar"]'), panel: rect('[aria-label="Workspace panels"]'), output: rect('#console-wrapper'), width: innerWidth, scrollWidth: document.documentElement.scrollWidth, editors: document.querySelectorAll('.monaco-editor').length };
                 })()`,
                 returnByValue: true,
             });
@@ -405,8 +458,11 @@ async function main() {
             assert(
                 layout.coach?.y >= layout.preview.bottom - 1
                     && layout.coach.height > 100
-                    && Math.abs(layout.coach.width - layout.preview.width) <= 2,
-                `The tips must stay beneath the preview at ${width}.`,
+                    && Math.abs(layout.coachPane.width - layout.preview.width)
+                        <= 2,
+                `The tips must stay beneath the preview at ${width}: ${
+                    JSON.stringify(layout)
+                }`,
             );
             if (width >= 900) {
                 assert(
@@ -458,6 +514,9 @@ async function main() {
                     });
                 }
             }
+            await clickControl("button[aria-label=\"Expand game\"]");
+            await assertExpandedGame();
+            await clickControl("button[aria-label=\"Restore panels\"]");
             layoutChecks.push({ width, height, passed: true });
         }
         await client.send("Runtime.evaluate", {
@@ -489,6 +548,145 @@ async function main() {
             360,
             "The panel separator didn't resize from the keyboard.",
         );
+        const dragDivider = async (selector, edge) => {
+            const points = await pageValue(`(() => {
+                const handle = document.querySelector(${
+                JSON.stringify(selector)
+            }).getBoundingClientRect();
+                const area = document.querySelector('main.workspace-main').getBoundingClientRect();
+                const start = { x: Math.min(innerWidth - 2, Math.max(2, handle.x + handle.width / 2)), y: Math.min(innerHeight - 2, Math.max(area.top + 2, handle.y + handle.height / 2)) };
+                const end = ${
+                JSON.stringify(edge)
+            } === 'bottom' ? { x: start.x, y: innerHeight - 2 }
+                    : { x: ${
+                JSON.stringify(edge)
+            } === 'right' ? innerWidth - 2 : 2, y: start.y };
+                return { start, end };
+            })()`);
+            await client.send("Input.dispatchMouseEvent", {
+                type: "mousePressed",
+                ...points.start,
+                button: "left",
+                buttons: 1,
+                clickCount: 1,
+            });
+            for (let step = 1; step <= 10; step++) {
+                await client.send("Input.dispatchMouseEvent", {
+                    type: "mouseMoved",
+                    x: points.start.x
+                        + (points.end.x - points.start.x) * step / 10,
+                    y: points.start.y
+                        + (points.end.y - points.start.y) * step / 10,
+                    buttons: 1,
+                });
+            }
+            await client.send("Input.dispatchMouseEvent", {
+                type: "mouseReleased",
+                ...points.end,
+                button: "left",
+                clickCount: 1,
+            });
+            await delay(100);
+        };
+        await dragDivider("[aria-label=\"Resize workspace panels\"]", "right");
+        assert.equal(
+            await pageValue(
+                "document.querySelector('#workspace-columns-second').inert",
+            ),
+            true,
+            "Dragging to the right didn't snap the tools closed.",
+        );
+        await dragDivider(
+            "[aria-label=\"Resize game and Codex ideas\"]",
+            "bottom",
+        );
+        await assertExpandedGame();
+        await clickControl("button[aria-label=\"Restore panels\"]");
+        assert.equal(
+            await pageValue(
+                "document.querySelector('[aria-label=\"Workspace panels\"]').getBoundingClientRect().width",
+            ),
+            360,
+            "Restoring panels lost the previous width.",
+        );
+        await dragDivider("[aria-label=\"Resize workspace panels\"]", "left");
+        assert.equal(
+            await pageValue(
+                "document.querySelector('#workspace-columns-first').inert",
+            ),
+            true,
+            "Dragging to the left didn't snap the preview closed.",
+        );
+        assert.equal(
+            await pageValue(
+                "document.querySelector('[aria-label=\"Workspace panels\"]').getBoundingClientRect().width",
+            ),
+            1042,
+            "The tools didn't expand across the workspace.",
+        );
+        await clickControl("button[aria-label=\"Restore panels\"]");
+
+        // Keyboard users can snap closed and restore without dragging a tiny edge.
+        for (
+            const [label, key, code, hiddenId] of [
+                [
+                    "Resize workspace panels",
+                    "End",
+                    35,
+                    "workspace-columns-second",
+                ],
+                [
+                    "Resize game and Codex ideas",
+                    "End",
+                    35,
+                    "workspace-preview-second",
+                ],
+            ]
+        ) {
+            await pageValue(
+                `document.querySelector('[aria-label="${label}"]').focus()`,
+            );
+            for (const type of ["keyDown", "keyUp"]) {
+                await client.send("Input.dispatchKeyEvent", {
+                    type,
+                    key,
+                    code: key,
+                    windowsVirtualKeyCode: code,
+                    nativeVirtualKeyCode: code,
+                });
+            }
+            await delay(100);
+            assert.equal(
+                await pageValue(`document.querySelector('#${hiddenId}').inert`),
+                true,
+                `${label} didn't snap closed from the keyboard.`,
+            );
+        }
+        await assertExpandedGame();
+        await client.send("Emulation.setDeviceMetricsOverride", {
+            width: 390,
+            height: 844,
+            deviceScaleFactor: 1,
+            mobile: false,
+        });
+        await delay(250);
+        await assertExpandedGame();
+        await client.send("Emulation.setDeviceMetricsOverride", {
+            width: 1042,
+            height: 936,
+            deviceScaleFactor: 1,
+            mobile: false,
+        });
+        await delay(250);
+        await assertExpandedGame();
+        await clickControl("button[aria-label=\"Restore panels\"]");
+        const workspacePanelChecks = {
+            expandAndRestore: true,
+            horizontalSnapping: true,
+            verticalSnapping: true,
+            keyboardSnapping: true,
+            expandedViewportChanges: true,
+        };
         await client.send("Runtime.evaluate", {
             expression:
                 "document.querySelectorAll('[aria-label=\"Workspace panels\"] [role=\"tab\"]')[1].focus()",
@@ -631,13 +829,14 @@ async function main() {
             const response = await client.send("Runtime.evaluate", {
                 expression: `(() => {
                     const panel = document.querySelector('[aria-label="Workspace panels"]');
-                    if (getComputedStyle(panel.closest('main')).display !== 'grid') return null;
-                    return panel.getBoundingClientRect().width;
+                    const rect = panel.getBoundingClientRect();
+                    if (rect.x === 0) return null;
+                    return rect.width;
                 })()`,
                 returnByValue: true,
             });
             restoredWidth = response.result?.value;
-            if (restoredWidth !== null && restoredWidth !== undefined) break;
+            if (restoredWidth === 360) break;
             await delay(50);
         }
         assert.equal(
@@ -773,7 +972,9 @@ async function main() {
 
         console.log("WebMCP browser integration passed:");
         console.log(JSON.stringify(result, null, 2));
-        console.log(JSON.stringify({ layoutChecks }, null, 2));
+        console.log(
+            JSON.stringify({ layoutChecks, workspacePanelChecks }, null, 2),
+        );
         if (screenshotDirectory) {
             console.log(`UI screenshots: ${screenshotDirectory}`);
         }

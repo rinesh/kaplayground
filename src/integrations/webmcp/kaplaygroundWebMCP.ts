@@ -269,7 +269,8 @@ function createTools(
                     projectId: projectStore.projectKey,
                     storage: projectStore.getProjectStorageState(),
                     saveStatus: projectStore.saveStatus,
-                    editorVisible: useWorkspace.getState().activeTab === "code",
+                    editorVisible: useWorkspace.getState().activeTab === "code"
+                        && useWorkspace.getState().visiblePanels.tools,
                     selectedAsset: boundedSelectedAsset(),
                     kaplayVersion: projectStore.project.kaplayVersion,
                     mode: projectStore.project.mode,

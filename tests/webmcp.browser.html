@@ -997,9 +997,21 @@ startUnavailableInspection();
             assert(flushedNavigation && useProject.getState().getMainFile().value.endsWith("// pending navigation edit"), "Navigation lost a pending edit.");
             await waitFor(() => useEditor.getState().previewRunId !== oldRun && useEditor.getState().previewReadiness, "new project preview");
             const layoutRunId = useEditor.getState().previewRunId;
+            const layoutIframe = document.querySelector('#game-view');
+            const layoutEditor = useEditor.getState().runtime.editor;
+            const layoutRevision = useProject.getState().projectRevision;
             document.documentElement.dataset.webmcpPhase = "layout-ready";
             await new Promise(resolve => { globalThis.__webmcpLayoutChecksComplete = resolve; });
             assert(useEditor.getState().previewRunId === layoutRunId, "Responsive layout changes restarted the active game.");
+            assert(document.querySelector('#game-view') === layoutIframe && useEditor.getState().runtime.editor === layoutEditor, "Resizing or expanding remounted the game or editor.");
+            assert(useProject.getState().projectRevision === layoutRevision, "Changing panel sizes edited the game.");
+            await activate("Code");
+            document.querySelector('[aria-label="Expand game"]').click();
+            await waitFor(() => document.querySelector('#workspace-columns-second').inert, "the tools to hide while expanded");
+            assert((await invoke("kaplayground_inspect_game", {})).editorVisible === false, "Inspection reported a hidden editor as visible.");
+            document.querySelector('[aria-label="Restore panels"]').click();
+            await waitFor(() => !document.querySelector('#workspace-columns-second').inert, "the tools to restore");
+            assert((await invoke("kaplayground_inspect_game", {})).editorVisible === true, "Inspection didn't reflect the restored Code panel.");
 
             // Native dialogs make everything outside them inert. Copy must
             // select its temporary field inside the active dialog.
@@ -1102,9 +1114,9 @@ startUnavailableInspection();
             coach.querySelector('button[aria-label^="Go to idea 2:"]').click();
             await waitFor(() => coach.textContent.includes("Understand it, then change it"), "returning to the explanation");
             coach.querySelector('[aria-label="Hide Codex ideas"]').click();
-            await waitFor(() => document.querySelector('aside[aria-label="Codex tips"]')?.textContent.includes("Show Codex ideas"), "collapsing the bottom tips");
-            document.querySelector('aside[aria-label="Codex tips"] button').click();
-            await waitFor(() => document.querySelector('aside[aria-label="Codex tips"]')?.textContent.includes("Understand it, then change it"), "remembering the tip step after reopening");
+            await waitFor(() => document.querySelector('#workspace-preview-second').inert, "collapsing the bottom tips");
+            document.querySelector('[aria-label="Restore panels"]').click();
+            await waitFor(() => !document.querySelector('#workspace-preview-second').inert && document.querySelector('aside[aria-label="Codex tips"]')?.textContent.includes("Understand it, then change it"), "remembering the tip step after reopening");
             assert(useProject.getState().projectRevision === featureRevision && useProject.getState().projectKey === null && useProject.getState().saveStatus === "draft", "Reading or copying tips edited/saved the sample.");
             assert(useEditor.getState().previewRunId === featureRun, "Reading or collapsing tips restarted the sample.");
             assert((await db.getAllKeys("projects")).length === beforeFeatureCount, "A feature sample was saved without an edit.");
