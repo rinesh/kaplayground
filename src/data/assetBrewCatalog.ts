@@ -12,6 +12,9 @@ export interface AssetBrewCatalogEntry {
     animations: readonly string[];
     importFunction: string;
     outlinedImportFunction?: string;
+    /** Internal image source used only to read dimensions. Never return it. */
+    imageSource?: string;
+    spriteFrameGrid?: { columns: number; rows: number };
 }
 
 export interface AssetBrewSearchOptions {
@@ -93,9 +96,24 @@ export const assetBrewCatalog: readonly AssetBrewCatalogEntry[] = assetKeys.map(
                     outlinedImportFunction: asset.imports.importInPG.outlined,
                 }
                 : {}),
+            ...(asset.kind === "Sprite" || asset.kind === "Font"
+                ? { imageSource: asset.sprite }
+                : {}),
+            ...(asset.kind === "Sprite"
+                ? {
+                    spriteFrameGrid: {
+                        columns: positiveSlice(asset.loadSpriteOpt?.sliceX),
+                        rows: positiveSlice(asset.loadSpriteOpt?.sliceY),
+                    },
+                }
+                : {}),
         };
     },
 );
+
+function positiveSlice(value: unknown): number {
+    return Number.isInteger(value) && Number(value) > 0 ? Number(value) : 1;
+}
 
 export function searchAssetBrewEntries<
     T extends AssetBrewCatalogEntry,

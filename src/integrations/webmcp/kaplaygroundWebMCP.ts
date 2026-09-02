@@ -9,6 +9,7 @@ import {
 } from "../../data/assetBrewCatalog.ts";
 import { demos, getDemo } from "../../data/demos.ts";
 import { waitForPlaygroundReady } from "../../features/Projects/application/playgroundReadiness";
+import { validateProjectName } from "../../features/Projects/application/validateProjectName";
 import type { File } from "../../features/Projects/models/File";
 import { useProject } from "../../features/Projects/stores/useProject";
 import { useEditor } from "../../hooks/useEditor";
@@ -35,6 +36,11 @@ import {
     registerGameToolDefinitions,
     requiresExampleDiscardConfirmation,
 } from "./gameTools.ts";
+import {
+    calculateSpriteFrameDimensions,
+    readImageDimensions,
+    spriteFrameGridFromLoader,
+} from "./imageDimensions";
 import { collectMonacoDiagnostics } from "./monacoDiagnostics";
 import {
     resetWebMCPActivityOnProjectReplacement,
@@ -44,6 +50,7 @@ import {
 const MAX_RETAINED_LOGS = 500;
 const MAX_DIAGNOSTIC_RESULTS = 200;
 const MAX_VISIBLE_STRING = 10_000;
+const MAX_PROJECT_NAME_LENGTH = 120;
 const NEVER_ABORTED_SIGNAL = new AbortController().signal;
 
 export type KaplaygroundWebMCPStatus =
@@ -95,6 +102,8 @@ export interface KaplaygroundDiagnostic {
 
 export interface KaplaygroundDiagnosticsCapture {
     available: boolean;
+    sourcePath: string | null;
+    sourceCurrent: boolean;
     diagnostics: readonly KaplaygroundDiagnostic[];
 }
 
@@ -324,6 +333,8 @@ function createTools(
                         : editor.previewRunId
                         ? "running"
                         : "unknown",
+                    activeRunId: editor.previewRunId,
+                    readiness: editor.previewReadiness,
                     hasUnsavedChanges: hasUnsavedChanges(),
                     fileCount: files.length,
                     fileOffset,
@@ -463,9 +474,11 @@ function createTools(
                     MAX_PREVIEW_OBJECTS,
                     MAX_PREVIEW_OBJECTS,
                 );
+                const focusRequested = optionalBoolean(input.focus, false);
 
                 assertGameRevision(useProject.getState(), expectedRevision);
                 let runId: string | null = null;
+                let runReadiness: unknown = null;
                 if (mode === "restart-and-check") {
                     // Verification only concerns the run started by this call.
                     // Resetting prevents evictions from older runs making every
@@ -477,6 +490,7 @@ function createTools(
                             signal,
                         );
                         runId = run.runId;
+                        runReadiness = run.readiness;
                     } catch (error) {
                         if (signal.aborted) throw abortReason(signal);
                         return {
@@ -484,6 +498,11 @@ function createTools(
                             mode,
                             revision: gameRevision(useProject.getState()),
                             runId: previewRunId(error),
+                            readiness: null,
+                            focus: {
+                                requested: focusRequested,
+                                canvasFocused: false,
+                            },
                             summary: "The game could not start.",
                             error: errorMessage(error),
                             notChecked: [
@@ -501,6 +520,11 @@ function createTools(
                             mode,
                             revision: gameRevision(useProject.getState()),
                             runId,
+                            readiness: runReadiness,
+                            focus: {
+                                requested: focusRequested,
+                                canvasFocused: false,
+                            },
                             summary:
                                 "The game changed while it was starting, so this run no longer matches the requested revision.",
                             notChecked: [
@@ -513,12 +537,18 @@ function createTools(
                 } else {
                     const editor = useEditor.getState();
                     runId = editor.previewRunId;
+                    runReadiness = editor.previewReadiness;
                     if (editor.stopped || runId === null) {
                         return {
                             status: "failed",
                             mode,
                             revision: expectedRevision,
                             runId: null,
+                            readiness: runReadiness,
+                            focus: {
+                                requested: focusRequested,
+                                canvasFocused: false,
+                            },
                             summary:
                                 "There is no current game run to inspect. Restart and check the game first.",
                             notChecked: [
@@ -534,6 +564,11 @@ function createTools(
                             mode,
                             revision: expectedRevision,
                             runId,
+                            readiness: runReadiness,
+                            focus: {
+                                requested: focusRequested,
+                                canvasFocused: false,
+                            },
                             summary:
                                 "The current game run belongs to an older revision. Restart it before checking this revision.",
                             runRevision,
@@ -545,12 +580,43 @@ function createTools(
                     }
                 }
 
+                if (focusRequested) useEditor.getState().focusGame();
+                await settleEditor(signal);
+
+                let scene: Record<string, unknown> = {
+                    available: false,
+                    runId,
+                    readiness: runReadiness,
+                };
+                try {
+                    scene = safeSerializable(
+                        await useEditor.getState().inspectPreview(
+                            { tag: inspectTag, limit: objectLimit },
+                            signal,
+                        ),
+                    ) as Record<string, unknown>;
+                } catch (error) {
+                    if (signal.aborted) throw abortReason(signal);
+                    scene = {
+                        available: false,
+                        runId,
+                        readiness: runReadiness,
+                        error: errorMessage(error),
+                    };
+                }
+
+                // Scene inspection can execute object getters and component methods.
+                // Let their asynchronous console messages arrive before sampling.
                 await settleEditor(signal);
                 const projectStore = useProject.getState();
                 const editor = useEditor.getState();
-                const diagnosticsCapture = collectMonacoDiagnostics(
-                    editor.runtime.monaco ?? undefined,
-                    projectStore.project.files,
+                const diagnosticsCapture = await waitWithAbort(
+                    collectMonacoDiagnostics(
+                        editor.runtime.monaco ?? undefined,
+                        projectStore.project.files,
+                        editor.runtime.currentFile,
+                    ),
+                    signal,
                 );
                 const diagnosticErrors = diagnosticsCapture.diagnostics.filter(
                     ({ severity }) => severity === "error",
@@ -578,38 +644,24 @@ function createTools(
                     ),
                 }));
 
-                let scene: Record<string, unknown> = {
-                    available: false,
-                    runId,
-                };
-                try {
-                    scene = safeSerializable(
-                        await useEditor.getState().inspectPreview(
-                            { tag: inspectTag, limit: objectLimit },
-                            signal,
-                        ),
-                    ) as Record<string, unknown>;
-                } catch (error) {
-                    if (signal.aborted) throw abortReason(signal);
-                    scene = {
-                        available: false,
-                        runId,
-                        error: errorMessage(error),
-                    };
-                }
-
                 if (gameRevision(useProject.getState()) !== expectedRevision) {
                     return {
                         status: "failed",
                         mode,
                         revision: gameRevision(useProject.getState()),
                         runId,
+                        readiness: scene.readiness ?? runReadiness,
+                        focus: {
+                            requested: focusRequested,
+                            canvasFocused: scene.canvasFocused === true,
+                        },
                         summary:
                             "The game changed while checks were running, so the results are no longer current.",
                         notChecked: ["Playing the controls", "Visual quality"],
                     };
                 }
 
+                const readiness = scene.readiness ?? runReadiness;
                 const incompleteReasons: string[] = [];
                 if (
                     mode === "check-current"
@@ -624,6 +676,15 @@ function createTools(
                     incompleteReasons.push(
                         "Editor error checking was unavailable.",
                     );
+                } else if (!diagnosticsCapture.sourceCurrent) {
+                    incompleteReasons.push(
+                        "Editor diagnostics did not match the current source file.",
+                    );
+                }
+                if (!consoleSnapshot.available) {
+                    incompleteReasons.push(
+                        "Run-specific console capture was unavailable.",
+                    );
                 }
                 if (consoleTruncated) {
                     incompleteReasons.push(
@@ -635,6 +696,9 @@ function createTools(
                         "Some older console messages were no longer available.",
                     );
                 }
+                if (!isReadyEvidence(readiness)) {
+                    incompleteReasons.push(readinessIncompleteReason(readiness));
+                }
                 if (scene.available !== true) {
                     incompleteReasons.push(
                         "The running scene could not be inspected.",
@@ -645,9 +709,19 @@ function createTools(
                         "The scene snapshot belonged to a different run.",
                     );
                 }
+                if (scene.objectsAvailable !== true) {
+                    incompleteReasons.push(
+                        "The running scene objects could not be inspected.",
+                    );
+                }
                 if (scene.objectsTruncated === true) {
                     incompleteReasons.push(
                         "Only part of the running scene was inspected.",
+                    );
+                }
+                if (focusRequested && scene.canvasFocused !== true) {
+                    incompleteReasons.push(
+                        "The preview canvas did not confirm keyboard focus.",
                     );
                 }
                 const status = classifyGameRun(
@@ -661,15 +735,22 @@ function createTools(
                     mode,
                     revision: expectedRevision,
                     runId,
+                    readiness: safeSerializable(readiness),
+                    focus: {
+                        requested: focusRequested,
+                        canvasFocused: scene.canvasFocused === true,
+                    },
                     summary: status === "passed"
                         ? mode === "restart-and-check"
-                            ? "The game started without detected code or console errors."
-                            : "The current game run has no detected code or console errors."
+                            ? "The game loaded its assets, rendered a frame, and has no detected code or console errors."
+                            : "The current game run is ready and has no detected code or console errors."
                         : status === "failed"
                         ? "The game run has detected errors."
-                        : "The game run was checked, but some checks were unavailable.",
+                        : "The game run was checked, but some evidence was unavailable or not ready.",
                     diagnostics: {
                         available: diagnosticsCapture.available,
+                        sourcePath: diagnosticsCapture.sourcePath,
+                        sourceCurrent: diagnosticsCapture.sourceCurrent,
                         errorCount: diagnosticErrors.length,
                         total: diagnosticsCapture.diagnostics.length,
                         truncated: diagnosticsCapture.diagnostics.length
@@ -722,51 +803,108 @@ function createTools(
 
                 const before = useProject.getState();
                 const revision = gameRevision(before);
-                const gameAssets = source === "library"
-                    ? []
-                    : [...before.project.assets.values()]
-                        .filter((asset) =>
-                            kind === undefined || asset.kind === kind
-                        )
-                        .filter((asset) =>
-                            query.length === 0
-                            || `${asset.name} ${asset.path} ${asset.kind}`
+                const descriptors: Array<{
+                    asset: Record<string, unknown> & { kind: string };
+                    imageSource: string | null;
+                    frameGrid: { columns: number; rows: number } | null;
+                }> = [];
+
+                if (source !== "library") {
+                    for (const asset of before.project.assets.values()) {
+                        if (kind !== undefined && asset.kind !== kind) continue;
+                        if (
+                            query.length > 0
+                            && !`${asset.name} ${asset.path} ${asset.kind}`
                                 .toLowerCase()
                                 .includes(query)
+                        ) {
+                            continue;
+                        }
+                        descriptors.push({
+                            asset: {
+                                source: "game",
+                                name: asset.name.slice(0, 256),
+                                path: asset.path.slice(0, 512),
+                                kind: asset.kind,
+                                importFunction: asset.importFunction.slice(
+                                    0,
+                                    2_048,
+                                ),
+                                storage: assetSource(asset.url),
+                                sizeBytes: embeddedAssetSize(asset.url) ?? null,
+                            },
+                            imageSource: asset.kind === "sprite"
+                                ? asset.url
+                                : null,
+                            frameGrid: asset.kind === "sprite"
+                                ? spriteFrameGridFromLoader(
+                                    asset.importFunction,
+                                )
+                                : null,
+                        });
+                    }
+                }
+
+                if (source !== "game") {
+                    for (
+                        const asset of searchAssetBrewEntries(
+                            assetBrewCatalog,
+                            {
+                                query,
+                                kind: kind as AssetBrewKind | undefined,
+                            },
                         )
-                        .map((asset) => ({
-                            source: "game",
-                            name: asset.name.slice(0, 256),
-                            path: asset.path.slice(0, 512),
-                            kind: asset.kind,
-                            importFunction: asset.importFunction.slice(
-                                0,
-                                2_048,
-                            ),
-                            storage: assetSource(asset.url),
-                            sizeBytes: embeddedAssetSize(asset.url) ?? null,
-                        }));
-                const libraryAssets = source === "game"
-                    ? []
-                    : searchAssetBrewEntries(assetBrewCatalog, {
-                        query,
-                        kind: kind as AssetBrewKind | undefined,
-                    }).map((asset) => ({
-                        source: "library",
-                        key: asset.key,
-                        name: asset.name,
-                        description: asset.description.slice(0, 1_000),
-                        kind: asset.kind,
-                        tags: asset.tags.slice(0, 30),
-                        animations: asset.animations.slice(0, 50),
-                        importFunction: asset.importFunction.slice(0, 2_048),
-                        outlinedImportFunction:
-                            asset.outlinedImportFunction?.slice(0, 2_048)
-                                ?? null,
-                    }));
-                const results = [...gameAssets, ...libraryAssets];
-                const page = results.slice(offset, offset + limit);
-                const nextOffset = offset + page.length < results.length
+                    ) {
+                        descriptors.push({
+                            asset: {
+                                source: "library",
+                                key: asset.key,
+                                name: asset.name,
+                                description: asset.description.slice(0, 1_000),
+                                kind: asset.kind,
+                                tags: asset.tags.slice(0, 30),
+                                animations: asset.animations.slice(0, 50),
+                                importFunction: asset.importFunction.slice(
+                                    0,
+                                    2_048,
+                                ),
+                                outlinedImportFunction:
+                                    asset.outlinedImportFunction?.slice(
+                                        0,
+                                        2_048,
+                                    ) ?? null,
+                            },
+                            imageSource: asset.imageSource ?? null,
+                            frameGrid: asset.spriteFrameGrid ?? null,
+                        });
+                    }
+                }
+
+                const descriptorPage = descriptors.slice(
+                    offset,
+                    offset + limit,
+                );
+                const page = await Promise.all(descriptorPage.map(
+                    async ({ asset, imageSource, frameGrid }) => {
+                        const imageDimensions = imageSource
+                            ? await readImageDimensions(imageSource, signal)
+                            : null;
+                        return {
+                            ...asset,
+                            imageDimensions,
+                            spriteFrameGrid: asset.kind === "sprite"
+                                ? frameGrid
+                                : null,
+                            spriteFrameDimensions: asset.kind === "sprite"
+                                ? calculateSpriteFrameDimensions(
+                                    imageDimensions,
+                                    frameGrid,
+                                )
+                                : null,
+                        };
+                    },
+                ));
+                const nextOffset = offset + page.length < descriptors.length
                     ? offset + page.length
                     : null;
                 throwIfAborted(signal);
@@ -776,7 +914,7 @@ function createTools(
                     query: query || null,
                     kind: kind ?? null,
                     source,
-                    total: results.length,
+                    total: descriptors.length,
                     offset,
                     limit,
                     truncated: nextOffset !== null,
@@ -788,21 +926,58 @@ function createTools(
         {
             ...kaplaygroundToolSurface("kaplayground_save_game"),
             execute: async (input, signal) => {
-                const expectedRevision = requiredString(
-                    input.expectedRevision,
-                    "expectedRevision",
-                );
-                assertGameRevision(useProject.getState(), expectedRevision);
-                throwIfAborted(signal);
-                const projectId = await useProject.getState()
-                    .persistActiveProject();
-                return {
-                    saved: true,
-                    committed: true,
-                    revision: expectedRevision,
-                    projectId,
-                    storage: "autosaved",
-                };
+                return await projectMutations.run(async () => {
+                    const expectedRevision = requiredString(
+                        input.expectedRevision,
+                        "expectedRevision",
+                    );
+                    const requestedName = input.name === undefined
+                        ? undefined
+                        : projectName(input.name);
+                    const before = useProject.getState();
+                    assertGameRevision(before, expectedRevision);
+                    throwIfAborted(signal);
+
+                    if (
+                        requestedName !== undefined
+                        && requestedName !== before.project.name
+                    ) {
+                        const [valid, validationMessage] =
+                            await validateProjectName(
+                                requestedName,
+                                before.projectKey,
+                            );
+                        throwIfAborted(signal);
+                        assertGameRevision(
+                            useProject.getState(),
+                            expectedRevision,
+                        );
+                        if (!valid) {
+                            throw new Error(
+                                validationMessage
+                                    ?? "The requested project name is invalid.",
+                            );
+                        }
+                        useProject.getState().setProject({
+                            name: requestedName,
+                        });
+                    }
+
+                    const revision = gameRevision(useProject.getState());
+                    const projectId = await useProject.getState()
+                        .persistActiveProject();
+                    const saved = useProject.getState();
+                    return {
+                        saved: true,
+                        committed: true,
+                        previousRevision: expectedRevision,
+                        revision: gameRevision(saved),
+                        name: saved.project.name,
+                        projectId,
+                        storage: "autosaved",
+                        renamed: revision !== expectedRevision,
+                    };
+                });
             },
         },
         {
@@ -1227,6 +1402,47 @@ function optionalEnum<const T extends readonly string[]>(
         throw new TypeError(`${name} must be one of: ${allowed.join(", ")}.`);
     }
     return value;
+}
+
+function projectName(value: unknown): string {
+    const name = stringValue(value, "name").trim();
+    if (name.length === 0) {
+        throw new TypeError("name must not be blank.");
+    }
+    if (name.length > MAX_PROJECT_NAME_LENGTH) {
+        throw new RangeError(
+            `name must contain at most ${MAX_PROJECT_NAME_LENGTH} characters.`,
+        );
+    }
+    if (/\p{Cc}/u.test(name)) {
+        throw new TypeError("name cannot contain control characters.");
+    }
+    return name;
+}
+
+function isReadyEvidence(value: unknown): boolean {
+    if (typeof value !== "object" || value === null) return false;
+    const readiness = value as Record<string, unknown>;
+    return readiness.status === "ready"
+        && readiness.moduleExecuted === true
+        && readiness.contextCaptured === true
+        && readiness.assetsLoaded === true
+        && readiness.firstFrame === true
+        && readiness.canvasPresent === true;
+}
+
+function readinessIncompleteReason(value: unknown): string {
+    if (typeof value !== "object" || value === null) {
+        return "Preview asset and first-frame readiness evidence was unavailable.";
+    }
+    const readiness = value as Record<string, unknown>;
+    const status = typeof readiness.status === "string"
+        ? ` (${readiness.status})`
+        : "";
+    const reason = typeof readiness.reason === "string" && readiness.reason
+        ? ` ${readiness.reason}`
+        : "";
+    return `The preview did not confirm asset loading and a first game frame${status}.${reason}`;
 }
 
 function utf8Size(value: string): number {

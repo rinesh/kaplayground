@@ -2,6 +2,8 @@ import { getVersion, parseAssets } from "../../../util/compiler";
 import { useProject } from "../stores/useProject";
 import { buildCode } from "./buildCode";
 
+const CONTEXT_CAPTURE_CALLBACK = "__kaplaygroundCaptureContext";
+
 export async function wrapGame() {
     const activeProject = useProject.getState().project;
     const projectSnapshot = {
@@ -12,21 +14,16 @@ export async function wrapGame() {
     const code = await buildCode(projectSnapshot);
 
     return `
-        import kaplay from "${
+        import createKaplay from "${
         getVersion(false, projectSnapshot.kaplayVersion)
     }";
+        const kaplay = (...args) => {
+            const context = createKaplay(...args);
+            window._k_ctx = context;
+            window._k_debug = context?.debug ?? null;
+            globalThis[${JSON.stringify(CONTEXT_CAPTURE_CALLBACK)}]?.(context);
+            return context;
+        };
         ${parseAssets(code, projectSnapshot.assets)}
-        ${registerGlobalsFromCtx(code)}
-    `;
-}
-
-function registerGlobalsFromCtx(code: string) {
-    const ctx = code.match(
-        /\b(?:const|let|var)\s+([a-zA-Z_$][\w$]*)\s*=\s*kaplay\(/,
-    )?.[1];
-
-    return !ctx ? "" : `
-        window._k_ctx = ${ctx};
-        window._k_debug = window._k_ctx.debug;
     `;
 }

@@ -139,7 +139,10 @@ async function main() {
                 String(sandboxPort),
                 "--strictPort",
             ],
-            { cwd: join(root, "sandbox") },
+            {
+                cwd: join(root, "sandbox"),
+                env: { VITE_WEBMCP_READINESS_TIMEOUT_MS: "750" },
+            },
             "sandbox",
         );
         await waitForUrl(sandboxUrl, sandbox, 30_000);
@@ -171,7 +174,9 @@ async function main() {
                 "--headless=new",
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
-                "--disable-gpu",
+                "--use-gl=angle",
+                "--use-angle=swiftshader",
+                "--enable-unsafe-swiftshader",
                 "--disable-extensions",
                 "--disable-background-networking",
                 "--disable-default-apps",
@@ -204,22 +209,58 @@ async function main() {
             );
         }
 
-        const result = await waitForBrowserResult(client, 120_000);
+        const resultPromise = waitForBrowserResult(client, 120_000);
+        const earlyResult = await Promise.race([
+            waitForBrowserPhase(client, "movement-ready", 90_000).then(
+                () => null,
+            ),
+            resultPromise.then(result => result),
+        ]);
+        if (earlyResult) {
+            assert.equal(
+                earlyResult.passed,
+                true,
+                earlyResult.error ?? "Browser test failed before movement input.",
+            );
+            throw new Error("Browser test finished before requesting movement input.");
+        }
+
+        await client.send("Input.dispatchKeyEvent", {
+            type: "keyDown",
+            key: "ArrowRight",
+            code: "ArrowRight",
+            windowsVirtualKeyCode: 39,
+            nativeVirtualKeyCode: 39,
+        });
+        await delay(350);
+        await client.send("Input.dispatchKeyEvent", {
+            type: "keyUp",
+            key: "ArrowRight",
+            code: "ArrowRight",
+            windowsVirtualKeyCode: 39,
+            nativeVirtualKeyCode: 39,
+        });
+        await client.send("Runtime.evaluate", {
+            expression: "globalThis.__webmcpMovementInputComplete?.()",
+        });
+
+        const result = await resultPromise;
         assert.equal(result.passed, true, result.error ?? "Browser test failed.");
-        assert.equal(result.registeredNames.length, 8);
-        assert.equal(new Set(result.registeredNames).size, 8);
-        assert.equal(result.updateCommitted, true);
-        assert.notEqual(result.initialRevision, result.updatedRevision);
-        assert.ok(["passed", "incomplete"].includes(result.runStatus));
-        assert.ok(
-            ["passed", "incomplete"].includes(result.currentCheckStatus),
-        );
-        assert.equal(result.currentRunId, result.runId);
-        assert.equal(result.declineCommitted, false);
-        assert.equal(result.declineRevision, result.updatedRevision);
-        assert.equal(result.confirmationShown, true);
-        assert.equal(result.openCommitted, true);
-        assert.notEqual(result.finalRevision, result.updatedRevision);
+        assert.equal(result.registered.length, 8);
+        assert.equal(new Set(result.registered).size, 8);
+        assert.equal(result.runStatus, "passed");
+        assert.equal(result.currentCheckStatus, "passed");
+        assert.equal(result.readinessStatus, "ready");
+        assert.equal(result.focusConfirmed, true);
+        assert.equal(result.movementConfirmed, true);
+        assert.equal(result.dimensionsConfirmed, true);
+        assert.equal(result.saveReopenConfirmed, true);
+        assert.equal(result.pendingAssetsStatus, "incomplete");
+        assert.equal(result.inspectionErrorStatus, "failed");
+        assert.equal(result.diagnosticErrorStatus, "failed");
+        assert.equal(result.unavailableInspectionStatus, "incomplete");
+        assert.equal(result.declinedCommitted, false);
+        assert.equal(typeof result.opened, "string");
 
         console.log("WebMCP browser integration passed:");
         console.log(JSON.stringify(result, null, 2));
@@ -271,6 +312,10 @@ async function readFirstExisting(paths) {
 async function installFixtureInterception(cdp, fixtures) {
     cdp.on("Fetch.requestPaused", async event => {
         const url = event.request.url;
+        if (url.includes("webmcp-pending-asset.invalid")) {
+            // Intentionally leave this request pending so onLoad cannot fire.
+            return;
+        }
         if (url.includes("esbuild.wasm")) {
             await cdp.send("Fetch.fulfillRequest", {
                 requestId: event.requestId,
@@ -298,6 +343,10 @@ async function installFixtureInterception(cdp, fixtures) {
     });
     await cdp.send("Fetch.enable", {
         patterns: [
+            {
+                urlPattern: "*webmcp-pending-asset.invalid*",
+                requestStage: "Request",
+            },
             { urlPattern: "*esbuild.wasm*", requestStage: "Request" },
             { urlPattern: "*kaplay*.mjs*", requestStage: "Request" },
         ],
@@ -325,6 +374,12 @@ function chromeExecutable() {
     const candidates = [
         process.env.CHROME_PATH,
         process.env.CHROME_BIN,
+        ...(process.platform === "darwin"
+            ? [
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                "/Applications/Chromium.app/Contents/MacOS/Chromium",
+            ]
+            : []),
         "google-chrome",
         "google-chrome-stable",
         "chromium",
@@ -457,6 +512,28 @@ async function waitForBrowserTarget(port, child, timeoutMs) {
     }
     throw new Error(
         `Timed out waiting for Chrome DevTools: ${String(lastError)}`,
+    );
+}
+
+async function waitForBrowserPhase(cdp, phase, timeoutMs) {
+    const deadline = Date.now() + timeoutMs;
+    let lastError;
+    while (Date.now() < deadline) {
+        if (cdp.eventError) throw cdp.eventError;
+        try {
+            const evaluation = await cdp.send("Runtime.evaluate", {
+                expression:
+                    "document.documentElement.dataset.webmcpPhase ?? null",
+                returnByValue: true,
+            });
+            if (evaluation.result?.value === phase) return;
+        } catch (error) {
+            lastError = error;
+        }
+        await delay(100);
+    }
+    throw new Error(
+        `Timed out waiting for browser phase ${phase}: ${String(lastError)}`,
     );
 }
 
