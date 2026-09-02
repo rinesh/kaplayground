@@ -34,12 +34,10 @@
 
 /* Keep the small-screen reading order without remounting the running iframe. */
 @media (max-width: 899px) {
-    .workspace-project[data-game-expanded="false"] {
-        overflow-y: auto;
-    }
-
     .workspace-project[data-game-expanded="false"] .workspace-main {
-        flex: none;
+        /* Pane heights follow the space below the toolbar, even when it wraps. */
+        container-type: size;
+        overflow-y: auto;
     }
 
     .workspace-project[data-game-expanded="false"] .workspace-columns-container,
@@ -62,10 +60,10 @@
         position: relative;
         left: 0 !important;
         width: 100% !important;
-        height: 700px;
+        height: max(320px, 100cqh);
     }
 
     .workspace-project[data-game-expanded="false"] #workspace-columns > .split-view-container > .split-view-view:nth-child(2) {
-        height: 800px;
+        height: max(450px, 100cqh);
     }
 }

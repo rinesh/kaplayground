@@ -1,0 +1,302 @@
+{
+  "date": "2026-09-03",
+  "sample": "burp",
+  "verification": {
+    "command": "npm run verify:webmcp",
+    "passed": true,
+    "unitTests": 67,
+    "unitSuites": 14,
+    "browserIntegrationPassed": true,
+    "typesAndBuildsPassed": true
+  },
+  "layoutChecks": [
+    {
+      "width": 1042,
+      "height": 936,
+      "passed": true
+    },
+    {
+      "width": 1440,
+      "height": 1000,
+      "passed": true
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "passed": true
+    },
+    {
+      "width": 390,
+      "height": 700,
+      "passed": true
+    },
+    {
+      "width": 1042,
+      "height": 936,
+      "passed": true
+    }
+  ],
+  "workspacePanelChecks": {
+    "proportionalWindowResize": {
+      "originalProportions": {
+        "game": 0.6727447216890595,
+        "tips": 0.27303370786516856
+      },
+      "widerProportions": {
+        "game": 0.6729166666666667,
+        "tips": 0.27253668763102723
+      }
+    },
+    "canvasResizeChecks": [
+      {
+        "label": "the initial desktop layout",
+        "viewport": {
+          "width": 699,
+          "height": 647
+        },
+        "game": {
+          "width": 699,
+          "height": 647
+        },
+        "columnsSettled": true
+      },
+      {
+        "label": "a wider, taller window",
+        "viewport": {
+          "width": 967,
+          "height": 694
+        },
+        "game": {
+          "width": 967,
+          "height": 694
+        },
+        "columnsSettled": true
+      },
+      {
+        "label": "the 1042 by 936 workspace",
+        "viewport": {
+          "width": 699,
+          "height": 647
+        },
+        "game": {
+          "width": 699,
+          "height": 647
+        },
+        "columnsSettled": true
+      },
+      {
+        "label": "the expanded game",
+        "viewport": {
+          "width": 1040,
+          "height": 890
+        },
+        "game": {
+          "width": 1040,
+          "height": 890
+        },
+        "columnsSettled": true
+      },
+      {
+        "label": "the 1440 by 1000 workspace",
+        "viewport": {
+          "width": 967,
+          "height": 694
+        },
+        "game": {
+          "width": 967,
+          "height": 694
+        },
+        "columnsSettled": true
+      },
+      {
+        "label": "the expanded game",
+        "viewport": {
+          "width": 1438,
+          "height": 954
+        },
+        "game": {
+          "width": 1438,
+          "height": 954
+        },
+        "columnsSettled": true
+      },
+      {
+        "label": "the 390 by 844 workspace",
+        "viewport": {
+          "width": 373,
+          "height": 549
+        },
+        "game": {
+          "width": 373,
+          "height": 549
+        },
+        "columnsSettled": true
+      },
+      {
+        "label": "the expanded game",
+        "viewport": {
+          "width": 388,
+          "height": 754
+        },
+        "game": {
+          "width": 388,
+          "height": 754
+        },
+        "columnsSettled": true
+      },
+      {
+        "label": "the 390 by 700 workspace",
+        "viewport": {
+          "width": 373,
+          "height": 444
+        },
+        "game": {
+          "width": 373,
+          "height": 444
+        },
+        "columnsSettled": true
+      },
+      {
+        "label": "the expanded game",
+        "viewport": {
+          "width": 388,
+          "height": 610
+        },
+        "game": {
+          "width": 388,
+          "height": 610
+        },
+        "columnsSettled": true
+      },
+      {
+        "label": "the 1042 by 936 workspace",
+        "viewport": {
+          "width": 699,
+          "height": 648
+        },
+        "game": {
+          "width": 699,
+          "height": 648
+        },
+        "columnsSettled": true
+      },
+      {
+        "label": "the expanded game",
+        "viewport": {
+          "width": 1040,
+          "height": 890
+        },
+        "game": {
+          "width": 1040,
+          "height": 890
+        },
+        "columnsSettled": true
+      },
+      {
+        "label": "a horizontal divider drag",
+        "viewport": {
+          "width": 739,
+          "height": 648
+        },
+        "game": {
+          "width": 739,
+          "height": 648
+        },
+        "columnsSettled": true
+      },
+      {
+        "label": "a vertical divider drag",
+        "viewport": {
+          "width": 679,
+          "height": 688
+        },
+        "game": {
+          "width": 679,
+          "height": 688
+        },
+        "columnsSettled": true
+      },
+      {
+        "label": "the expanded game",
+        "viewport": {
+          "width": 1040,
+          "height": 890
+        },
+        "game": {
+          "width": 1040,
+          "height": 890
+        },
+        "columnsSettled": true
+      },
+      {
+        "label": "the expanded game",
+        "viewport": {
+          "width": 1040,
+          "height": 890
+        },
+        "game": {
+          "width": 1040,
+          "height": 890
+        },
+        "columnsSettled": true
+      },
+      {
+        "label": "the expanded game",
+        "viewport": {
+          "width": 388,
+          "height": 754
+        },
+        "game": {
+          "width": 388,
+          "height": 754
+        },
+        "columnsSettled": true
+      },
+      {
+        "label": "the expanded game",
+        "viewport": {
+          "width": 1040,
+          "height": 890
+        },
+        "game": {
+          "width": 1040,
+          "height": 890
+        },
+        "columnsSettled": true
+      }
+    ],
+    "expandAndRestore": true,
+    "horizontalSnapping": true,
+    "verticalSnapping": true,
+    "keyboardSnapping": true,
+    "expandedViewportChanges": true
+  },
+  "nativeBrowserCheck": {
+    "engine": "hosted master via the existing production sandbox",
+    "window": {
+      "width": 1280,
+      "height": 720
+    },
+    "initialGame": {
+      "width": 774,
+      "height": 490
+    },
+    "afterHorizontalDrag": {
+      "width": 834,
+      "height": 490
+    },
+    "afterVerticalDrag": {
+      "width": 834,
+      "height": 530
+    },
+    "expandedGame": {
+      "width": 1278,
+      "height": 674
+    },
+    "restoredGame": {
+      "width": 834,
+      "height": 530
+    },
+    "sceneVisibleAfterSettling": true
+  }
+}

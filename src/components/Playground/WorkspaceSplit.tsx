@@ -125,7 +125,7 @@ export const WorkspaceSplit = (props: Props) => {
                 id={props.id}
                 ref={split}
                 vertical={props.vertical}
-                proportionalLayout={false}
+                proportionalLayout
                 defaultSizes={props.defaultSizes}
                 onChange={updateSize}
                 onVisibleChange={(index, visible) =>

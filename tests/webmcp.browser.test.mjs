@@ -387,6 +387,76 @@ async function main() {
             }
             await delay(100);
         };
+        const canvasResizeChecks = [];
+        const assertCanvasFollowsGame = async label => {
+            const deadline = Date.now() + 5_000;
+            let state;
+            while (Date.now() < deadline) {
+                state = await pageValue(`(async () => {
+                    const inspection = await globalThis.__webmcpInspectLayoutPreview();
+                    const game = document.querySelector('#game-view').getBoundingClientRect();
+                    const columns = document.querySelector('#workspace-columns');
+                    const panes = [...columns.querySelector(':scope > .split-view-container').children];
+                    const columnsSettled = innerWidth < 900 || Math.abs(panes.reduce((sum, pane) => sum + pane.getBoundingClientRect().width, 0) - columns.getBoundingClientRect().width) <= 2;
+                    return {
+                        viewport: inspection.viewport,
+                        game: { width: game.width, height: game.height },
+                        columnsSettled,
+                    };
+                })()`);
+                if (
+                    state.viewport && state.columnsSettled
+                    && Math.abs(state.viewport.width - state.game.width) <= 2
+                    && Math.abs(state.viewport.height - state.game.height) <= 2
+                ) {
+                    canvasResizeChecks.push({ label, ...state });
+                    return;
+                }
+                await delay(50);
+            }
+            assert.fail(
+                `Burp's rendered viewport didn't follow ${label}: ${
+                    JSON.stringify(state)
+                }`,
+            );
+        };
+        const panelProportions = () =>
+            pageValue(`(() => {
+            const rect = selector => document.querySelector(selector).getBoundingClientRect();
+            const columns = rect('#workspace-columns');
+            const preview = rect('#workspace-preview');
+            return {
+                game: rect('#workspace-columns-first').width / columns.width,
+                tips: rect('#workspace-preview-second').height / preview.height,
+            };
+        })()`);
+        await client.send("Emulation.setDeviceMetricsOverride", {
+            width: 1042,
+            height: 936,
+            deviceScaleFactor: 1,
+            mobile: false,
+        });
+        await delay(250);
+        await assertCanvasFollowsGame("the initial desktop layout");
+        const originalProportions = await panelProportions();
+        await client.send("Emulation.setDeviceMetricsOverride", {
+            width: 1440,
+            height: 1000,
+            deviceScaleFactor: 1,
+            mobile: false,
+        });
+        await delay(250);
+        await assertCanvasFollowsGame("a wider, taller window");
+        const widerProportions = await panelProportions();
+        for (const panel of ["game", "tips"]) {
+            assert(
+                Math.abs(originalProportions[panel] - widerProportions[panel])
+                    < 0.01,
+                `${panel} didn't resize proportionally with the window: ${
+                    JSON.stringify({ originalProportions, widerProportions })
+                }`,
+            );
+        }
         const assertExpandedGame = async () => {
             const state = await pageValue(`(() => {
                 const r = document.querySelector('#game-view').getBoundingClientRect();
@@ -410,10 +480,14 @@ async function main() {
                     JSON.stringify(state)
                 }`,
             );
+            await assertCanvasFollowsGame("the expanded game");
         };
         const layoutChecks = [];
         for (
             const [width, height] of [[1042, 936], [1440, 1000], [390, 844], [
+                390,
+                700,
+            ], [
                 1042,
                 936,
             ]]
@@ -425,6 +499,9 @@ async function main() {
                 mobile: false,
             });
             await delay(250);
+            await assertCanvasFollowsGame(
+                `the ${width} by ${height} workspace`,
+            );
             const evaluated = await client.send("Runtime.evaluate", {
                 expression: `(() => {
                     const rect = selector => {
@@ -479,7 +556,13 @@ async function main() {
                 );
             } else {
                 assert(
-                    layout.panel.y >= layout.coach.bottom - 2,
+                    Math.abs(layout.coachPane.bottom - height) <= 2,
+                    `The game and tips didn't follow the ${height}px viewport height: ${
+                        JSON.stringify(layout)
+                    }`,
+                );
+                assert(
+                    layout.panel.y >= layout.coachPane.bottom - 2,
                     "Portrait panels must stack after the preview and tips.",
                 );
                 assert(
@@ -498,7 +581,7 @@ async function main() {
                 if (width < 900) {
                     await client.send("Runtime.evaluate", {
                         expression:
-                            "document.querySelector('main').parentElement.scrollTop = 450",
+                            "document.querySelector('main.workspace-main').scrollTop = 450",
                     });
                     await delay(100);
                     const panels = await client.send("Page.captureScreenshot", {
@@ -510,7 +593,7 @@ async function main() {
                     );
                     await client.send("Runtime.evaluate", {
                         expression:
-                            "document.querySelector('main').parentElement.scrollTop = 0",
+                            "document.querySelector('main.workspace-main').scrollTop = 0",
                     });
                 }
             }
@@ -519,6 +602,9 @@ async function main() {
             await clickControl("button[aria-label=\"Restore panels\"]");
             layoutChecks.push({ width, height, passed: true });
         }
+        const beforeKeyboardWidth = await pageValue(
+            "document.querySelector('[aria-label=\"Workspace panels\"]').getBoundingClientRect().width",
+        );
         await client.send("Runtime.evaluate", {
             expression:
                 "document.querySelector('[aria-label=\"Resize workspace panels\"]').focus()",
@@ -543,10 +629,10 @@ async function main() {
                 "document.querySelector('[aria-label=\"Workspace panels\"]').getBoundingClientRect().width",
             returnByValue: true,
         });
-        assert.equal(
-            resized.result.value,
-            360,
-            "The panel separator didn't resize from the keyboard.",
+        const savedToolsWidth = resized.result.value;
+        assert(
+            Math.abs(savedToolsWidth - beforeKeyboardWidth - 20) <= 1,
+            "The panel separator didn't resize by 20px from the keyboard.",
         );
         const dragDivider = async (selector, edge) => {
             const points = await pageValue(`(() => {
@@ -555,12 +641,11 @@ async function main() {
             }).getBoundingClientRect();
                 const area = document.querySelector('main.workspace-main').getBoundingClientRect();
                 const start = { x: Math.min(innerWidth - 2, Math.max(2, handle.x + handle.width / 2)), y: Math.min(innerHeight - 2, Math.max(area.top + 2, handle.y + handle.height / 2)) };
-                const end = ${
-                JSON.stringify(edge)
-            } === 'bottom' ? { x: start.x, y: innerHeight - 2 }
-                    : { x: ${
-                JSON.stringify(edge)
-            } === 'right' ? innerWidth - 2 : 2, y: start.y };
+                const target = ${JSON.stringify(edge)};
+                const end = typeof target === 'object'
+                    ? { x: start.x + target.x, y: start.y + target.y }
+                    : target === 'bottom' ? { x: start.x, y: innerHeight - 2 }
+                    : { x: target === 'right' ? innerWidth - 2 : 2, y: start.y };
                 return { start, end };
             })()`);
             await client.send("Input.dispatchMouseEvent", {
@@ -588,6 +673,42 @@ async function main() {
             });
             await delay(100);
         };
+        const gameRect = () =>
+            pageValue(
+                "document.querySelector('#game-view').getBoundingClientRect().toJSON()",
+            );
+        const beforeDrag = await gameRect();
+        await dragDivider("[aria-label=\"Resize workspace panels\"]", {
+            x: 60,
+            y: 0,
+        });
+        await assertCanvasFollowsGame("a horizontal divider drag");
+        const afterHorizontalDrag = await gameRect();
+        assert(
+            Math.abs(afterHorizontalDrag.width - beforeDrag.width - 60) <= 2
+                && Math.abs(afterHorizontalDrag.height - beforeDrag.height)
+                    <= 2,
+            "A horizontal drag must change the game width without changing its height.",
+        );
+        await dragDivider("[aria-label=\"Resize workspace panels\"]", {
+            x: -60,
+            y: 0,
+        });
+        await dragDivider("[aria-label=\"Resize game and Codex ideas\"]", {
+            x: 0,
+            y: 40,
+        });
+        await assertCanvasFollowsGame("a vertical divider drag");
+        const afterVerticalDrag = await gameRect();
+        assert(
+            Math.abs(afterVerticalDrag.height - beforeDrag.height - 40) <= 2
+                && Math.abs(afterVerticalDrag.width - beforeDrag.width) <= 2,
+            "A vertical drag must change the game height without changing its width.",
+        );
+        await dragDivider("[aria-label=\"Resize game and Codex ideas\"]", {
+            x: 0,
+            y: -40,
+        });
         await dragDivider("[aria-label=\"Resize workspace panels\"]", "right");
         assert.equal(
             await pageValue(
@@ -606,7 +727,7 @@ async function main() {
             await pageValue(
                 "document.querySelector('[aria-label=\"Workspace panels\"]').getBoundingClientRect().width",
             ),
-            360,
+            savedToolsWidth,
             "Restoring panels lost the previous width.",
         );
         await dragDivider("[aria-label=\"Resize workspace panels\"]", "left");
@@ -681,6 +802,8 @@ async function main() {
         await assertExpandedGame();
         await clickControl("button[aria-label=\"Restore panels\"]");
         const workspacePanelChecks = {
+            proportionalWindowResize: { originalProportions, widerProportions },
+            canvasResizeChecks,
             expandAndRestore: true,
             horizontalSnapping: true,
             verticalSnapping: true,
@@ -836,13 +959,12 @@ async function main() {
                 returnByValue: true,
             });
             restoredWidth = response.result?.value;
-            if (restoredWidth === 360) break;
+            if (Math.abs(restoredWidth - savedToolsWidth) <= 2) break;
             await delay(50);
         }
-        assert.equal(
-            restoredWidth,
-            360,
-            "A fresh visit forgot the resized panel width.",
+        assert(
+            Math.abs(restoredWidth - savedToolsWidth) <= 2,
+            `A fresh visit forgot the resized panel width: ${restoredWidth} instead of ${savedToolsWidth}.`,
         );
 
         for (const [width, height] of [[390, 844], [1042, 936]]) {
