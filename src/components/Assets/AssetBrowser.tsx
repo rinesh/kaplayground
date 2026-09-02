@@ -15,6 +15,7 @@ import { useEditor } from "../../hooks/useEditor";
 import { type SelectedAsset, useWorkspace } from "../../hooks/useWorkspace";
 import { cn } from "../../util/cn";
 import { Assets } from "./Assets";
+import { SoundPreview } from "./SoundPreview";
 
 type BrowserAsset = { identity: SelectedAsset; image: string; sound?: string };
 const libraryAssets = new Map(
@@ -316,13 +317,10 @@ export const AssetBrowser = () => {
                             </button>
                         </div>
                         {selected?.sound && (
-                            <audio
+                            <SoundPreview
                                 key={assetId(selection)}
-                                controls
-                                preload="none"
                                 src={selected.sound}
-                                aria-label={`Preview ${assetName(selection)}`}
-                                className="mt-2 h-8 w-full"
+                                name={assetName(selection)}
                             />
                         )}
                         <div className="mt-2 flex gap-2">
@@ -403,6 +401,10 @@ function libraryAsset(asset: AssetBrewCatalogEntry): BrowserAsset {
                 ] as SpriteCrewItem)?.sprite
                 : null) ?? assets.sounds.sprite
             : crew.sprite,
-        sound: crew.kind === "Sound" ? crew.sound : undefined,
+        // Served files have the correct audio MIME type; some Crew data URLs
+        // use audio/wave or application/octet-stream, which disable playback.
+        sound: crew.kind === "Sound"
+            ? asset.importFunction.match(/"(\/crew\/[\w-]+\.[\w]+)"/)?.[1]
+            : undefined,
     };
 }

@@ -61,17 +61,25 @@ export const ProjectStatus = () => {
                 id="project-save-button"
                 type="button"
                 icon={assets.save.outlined}
-                text={status === "error" ? "Retry save" : "Save project"}
+                text={status === "error"
+                    ? "Retry save"
+                    : status === "saving"
+                    ? "Autosaving project"
+                    : status === "saved"
+                    ? "Save project — autosave on"
+                    : "Save project"}
                 compact
                 aria-busy={status === "saving"}
                 aria-describedby={status === "error"
                     ? "project-save-error"
                     : undefined}
                 tip={status === "error"
-                    ? "Retry saving this project"
+                    ? "Autosave couldn't save your changes. Click to retry."
                     : status === "draft"
-                    ? "Save a copy to My games"
-                    : "Save project"}
+                    ? "Your first edit saves a copy to My games automatically. Click to save a copy now."
+                    : status === "saving"
+                    ? "Autosaving to My games in this browser…"
+                    : "Autosave on — your changes are saved to My games in this browser. Click to save now."}
                 className={`h-9 shrink-0 px-1.5 ${
                     status === "saved"
                         ? "opacity-45 hover:opacity-100"

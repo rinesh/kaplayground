@@ -221,6 +221,45 @@ async function main() {
             client,
             auditCatalog ? 600_000 : 120_000,
         );
+        await client.send("Page.bringToFront");
+        for (const key of ["bean_voice", "mark_voice", "burp", "kaboom2000"]) {
+            const earlyResult = await Promise.race([
+                waitForBrowserPhase(client, `sound-preview-${key}`, 60_000)
+                    .then(() => null),
+                resultPromise,
+            ]);
+            assert.equal(
+                earlyResult,
+                null,
+                earlyResult?.error ?? `Test ended before playing ${key}.`,
+            );
+            const playButton = await client.send("Runtime.evaluate", {
+                expression: `(async () => {
+                    const audio = document.querySelector('.asset-browser audio');
+                    audio.scrollIntoView({ block: 'nearest' });
+                    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                    const r = audio.getBoundingClientRect();
+                    return { x: r.x + 24, y: r.y + r.height / 2 };
+                })()`,
+                awaitPromise: true,
+                returnByValue: true,
+            });
+            await client.send("Input.dispatchMouseEvent", {
+                type: "mouseMoved",
+                ...playButton.result.value,
+            });
+            for (const type of ["mousePressed", "mouseReleased"]) {
+                await client.send("Input.dispatchMouseEvent", {
+                    type,
+                    button: "left",
+                    clickCount: 1,
+                    ...playButton.result.value,
+                });
+            }
+            await client.send("Runtime.evaluate", {
+                expression: "globalThis.__webmcpSoundInputComplete?.()",
+            });
+        }
         const beforeTabs = await Promise.race([
             waitForBrowserPhase(client, "tabs-ready", 60_000).then(() => null),
             resultPromise,
@@ -713,6 +752,9 @@ async function verifyPublicAssetRoutes(baseUrl) {
             "crew/bag.png",
             "crew/bag-o.png",
             "crew/bean_voice.wav",
+            "crew/mark_voice.wav",
+            "crew/burp.mp3",
+            "crew/kaboom2000.mp3",
             "crew/happy.png",
         ]
     ) {
@@ -721,6 +763,13 @@ async function verifyPublicAssetRoutes(baseUrl) {
             signal: AbortSignal.timeout(10_000),
         });
         assert(response.ok, `Asset request failed: ${url}`);
+        if (/\.(wav|mp3)$/.test(path)) {
+            assert.match(
+                response.headers.get("content-type") ?? "",
+                /^audio\//,
+                `Sound URL did not serve an audio MIME type: ${url}`,
+            );
+        }
         const actual = Buffer.from(await response.arrayBuffer());
         const expected = await readFile(join(
             root,

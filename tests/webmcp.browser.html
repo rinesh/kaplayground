@@ -146,6 +146,11 @@
                 assert(!toolbar.querySelector('[role="status"]'), "Routine save status should not occupy a toolbar line.");
                 assert(!/Draft · edit to save|Saved locally/.test(toolbar.textContent), "The toolbar still shows a routine save label.");
                 assert(!toolbar.querySelector("#project-save-error"), "A healthy project shows a save failure.");
+                const tip = saveButton.getAttribute("data-tooltip-html");
+                const status = useProject.getState().saveStatus;
+                if (status === "draft") assert(/first edit.*automatically/.test(tip), "Drafts must explain when autosave starts.");
+                if (status === "saved") assert(/Autosave on.*in this browser/.test(tip) && /autosave on/.test(saveButton.textContent), "Saved projects must expose local autosave in the tooltip and accessible name.");
+                if (status === "saving") assert(/Autosaving.*in this browser/.test(tip), "Pending saves must explain that local autosave is running.");
             };
             assert(saveButton && !saveButton.disabled, "Untouched drafts must still have an explicit Save action.");
             assertQuietSaveStatus();
@@ -222,6 +227,8 @@
             collection.dispatchEvent(new Event("change", { bubbles: true }));
             gameBrowser.querySelector('[aria-label="Close game browser"]').click();
             await waitFor(() => !gameBrowser.open, "closing the game browser");
+            await Promise.allSettled(gameBrowser.getAnimations({ subtree: true }).map(animation => animation.finished));
+            await new Promise(requestAnimationFrame);
 
             const search = document.querySelector('[aria-label="Search assets"]');
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(search, "bean");
@@ -250,6 +257,48 @@
             assert(assetView("Library") && assetView("In game") && !assetView("All"), "Assets should have Library and In game views without All.");
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(search, "");
             search.dispatchEvent(new Event("input", { bubbles: true }));
+
+            const soundPreviews = [];
+            let previousAudio;
+            const kinds = label => [...document.querySelectorAll('[aria-label="Asset kinds"] button')].find(button => button.textContent.trim() === label);
+            kinds("Sounds").click();
+            for (const key of ["bean_voice", "mark_voice", "burp", "kaboom2000"]) {
+                const card = await waitFor(() => document.querySelector(`button[aria-label="Select ${key}"]`), `${key} sound card`);
+                card.click();
+                const audio = await waitFor(() => document.querySelector(`audio[aria-label="Preview ${key}"]`), `${key} sound player`);
+                if (previousAudio) await waitFor(() => previousAudio.paused, "stopping the previous sound on selection");
+                await waitFor(() => audio.readyState >= 1 && audio.duration > 0 && Number.isFinite(audio.duration), `${key} metadata before playback`, 10_000);
+                assert(audio.getAttribute("src").startsWith("/crew/"), `${key} must use a served sound file with an audio MIME type.`);
+                if (audio.duration < 1) assert(document.querySelector(".asset-browser").textContent.includes("Short clip"), "Subsecond clips need a duration that doesn't round down to 0:00.");
+                document.documentElement.dataset.webmcpPhase = `sound-preview-${key}`;
+                await new Promise(resolve => { globalThis.__webmcpSoundInputComplete = resolve; });
+                await waitFor(() => audio.currentTime > 0, `playing ${key} from its visible controls`, 10_000);
+                assert(!audio.error, `${key} failed to decode.`);
+                soundPreviews.push({ key, duration: audio.duration, played: true });
+                previousAudio = audio;
+            }
+            document.querySelector('button[aria-label="Clear asset selection"]').click();
+            await waitFor(() => !document.querySelector(".asset-browser audio") && previousAudio.paused, "stopping sound when its selection is cleared");
+            kinds("All types").click();
+
+            // A runtime URL can stop working after the game loaded it. Exercise
+            // the visible failure/retry state without editing the user's game.
+            const originalPreviewAssets = useEditor.getState().previewAssets;
+            useEditor.setState({ previewAssets: { ...originalPreviewAssets, assets: [...originalPreviewAssets.assets, { name: "unavailable-preview", kind: "sound", loader: "loadSound", url: new URL("/crew/missing-preview.wav", location.href).href }] } });
+            assetView("In game").click();
+            (await waitFor(() => document.querySelector('button[aria-label="Select unavailable-preview"]'), "unavailable runtime sound")).click();
+            const soundFailure = () => document.querySelector('.asset-browser [role="alert"]');
+            await waitFor(soundFailure, "visible sound failure", 10_000);
+            assert(soundFailure().textContent.includes("Couldn't load this sound"), "Broken sounds must explain the failure.");
+            const brokenAudio = document.querySelector(".asset-browser audio");
+            let retriedSound = false;
+            brokenAudio.addEventListener("loadstart", () => { retriedSound = true; }, { once: true });
+            [...soundFailure().querySelectorAll("button")].find(button => button.textContent.trim() === "Retry sound").click();
+            await waitFor(() => retriedSound && soundFailure(), "retrying a failed sound", 10_000);
+            useEditor.setState({ previewAssets: originalPreviewAssets });
+            document.querySelector('button[aria-label="Select pop"]').click();
+            await waitFor(() => document.querySelector('audio[aria-label="Preview pop"]')?.readyState >= 1 && !soundFailure(), "clearing the error for a working game sound", 10_000);
+
             assetView("In game").click();
             await waitFor(() => document.querySelector('button[aria-label="Select pop"]'), "the starting game's loaded sound");
             assert(document.querySelector('button[aria-label="Select apple"]'), "In game omitted an asset loaded from a public path.");
@@ -1144,6 +1193,9 @@ startUnavailableInspection();
                 toolbarShortcutsConfirmed: true,
                 homeNavigationConfirmed: true,
                 quietSaveStatusConfirmed: true,
+                autosaveFeedbackConfirmed: true,
+                soundPreviews,
+                soundFailureRetryConfirmed: true,
                 saveErrorRetryConfirmed: true,
                 featureTipsConfirmed: true,
                 assetPathsConfirmed: true,
