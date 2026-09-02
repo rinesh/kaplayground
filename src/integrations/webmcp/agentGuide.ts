@@ -14,7 +14,7 @@ export const CODEX_PLAY_STEPS: readonly CodexPlayStep[] = [
         eyebrow: "START HERE",
         title: "Play the tiny game",
         description:
-            "Click the game, move the bean with the arrow keys or WASD, and collect a few apples.",
+            "Click an apple to move toward it, or use the arrow keys or WASD. Collect five apples, then click or press R to play again.",
         calloutTitle: "Chase the apples",
         calloutDescription: "There is no wrong way to play.",
     },

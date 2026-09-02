@@ -25,6 +25,7 @@ yarn-error.log*
 .wrangler
 public/kaboom.js
 public/kaboom.js.map
+public/crew/
 lib.d.ts
 vite.config.ts.timestamp-*
 *.tsbuildinfo

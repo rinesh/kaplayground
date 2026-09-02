@@ -123,6 +123,8 @@ function classifyPresentation(source: string): CodexPlayPresentation {
     const hasVisualOutput =
         /\b(?:add(?:[A-Z]\w*)?|draw[A-Z]\w*|loadBean|loadSprite|scene|setBackground)\s*\(/
             .test(executableSource)
+        || /\bdebug\s*\.\s*log\s*\(|\bdebug\s*\.\s*inspect\s*=\s*true\b/
+            .test(executableSource)
         || /\bkaplay\s*\(\s*{[\s\S]{0,500}\bbackground\s*:/.test(
             executableSource,
         );

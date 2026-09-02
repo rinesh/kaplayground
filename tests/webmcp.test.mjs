@@ -511,6 +511,21 @@ describe("new-player Codex prompts", () => {
     });
 
     it("distinguishes interactive, visual, and output-only examples", () => {
+        for (
+            const source of [
+                "kaplay({ maxFPS: 70 }); debug.inspect = true;",
+                "const k = kaplay({ global: false }); k.debug.log('Hello');",
+            ]
+        ) {
+            assert.equal(
+                createCodexPlayGuide({
+                    key: "visible-debug-output",
+                    title: "Visible output",
+                    source,
+                }).presentation,
+                "visual",
+            );
+        }
         assert.equal(
             createCodexPlayGuide({
                 key: "interactive",

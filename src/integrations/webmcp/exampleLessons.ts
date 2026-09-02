@@ -22,11 +22,11 @@ export const EXAMPLE_LESSONS = {
     basicsEvents:
         "Events choose when behavior runs: once after loading, every frame, or after an input. Picking the right moment prevents a one-time action from repeating constantly.",
     basicsGlobals:
-        "Initializing the game makes drawing, input, sound, and object functions available. A greeting in Game messages can confirm that the setup ran even before anything is drawn.",
+        "The game context keeps drawing, input, sound, and object functions together in a variable called k. This sample turns off global names and briefly shows a greeting inside the preview using that context.",
     basicsObject:
         "A game object combines what to draw with where to draw it. An anchor chooses which point of the image sits at that position, making centering much easier.",
     basicsStart:
-        "The background is the first visible part of a game, while Game messages can show output from its setup. Adding a title or a character gives that empty canvas a purpose.",
+        "The background is the first visible part of a game. A greeting briefly appears inside this preview; adding a lasting title or character gives the green canvas a purpose.",
     bbcode:
         "Tags inside a text string can assign styles to individual words. The text stays in one place while names, warnings, or important clues get their own colors.",
     binding:
@@ -144,7 +144,7 @@ export const EXAMPLE_LESSONS = {
     loadingScreen:
         "A loading screen can draw progress before the game's assets are ready. It gives the player feedback during a wait instead of leaving the canvas unexplained.",
     maze:
-        "A maze generator turns a grid into connected passages and walls. Changing its rules can produce a new layout while the player and movement code stay the same.",
+        "A maze generator turns a grid into connected passages and walls at startup. Clicking an open cell gives the bean a destination, and pathfinding chooses a route around the walls.",
     mazeRaycastedLight:
         "Rays cast toward nearby walls determine which space a light can reach. Joining their hit points creates a lit region that changes as the light moves.",
     movement:
@@ -152,7 +152,7 @@ export const EXAMPLE_LESSONS = {
     multitexture:
         "A second image can act as a mask that controls which pixels are revealed. Changing that mask creates a wipe or transition without rearranging the game world.",
     onLoadError:
-        "Asset loading can fail, so a game needs a fallback as well as a success path. Catching a missing asset lets it explain the problem or continue with substitute artwork.",
+        "The missing-image line starts disabled. Enabling it makes this handler report the error and stop the game; a recovery path needs substitute artwork or another way to continue.",
     out: "Leaving the visible area is different from being removed from the game. Detecting the boundary lets you choose whether an object wraps, respawns, scores, or disappears.",
     overlap:
         "An overlap check detects shared space without necessarily blocking movement. It is useful for pickups, trigger zones, and color-mixing effects where objects should pass through each other.",
@@ -161,7 +161,7 @@ export const EXAMPLE_LESSONS = {
     particleTrail:
         "A trail emits short-lived particles along a moving pointer. Emission rate and lifetime control its length, while size and color change its visual weight.",
     patrol:
-        "A patrol moves automatically until it reaches a boundary, then reverses direction. Adding pauses or detection to that loop turns a simple motion into a guard's behavior.",
+        "A patrol follows a list of waypoints. This bean stops at the last point and reports completion; choosing a looping or reversing end behavior would make it keep moving.",
     pauseMenu:
         "Pausing gameplay does not have to pause the interface. Keeping menu input separate lets a player choose Resume while the world remains still.",
     picture:

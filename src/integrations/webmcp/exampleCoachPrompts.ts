@@ -108,7 +108,7 @@ export const EXAMPLE_COACH_PROMPTS = {
     },
     basicsGlobals: {
         explain:
-            "The preview only logs a greeting, so show me where the game is initialized and explain in plain language how that one call makes drawing, input, sound, and object functions available.",
+            "The preview briefly shows a greeting from the game context. Explain how the variable k keeps drawing, input, sound, and object functions together, and why this sample turns off global names.",
         remix:
             "Replace the blank greeting with a welcoming start screen that introduces the game context through four animated icons for drawing, input, sound, and objects.",
         build:
@@ -128,7 +128,7 @@ export const EXAMPLE_COACH_PROMPTS = {
     },
     basicsStart: {
         explain:
-            "The preview is a green canvas with a greeting in the game messages. Explain how the background color and greeting are created, then add a centered title so the first visible result feels intentional.",
+            "The preview is a green canvas with a greeting briefly shown inside it. Explain how the background color and greeting are created, then add a centered title so the first visible result feels intentional.",
         remix:
             "Turn the empty green canvas into a cozy nighttime welcome screen with a moon, a short title, and a pulsing prompt to click, while keeping the setup easy for a beginner to read.",
         build:
@@ -208,7 +208,7 @@ export const EXAMPLE_COACH_PROMPTS = {
     },
     clicktopmost: {
         explain:
-            "Click the overlapping blue, green, and cyan squares and watch which name appears in the game messages. Explain why only the visually topmost clickable square responds in the overlap.",
+            "Click the overlapping blue, green, and cyan squares and watch which name appears inside the preview. Explain why only the visually topmost clickable square responds in the overlap.",
         remix:
             "Turn the overlapping squares into a messy stack of colorful postcards. Clicking should lift the top postcard, stamp it, and slide it aside so the next one becomes available.",
         build:
@@ -628,7 +628,7 @@ export const EXAMPLE_COACH_PROMPTS = {
     },
     lerp: {
         explain:
-            "Press 1 and 2 to switch movement modes and compare how the bean eases toward its target. Explain how repeated interpolation creates smooth following and why the two formulas feel different.",
+            "Press 1 to make the bean follow the pointer and 2 to bring it back to the center. In mode 2, hover to reveal it and click to make it grow briefly. Explain how the same gradual blending changes position, color, opacity, and size.",
         remix:
             "Turn the moving bean into a curious firefly that trails the pointer with a glowing tail. Give the two interpolation modes visibly different trail colors.",
         build:
@@ -718,7 +718,7 @@ export const EXAMPLE_COACH_PROMPTS = {
     },
     loadingScreen: {
         explain:
-            "Reload and watch the custom loading screen before the beans and ghosts appear, then press Space if the starting point offers another transition. Explain what can be drawn while assets load.",
+            "Run the sample and watch the circular loading indicator before the bean appears, then press Space to play a sound. Explain how the progress drawing and the deliberate one-second wait make loading visible.",
         remix:
             "Turn the loader into a tiny campsite where a fire grows with progress, stars appear one by one, and the finished scene opens with a sunrise.",
         build:
@@ -728,7 +728,7 @@ export const EXAMPLE_COACH_PROMPTS = {
     },
     maze: {
         explain:
-            "Click to generate or interact with the maze and inspect how mathematical rules become walls and passages. Explain how the grid is carved and how the bean is placed in open cells.",
+            "Click an open cell and watch the bean find a route through the maze. Explain how the maze is generated at startup, how walls block the route, and how each click chooses a new destination.",
         remix:
             "Restyle the maze as an overgrown garden with hedge walls, stepping-stone floors, a visible entrance, and a glowing flower at the exit.",
         build:
@@ -768,7 +768,7 @@ export const EXAMPLE_COACH_PROMPTS = {
     },
     onLoadError: {
         explain:
-            "The starting point deliberately tries to load a missing asset and handles the failure. Explain what error is caught, how the game stays alive, and what feedback the player receives.",
+            "The preview is blank because the broken image load is commented out. Enable it, run the sample, and explain why the error handler stops the game. Then add a friendly message and substitute artwork so it can continue.",
         remix:
             "Replace the plain load failure with a friendly missing-character card that shows a fallback silhouette, a short message, and a retry animation.",
         build:
@@ -818,7 +818,7 @@ export const EXAMPLE_COACH_PROMPTS = {
     },
     patrol: {
         explain:
-            "Watch the bean travel back and forth along its patrol route and report when it reaches an end. Explain how direction, speed, and boundary checks keep it looping.",
+            "Watch the bean follow four waypoints and stop at the last one, with a completion message inside the preview. Explain how its route, speed, and stop-at-the-end behavior work, then make it repeat the route.",
         remix:
             "Turn the patrolling bean into a sleepy night guard with a lantern cone, a turnaround pause, and footsteps that quicken near each endpoint.",
         build:
@@ -1198,7 +1198,7 @@ export const EXAMPLE_COACH_PROMPTS = {
     },
     timer: {
         explain:
-            "Watch the timed and repeating actions fire around the bean. Explain the difference between waiting once, looping, pausing, and counting elapsed time.",
+            "Watch a new bean appear every half second and disappear three seconds later. Explain how the repeating spawn timer and each bean's one-time removal timer work together.",
         remix:
             "Turn the timer examples into a tiny kitchen clock scene with a sweeping hand, three labeled alarms, and a bean reacting differently to each one.",
         build:

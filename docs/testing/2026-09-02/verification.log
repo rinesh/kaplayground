@@ -1,0 +1,478 @@
+
+> kaplayground@2.5.3 verify:webmcp
+> npm run test:webmcp && npm run check && npm run test:webmcp:browser && npm run sandbox:build && npm run build
+
+
+> kaplayground@2.5.3 test:webmcp
+> npm run generate:all && node --experimental-strip-types --test tests/webmcp.test.mjs tests/boundedConsoleCapture.test.mjs tests/projectModels.test.mjs tests/webMCPLifecycle.test.mjs tests/previewReadiness.test.mjs tests/runtimeInspection.test.mjs tests/rootStartup.test.mjs tests/gameFirst.test.mjs
+
+
+> kaplayground@2.5.3 generate:all
+> npm run generate:lib && npm run generate:versions && npm run generate:changelog && npm run generate:examples
+
+
+> kaplayground@2.5.3 generate:lib
+> node --experimental-strip-types scripts/types.ts
+
+
+> kaplayground@2.5.3 generate:versions
+> node --experimental-strip-types scripts/versions.ts
+
+Generated kaplayVersions.json
+
+> kaplayground@2.5.3 generate:changelog
+> node --experimental-strip-types scripts/changelog.ts
+
+Generated kaplayChangelog.html
+
+> kaplayground@2.5.3 generate:examples
+> node --experimental-strip-types scripts/examples.ts
+
+Generated examples (126), no new found for exampleList.json, to force update run with (--) --regenerate
+Generated publicAssets.json
+▶ byte-bounded console capture
+  ✔ copies and truncates values before retaining them (0.961125ms)
+  ✔ evicts by total retained bytes before the entry limit (0.138041ms)
+  ✔ preserves the original small-entry behavior (0.475208ms)
+✔ byte-bounded console capture (2.161708ms)
+▶ generation-bound project persistence
+  ✔ doesn't persist a pristine draft until explicitly asked (1.460542ms)
+  ✔ uses one stable id for rapid edits, snapshots, and explicit saves (2.34825ms)
+  ✔ keeps pending edits and the same id after a write fails (0.214708ms)
+  ✔ acknowledges an older snapshot without marking a newer edit saved (0.1475ms)
+  ✔ doesn't promote a replacement project or write an abandoned queued snapshot (0.187459ms)
+✔ generation-bound project persistence (5.196417ms)
+▶ shared console message boundary
+  ✔ accepts only the active iframe and configured origin (0.10625ms)
+  ✔ rejects malformed payloads and oversized run ids (0.982125ms)
+✔ shared console message boundary (1.287583ms)
+▶ promptable asset and starting point identifiers
+  ✔ searches project names, paths, and kinds with identical normalization (0.150042ms)
+  ✔ copies canonical library keys and project paths into ordinary prompts (0.271958ms)
+  ✔ ranks the Codex starter first and the existing Games category next (0.834667ms)
+✔ promptable asset and starting point identifiers (1.416666ms)
+▶ preview readiness
+  ✔ observes the first frame across a scene change (app scope: true) (19.803042ms)
+  ✔ observes the first frame across a scene change (app scope: false) (1.489833ms)
+  ✔ keeps early load and draw evidence until module execution completes (1.5415ms)
+  ✔ does not mark assets ready before module code queues its loads (16.614791ms)
+  ✔ polls loadProgress when onLoad is not emitted (0.711917ms)
+  ✔ reports a bounded incomplete reason after timeout (17.160375ms)
+  ✔ settles the previous waiter when a run is replaced (0.237666ms)
+  ✔ removes a pending draw observer when tracking is stopped (0.079292ms)
+✔ preview readiness (59.287958ms)
+▶ project Monaco models
+  ✔ uses canonical file URIs and updates existing source and language (0.52875ms)
+  ✔ hydrates every file after disposing the previous project models (18.61675ms)
+✔ project Monaco models (20.06425ms)
+▶ root startup
+  ✔ does not rewrite the root URL before project config loads (0.779166ms)
+✔ root startup (1.481042ms)
+▶ assets loaded by the running game
+  ✔ observes successful global and context loaders using their exact names (1.322667ms)
+  ✔ doesn't report pending, unused, or superseded loads (0.163875ms)
+  ✔ discovers atlas entries after loading, including names supplied by JSON (0.293542ms)
+  ✔ honors loadRoot while retaining loader errors and return values (0.446542ms)
+  ✔ bounds discovery without truncating canonical names or large media into invalid URLs (0.152583ms)
+✔ assets loaded by the running game (3.829041ms)
+▶ preview asset message boundary
+  ✔ rejects other origins, windows, and preview runs (0.204916ms)
+  ✔ replaces duplicate names, removes reloading assets, and clears a new context (0.190417ms)
+  ✔ drops unsupported and oversized media and bounds the full collection (1.294458ms)
+✔ preview asset message boundary (1.834917ms)
+▶ sandbox runtime inspection
+  ✔ reads modern camera getters without calling deprecated aliases (0.474166ms)
+  ✔ preserves scene, focus, geometry, and object evidence (0.484875ms)
+  ✔ reports unavailable objects when the active context cannot query them (0.09ms)
+✔ sandbox runtime inspection (1.185833ms)
+▶ WebMCP document lifecycle
+  ✔ keeps tools registered when beforeunload is canceled (0.5255ms)
+  ✔ aborts old registrations and registers once after page restoration (0.253334ms)
+  ✔ replaces registrations when modelContext changes on focus (0.121959ms)
+  ✔ does not re-register while the same context remains active (0.107ms)
+✔ WebMCP document lifecycle (1.637542ms)
+▶ simple KAPLAYGROUND browser tools
+  ✔ exposes one small tool surface (0.832125ms)
+  ✔ publishes bounded, self-describing schemas and trust annotations (0.279208ms)
+  ✔ registers the complete production surface and forwards cancellation (0.378541ms)
+  ✔ rolls back every registered tool when one registration fails (0.387708ms)
+  ✔ uses one revision token for project replacement and content changes (0.090833ms)
+  ✔ rejects a stale revision before an update (0.082375ms)
+  ✔ prepares a multi-file update without changing the original map (0.300417ms)
+  ✔ rejects duplicate paths and unsafe creation or removal (0.378792ms)
+  ✔ bounds aggregate multi-file reads (0.339084ms)
+  ✔ serializes project mutations so a queued stale replacement cannot win (0.682416ms)
+  ✔ classifies every run-check outcome without overstating incomplete checks (0.070458ms)
+  ✔ resolves imports from each virtual importing directory (0.061125ms)
+  ✔ derives sprite-frame dimensions from loader slices (0.164042ms)
+  ✔ treats the discard argument as a request for page confirmation (0.102ms)
+✔ simple KAPLAYGROUND browser tools (5.195625ms)
+▶ new-player Codex prompts
+  ✔ keeps the starter ideas free of integration jargon (0.329458ms)
+  ✔ creates friendly example-specific prompts (0.833875ms)
+  ✔ gives every built-in example its own grounded prompt set (3.369541ms)
+  ✔ pairs every sample with a short feature lesson and its existing prompts (1.06475ms)
+  ✔ uses the prompt set supplied for a built-in example (0.198709ms)
+  ✔ keeps one guide identity when temporary work is saved (0.064708ms)
+  ✔ distinguishes interactive, visual, and output-only examples (0.090042ms)
+✔ new-player Codex prompts (6.270084ms)
+▶ bounded agent-visible data
+  ✔ hides nested source content before storing activity (0.332792ms)
+  ✔ bounds retained console entries (0.435083ms)
+  ✔ resets console eviction state before checking a new run (0.18275ms)
+  ✔ requires a language worker and matching source models (0.863ms)
+  ✔ checks every source through the worker instead of trusting cached markers (0.449583ms)
+  ✔ rejects stale worker source and source changed during diagnostics (0.391292ms)
+  ✔ reports unavailable diagnostics when the language worker fails (0.253583ms)
+✔ bounded agent-visible data (3.055334ms)
+ℹ tests 67
+ℹ suites 14
+ℹ pass 67
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 230.313875
+
+> kaplayground@2.5.3 check
+> tsc --noEmit --p tsconfig.app.json
+
+
+> kaplayground@2.5.3 test:webmcp:browser
+> node tests/webmcp.browser.test.mjs
+
+WebMCP browser integration passed:
+{
+  "passed": true,
+  "registered": [
+    "kaplayground_inspect_game",
+    "kaplayground_read_files",
+    "kaplayground_update_game",
+    "kaplayground_run_game",
+    "kaplayground_find_assets",
+    "kaplayground_save_game",
+    "kaplayground_find_examples",
+    "kaplayground_open_example"
+  ],
+  "runStatus": "passed",
+  "currentCheckStatus": "passed",
+  "readinessStatus": "ready",
+  "sceneTransitionConfirmed": true,
+  "canceledUnloadConfirmed": true,
+  "focusConfirmed": true,
+  "movementConfirmed": true,
+  "dimensionsConfirmed": true,
+  "saveReopenConfirmed": true,
+  "readOnlyAssetsConfirmed": true,
+  "hiddenEditorConfirmed": true,
+  "failedSaveRetryConfirmed": true,
+  "firstSaveActivityConfirmed": true,
+  "sharedConsoleConfirmed": true,
+  "legacyProjectsConfirmed": true,
+  "pendingNavigationConfirmed": true,
+  "explicitDraftSaveConfirmed": true,
+  "deleteQueueConfirmed": true,
+  "restoredBrowserConfirmed": true,
+  "quickSwitchConfirmed": true,
+  "toolbarShortcutsConfirmed": true,
+  "homeNavigationConfirmed": true,
+  "quietSaveStatusConfirmed": true,
+  "saveErrorRetryConfirmed": true,
+  "featureTipsConfirmed": true,
+  "assetPathsConfirmed": true,
+  "gameStarterCount": 14,
+  "regressionStarterCount": 2,
+  "gameStartups": [
+    {
+      "key": "webmcpAgent",
+      "ready": true,
+      "errorCount": 0
+    },
+    {
+      "key": "concert",
+      "ready": true,
+      "errorCount": 0
+    },
+    {
+      "key": "eatlove",
+      "ready": true,
+      "errorCount": 0
+    },
+    {
+      "key": "egg",
+      "ready": true,
+      "errorCount": 0
+    },
+    {
+      "key": "flappy",
+      "ready": true,
+      "errorCount": 0
+    },
+    {
+      "key": "ghosthunting",
+      "ready": true,
+      "errorCount": 0
+    },
+    {
+      "key": "platformer",
+      "ready": true,
+      "errorCount": 0
+    },
+    {
+      "key": "pong",
+      "ready": true,
+      "errorCount": 0
+    },
+    {
+      "key": "raycaster3d",
+      "ready": true,
+      "errorCount": 0
+    },
+    {
+      "key": "rpg",
+      "ready": true,
+      "errorCount": 0
+    },
+    {
+      "key": "runner",
+      "ready": true,
+      "errorCount": 0
+    },
+    {
+      "key": "shooter",
+      "ready": true,
+      "errorCount": 0
+    },
+    {
+      "key": "sokoban",
+      "ready": true,
+      "errorCount": 0
+    },
+    {
+      "key": "vn",
+      "ready": true,
+      "errorCount": 0
+    },
+    {
+      "key": "advancedbinding",
+      "ready": true,
+      "errorCount": 0
+    },
+    {
+      "key": "loadingScreen",
+      "ready": true,
+      "errorCount": 0
+    }
+  ],
+  "catalogAudit": [],
+  "catalogExpectedCount": 0,
+  "pendingAssetsStatus": "incomplete",
+  "inspectionErrorStatus": "failed",
+  "diagnosticErrorStatus": "failed",
+  "unavailableInspectionStatus": "incomplete",
+  "declinedCommitted": false,
+  "opened": "webmcpAgent",
+  "freshPageDefaultsConfirmed": true,
+  "keyboardResizeConfirmed": true,
+  "browserResponsiveConfirmed": true
+}
+{
+  "layoutChecks": [
+    {
+      "width": 1042,
+      "height": 936,
+      "passed": true
+    },
+    {
+      "width": 1440,
+      "height": 1000,
+      "passed": true
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "passed": true
+    },
+    {
+      "width": 1042,
+      "height": 936,
+      "passed": true
+    }
+  ]
+}
+
+> kaplayground@2.5.3 sandbox:build
+> cd sandbox && vite build
+
+vite v8.2.2 building client environment for production...
+transforming...
+
+warn - The `content` option in your Tailwind CSS configuration is missing or empty.
+warn - Configure your content sources or your generated CSS will be missing styles.
+warn - https://tailwindcss.com/docs/content-configuration
+✓ 27 modules transformed.
+rendering chunks...
+[vite-plugin-static-copy] Copied 360 items.
+computing gzip size...
+dist/index.html                 0.71 kB │ gzip:  0.37 kB
+dist/assets/index-BOqr5XWm.js  34.54 kB │ gzip: 10.66 kB
+
+[EVAL] Use of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+    ╭─[ ../node_modules/console-feed/lib/Transform/replicator/index.js:11:12 ]
+    │
+ 11 │     return savedEval('this');
+    │            ────┬────
+    │                ╰────── Use of direct `eval` here.
+    │
+    │ Help: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+────╯
+
+✓ built in 410ms
+
+> kaplayground@2.5.3 build
+> vite build -- --regenerate
+
+Generating 126 examples...
+Generated exampleList.json
+Generated publicAssets.json
+Generated kaplayVersions.json
+Generated kaplayChangelog.html
+Generating 126 examples...
+Generated exampleList.json
+Generated publicAssets.json
+Generated kaplayVersions.json
+Generated kaplayChangelog.html
+Generating 126 examples...
+Generated exampleList.json
+Generated publicAssets.json
+Generated kaplayVersions.json
+Generated kaplayChangelog.html
+vite v8.2.2 building server environment for production...
+transforming...
+✓ 4 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/server/.vite/manifest.json  0.15 kB │ gzip: 0.11 kB
+dist/server/wrangler.json        1.25 kB │ gzip: 0.65 kB
+dist/server/index.js             0.20 kB │ gzip: 0.16 kB
+
+✓ built in 16ms
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 1456 modules transformed.
+rendering chunks...
+[vite-plugin-static-copy] Copied 253 items.
+computing gzip size...
+dist/client/.assetsignore                                            0.02 kB
+dist/client/index.html                                               1.57 kB │ gzip:     0.57 kB
+dist/client/assets/dm-mono-latin-ext-400-normal-1aZr6b2b.woff        7.50 kB
+dist/client/assets/dm-mono-latin-ext-400-normal-C2zvOubV.woff2       9.55 kB
+dist/client/assets/dm-mono-latin-400-normal--0xN8mdc.woff           11.21 kB
+dist/client/assets/outfit-latin-ext-wght-normal-DdQaqQDo.woff2      14.80 kB
+dist/client/assets/dm-mono-latin-400-normal-4GdczIuU.woff2          14.82 kB
+dist/client/assets/outfit-latin-wght-normal-Bc-8i84L.woff2          32.29 kB
+dist/client/assets/codicon-DCmgc-ay.ttf                             80.34 kB
+dist/client/assets/index-CP3jmJoZ.css                              334.99 kB │ gzip:    52.68 kB
+dist/client/assets/javascript-bU81gqwp.js                            0.68 kB │ gzip:     0.41 kB
+dist/client/assets/azcli-Bc_sGQ0U.js                                 0.70 kB │ gzip:     0.28 kB
+dist/client/assets/ini-sBoK_t0W.js                                   0.96 kB │ gzip:     0.49 kB
+dist/client/assets/csp-bTuwJoIa.js                                   1.27 kB │ gzip:     0.48 kB
+dist/client/assets/pla-CopQ2nXW.js                                   1.54 kB │ gzip:     0.60 kB
+dist/client/assets/scheme-BeGwcela.js                                1.62 kB │ gzip:     0.77 kB
+dist/client/assets/flow9-C5_-GSwl.js                                 1.66 kB │ gzip:     0.80 kB
+dist/client/assets/sb-CcwsVR0C.js                                    1.68 kB │ gzip:     0.78 kB
+dist/client/assets/bat-i0X4ZdIN.js                                   1.69 kB │ gzip:     0.82 kB
+dist/client/assets/dockerfile-DZFCIeNp.js                            1.72 kB │ gzip:     0.63 kB
+dist/client/assets/pascaligo-D-ptJ9y-.js                             1.85 kB │ gzip:     0.86 kB
+dist/client/assets/cameligo-DMUM7wLl.js                              1.97 kB │ gzip:     0.91 kB
+dist/client/assets/lua-CsQS60Ue.js                                   1.98 kB │ gzip:     0.88 kB
+dist/client/assets/objective-c-FvmIjYaQ.js                           2.10 kB │ gzip:     1.01 kB
+dist/client/assets/graphql-fmXr3nnJ.js                               2.11 kB │ gzip:     0.99 kB
+dist/client/assets/sparql-D_Lu-MrJ.js                                2.21 kB │ gzip:     1.10 kB
+dist/client/assets/lexon-CfSJPG6W.js                                 2.28 kB │ gzip:     0.88 kB
+dist/client/assets/xml-CwqmLmol.js                                   2.29 kB │ gzip:     0.92 kB
+dist/client/assets/mips-CIPQ_RoX.js                                  2.32 kB │ gzip:     1.02 kB
+dist/client/assets/go-C-y9NEjX.js                                    2.35 kB │ gzip:     1.11 kB
+dist/client/assets/bicep-B5-_aFwp.js                                 2.36 kB │ gzip:     0.91 kB
+dist/client/assets/sophia-CRfGWb83.js                                2.48 kB │ gzip:     1.15 kB
+dist/client/assets/m3-D-oSqn_W.js                                    2.52 kB │ gzip:     1.29 kB
+dist/client/assets/typespec-B8J7ngcE.js                              2.62 kB │ gzip:     1.01 kB
+dist/client/assets/pascal-DrH0SRf2.js                                2.63 kB │ gzip:     1.35 kB
+dist/client/assets/fsharp-C8Ef5oNN.js                                2.65 kB │ gzip:     1.27 kB
+dist/client/assets/qsharp-DkqhCAOL.js                                2.72 kB │ gzip:     1.37 kB
+dist/client/assets/shell-CC2rA5mh.js                                 2.81 kB │ gzip:     1.16 kB
+dist/client/assets/r-BwWrilGY.js                                     2.83 kB │ gzip:     1.25 kB
+dist/client/assets/java-BEtHBSE6.js                                  2.90 kB │ gzip:     1.34 kB
+dist/client/assets/redis-ClamHrr6.js                                 3.03 kB │ gzip:     1.41 kB
+dist/client/assets/cypher-CVaqCwHa.js                                3.04 kB │ gzip:     1.40 kB
+dist/client/assets/powershell-DmHpPYUd.js                            3.05 kB │ gzip:     1.33 kB
+dist/client/assets/kotlin-B0qVs-E9.js                                3.08 kB │ gzip:     1.42 kB
+dist/client/assets/tcl-DISqw1ZD.js                                   3.27 kB │ gzip:     1.32 kB
+dist/client/assets/coffee-Ba7i2nA0.js                                3.36 kB │ gzip:     1.24 kB
+dist/client/assets/hcl-CpzslTdj.js                                   3.44 kB │ gzip:     1.45 kB
+dist/client/assets/apex-BWPQTe0t.js                                  3.46 kB │ gzip:     1.70 kB
+dist/client/assets/markdown-Cimd5fb3.js                              3.63 kB │ gzip:     1.34 kB
+dist/client/assets/rust-DdL9SqIa.js                                  3.66 kB │ gzip:     1.80 kB
+dist/client/assets/liquid-DJ725MdA.js                                3.71 kB │ gzip:     1.61 kB
+dist/client/assets/restructuredtext-BYgofb2h.js                      3.74 kB │ gzip:     1.32 kB
+dist/client/assets/less-B9JPFI3C.js                                  3.74 kB │ gzip:     1.36 kB
+dist/client/assets/python-Bh5qDa0r.js                                3.81 kB │ gzip:     1.61 kB
+dist/client/assets/yaml-CcMg9ZIQ.js                                  3.90 kB │ gzip:     1.48 kB
+dist/client/assets/dart-onAF5SnQ.js                                  3.93 kB │ gzip:     1.60 kB
+dist/client/assets/csharp-BKxtCVv1.js                                4.11 kB │ gzip:     1.66 kB
+dist/client/assets/msdax-DauUninz.js                                 4.27 kB │ gzip:     1.87 kB
+dist/client/assets/css-DIMkf-bt.js                                   4.36 kB │ gzip:     1.33 kB
+dist/client/assets/pug-Z5eAx3Zn.js                                   4.46 kB │ gzip:     1.60 kB
+dist/client/assets/swift-Bxkupp3x.js                                 4.48 kB │ gzip:     1.99 kB
+dist/client/assets/ecl-D05T4iGw.js                                   4.62 kB │ gzip:     2.19 kB
+dist/client/assets/cpp-C7h46wYY.js                                   4.74 kB │ gzip:     2.02 kB
+dist/client/assets/mdx-B0-ELOBi.js                                   4.75 kB │ gzip:     1.40 kB
+dist/client/assets/html-D52Y7F8o.js                                  4.88 kB │ gzip:     1.35 kB
+dist/client/assets/typescript-Y_hTwl92.js                            5.06 kB │ gzip:     2.12 kB
+dist/client/assets/vb-DV3o63ZY.js                                    5.30 kB │ gzip:     2.01 kB
+dist/client/assets/twig-De2hgUGE.js                                  5.78 kB │ gzip:     1.48 kB
+dist/client/assets/scss-gp-XZpBa.js                                  6.26 kB │ gzip:     1.70 kB
+dist/client/assets/julia-Bri6UV-V.js                                 6.50 kB │ gzip:     2.64 kB
+dist/client/assets/handlebars-mCIMBVk2.js                            6.65 kB │ gzip:     1.57 kB
+dist/client/assets/systemverilog-Bz4Y3fRF.js                         6.85 kB │ gzip:     2.72 kB
+dist/client/assets/st-DbInun42.js                                    6.94 kB │ gzip:     2.24 kB
+dist/client/assets/scala-DHpiXF5c.js                                 7.11 kB │ gzip:     2.07 kB
+dist/client/assets/wgsl-DpFanUEy.js                                  7.18 kB │ gzip:     2.73 kB
+dist/client/assets/perl-oz_6vUea.js                                  7.35 kB │ gzip:     3.10 kB
+dist/client/assets/postiats-43DmfD33.js                              7.36 kB │ gzip:     2.39 kB
+dist/client/assets/php-nr791fC2.js                                   7.74 kB │ gzip:     2.03 kB
+dist/client/assets/clojure-Cm7r79vr.js                               8.21 kB │ gzip:     3.49 kB
+dist/client/assets/ruby-DezsRK8O.js                                  8.21 kB │ gzip:     2.55 kB
+dist/client/assets/razor-y0_YhNK0.js                                 8.48 kB │ gzip:     2.24 kB
+dist/client/assets/sql-NEE52Syq.js                                   8.84 kB │ gzip:     3.73 kB
+dist/client/assets/protobuf-C531GsRP.js                              8.89 kB │ gzip:     2.04 kB
+dist/client/assets/mysql-SOo6toE5.js                                 9.65 kB │ gzip:     3.98 kB
+dist/client/assets/elixir-6RTg0lbw.js                               10.11 kB │ gzip:     2.50 kB
+dist/client/assets/redshift-DT7zqm-g.js                             10.33 kB │ gzip:     4.24 kB
+dist/client/assets/abap-08VXUWAP.js                                 11.69 kB │ gzip:     5.15 kB
+dist/client/assets/pgsql-DTj74zXo.js                                11.91 kB │ gzip:     4.42 kB
+dist/client/assets/powerquery-D3hlyOfw.js                           15.34 kB │ gzip:     4.73 kB
+dist/client/assets/freemarker2-Z63r0Fk6.js                          15.93 kB │ gzip:     4.18 kB
+dist/client/assets/solidity-BEEn4gHE.js                             15.99 kB │ gzip:     4.39 kB
+dist/client/assets/tsMode-2uNSNQLG.js                               22.58 kB │ gzip:     6.16 kB
+dist/client/assets/cssMode-B-Lq2-Lr.js                              31.43 kB │ gzip:     8.05 kB
+dist/client/assets/htmlMode-hiWGCMHg.js                             31.97 kB │ gzip:     8.15 kB
+dist/client/assets/jsonMode--OX-G-aZ.js                             40.72 kB │ gzip:    11.31 kB
+dist/client/assets/index-DCkO4R6n.js                            23,406.82 kB │ gzip: 9,952.70 kB
+
+[EVAL] Use of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+    ╭─[ node_modules/console-feed/lib/Transform/replicator/index.js:11:12 ]
+    │
+ 11 │     return savedEval('this');
+    │            ────┬────
+    │                ╰────── Use of direct `eval` here.
+    │
+    │ Help: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+────╯
+
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 2.22s

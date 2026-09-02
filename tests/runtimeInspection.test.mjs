@@ -328,6 +328,25 @@ function inspectorFor(context, options = {}) {
 }
 
 describe("sandbox runtime inspection", () => {
+    it("reads modern camera getters without calling deprecated aliases", () => {
+        const deprecated = () => {
+            throw new Error("Deprecated getter called");
+        };
+        const result = inspectorFor({
+            getCamPos: () => ({ x: 100, y: 80 }),
+            getCamScale: () => ({ x: 2, y: 2 }),
+            getCamRot: () => 15,
+            camPos: deprecated,
+            camScale: deprecated,
+            camRot: deprecated,
+        })({ limit: 10 });
+        assert.deepEqual(result.camera, {
+            position: { x: 100, y: 80 },
+            scale: { x: 2, y: 2 },
+            rotation: 15,
+        });
+    });
+
     it("preserves scene, focus, geometry, and object evidence", () => {
         const object = {
             id: "player-1",

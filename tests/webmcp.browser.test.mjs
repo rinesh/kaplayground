@@ -7,6 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const auditCatalog = process.argv.includes("--catalog");
 const children = new Set();
 const logs = new Map();
 
@@ -130,7 +131,9 @@ async function main() {
         while (ports.size < 3) ports.add(await freePort());
         const [appPort, sandboxPort, debuggingPort] = ports;
         const sandboxUrl = `http://127.0.0.1:${sandboxPort}/`;
-        const appUrl = `http://127.0.0.1:${appPort}/tests/webmcp.browser.html`;
+        const appUrl = `http://127.0.0.1:${appPort}/tests/webmcp.browser.html${
+            auditCatalog ? "?catalog-audit" : ""
+        }`;
 
         const sandbox = startProcess(
             viteExecutable(),
@@ -214,7 +217,10 @@ async function main() {
             );
         }
 
-        const resultPromise = waitForBrowserResult(client, 120_000);
+        const resultPromise = waitForBrowserResult(
+            client,
+            auditCatalog ? 600_000 : 120_000,
+        );
         const beforeTabs = await Promise.race([
             waitForBrowserPhase(client, "tabs-ready", 60_000).then(() => null),
             resultPromise,
@@ -480,12 +486,23 @@ async function main() {
         assert.equal(result.saveErrorRetryConfirmed, true);
         assert.equal(result.featureTipsConfirmed, true);
         assert.equal(result.assetPathsConfirmed, true);
-        assert.equal(result.gameStartups.length, result.gameStarterCount);
+        assert.equal(
+            result.gameStartups.length,
+            result.gameStarterCount + result.regressionStarterCount,
+        );
         for (const startup of result.gameStartups) {
             assert.equal(startup.ready, true, startup.key);
             assert.equal(startup.errorCount, 0, startup.key);
         }
-        for (const key of ["eatlove", "shooter", "ghosthunting"]) {
+        for (
+            const key of [
+                "eatlove",
+                "shooter",
+                "ghosthunting",
+                "advancedbinding",
+                "loadingScreen",
+            ]
+        ) {
             assert(result.gameStartups.some(startup => startup.key === key));
         }
         assert.equal(result.pendingAssetsStatus, "incomplete");
@@ -494,6 +511,17 @@ async function main() {
         assert.equal(result.unavailableInspectionStatus, "incomplete");
         assert.equal(result.declinedCommitted, false);
         assert.equal(typeof result.opened, "string");
+        assert.equal(result.catalogAudit.length, result.catalogExpectedCount);
+        const catalogFailures = result.catalogAudit.filter(sample =>
+            sample.startupError || sample.stopped
+            || sample.readiness?.status !== "ready" || sample.errors.length > 0
+            || sample.copiedPrompts !== 4
+        );
+        assert.deepEqual(
+            catalogFailures,
+            [],
+            "Starting-point catalog regressions",
+        );
 
         // A fresh portrait visit uses the real application entry point and an
         // old starter link, keeping dimensions but not the active Code tab.
@@ -682,6 +710,10 @@ async function verifyPublicAssetRoutes(baseUrl) {
             "sprites/dungeon.json",
             "sounds/wooosh.mp3",
             "fonts/happy_28x36.png",
+            "crew/bag.png",
+            "crew/bag-o.png",
+            "crew/bean_voice.wav",
+            "crew/happy.png",
         ]
     ) {
         const url = new URL(`/${path}`, baseUrl);
@@ -690,7 +722,11 @@ async function verifyPublicAssetRoutes(baseUrl) {
         });
         assert(response.ok, `Asset request failed: ${url}`);
         const actual = Buffer.from(await response.arrayBuffer());
-        const expected = await readFile(join(root, "kaplay/examples", path));
+        const expected = await readFile(join(
+            root,
+            path.startsWith("crew/") ? "public" : "kaplay/examples",
+            path,
+        ));
         assert(
             actual.equals(expected),
             `Asset URL did not serve its file: ${url}`,

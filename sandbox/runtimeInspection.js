@@ -23,13 +23,14 @@ export function createRuntimeInspector({
         const viewportHeight = finiteNumber(safeCall(getContext, "height"))
             ?? finiteNumber(canvas?.height);
         const cameraPosition = pointSnapshot(
-            safeCall(getContext, "camPos"),
+            safeCall(getContext, "getCamPos") ?? safeCall(getContext, "camPos"),
         );
         const cameraScale = pointSnapshot(
-            safeCall(getContext, "camScale"),
+            safeCall(getContext, "getCamScale")
+                ?? safeCall(getContext, "camScale"),
         );
         const cameraRotation = finiteNumber(
-            safeCall(getContext, "camRot"),
+            safeCall(getContext, "getCamRot") ?? safeCall(getContext, "camRot"),
         );
         const matchedObjects = queryObjects(getContext, normalizedTag);
         const objectsAvailable = matchedObjects !== null;

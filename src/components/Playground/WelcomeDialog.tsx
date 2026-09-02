@@ -151,7 +151,7 @@ export const WelcomeDialog = (_props: WelcomeDialogProps) => {
                                     aria-hidden="true"
                                 />
                                 <span className="pr-8 font-medium text-lg leading-tight text-white">
-                                    Play Bean's Snack Dash
+                                    Play Moonlit Apple Run
                                 </span>
                                 <span className="text-sm">
                                     Move the bean, grab five apples, and see

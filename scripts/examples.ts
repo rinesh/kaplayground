@@ -9,6 +9,7 @@ import path from "path";
 import examplesData from "../kaplay/examples/examples.json" with {
     type: "json",
 };
+import { generateCrewAssets } from "./crewAssets.ts";
 
 const args = process.argv.slice(2);
 
@@ -193,3 +194,4 @@ function normalizeVersion(ver: string | undefined, fallback: string) {
 
 generateExamples();
 generatePublicAssets();
+generateCrewAssets();

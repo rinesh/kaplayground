@@ -10,6 +10,7 @@
         <pre id="webmcp-browser-result" data-status="running"></pre>
         <script type="module">
         const resultNode = document.querySelector("#webmcp-browser-result");
+        const auditCatalog = new URLSearchParams(location.search).has("catalog-audit");
         const tools = new Map();
         const registeredNames = [];
 
@@ -887,6 +888,33 @@ startUnavailableInspection();
             await new Promise(resolve => { globalThis.__webmcpLayoutChecksComplete = resolve; });
             assert(useEditor.getState().previewRunId === layoutRunId, "Responsive layout changes restarted the active game.");
 
+            // Native dialogs make everything outside them inert. Copy must
+            // select its temporary field inside the active dialog.
+            const tipsDialog = document.querySelector("#webmcp-panel");
+            tipsDialog.showModal();
+            tipsDialog.querySelector('button[aria-label^="Go to idea 2:"]').click();
+            await waitFor(() => tipsDialog.textContent.includes("Copy for Codex"), "the modal idea");
+            const modalIdea = [...tipsDialog.querySelectorAll("p")].find(p => p.textContent.startsWith("“")).textContent.slice(1, -1);
+            const modalCopy = [...tipsDialog.querySelectorAll("button")].find(button => button.textContent.trim() === "Copy for Codex");
+            let modalCopied = false;
+            const modalCopyCommand = document.execCommand;
+            document.execCommand = command => {
+                if (command !== "copy") return false;
+                assert(document.activeElement.closest("dialog") === tipsDialog, "The copy field is inert outside the modal.");
+                assert(document.activeElement.value === modalIdea, "The dialog copied a different idea from the coach.");
+                modalCopied = true;
+                return true;
+            };
+            try {
+                modalCopy.focus();
+                modalCopy.click();
+                await waitFor(() => modalCopied, "copying an idea inside the dialog");
+                assert(document.activeElement === modalCopy, "Modal copy did not restore keyboard focus.");
+            } finally {
+                document.execCommand = modalCopyCommand;
+                tipsDialog.close();
+            }
+
             // Removing WebMCP must not remove the application-owned console listener.
             delete document.modelContext;
             window.dispatchEvent(new Event("focus"));
@@ -919,8 +947,10 @@ startUnavailableInspection();
             };
             navigator.clipboard.writeText = async text => tipCopies.push(text);
             const copyTipButton = [...coach.querySelectorAll("button")].find(button => button.textContent.trim() === "Copy for Codex");
+            copyTipButton.focus();
             copyTipButton.click();
             await waitFor(() => tipCopies.length === 1, "copying a feature prompt");
+            assert(document.activeElement === copyTipButton, "Copying an idea lost keyboard focus.");
             document.execCommand = () => false;
             copyTipButton.click();
             await waitFor(() => tipCopies.length === 2, "the clipboard fallback for feature prompts");
@@ -928,6 +958,36 @@ startUnavailableInspection();
             navigator.clipboard.writeText = clipboardWrite;
             assert(tipCopies[0] === tipCopies[1], "Clipboard paths copied different prompts.");
             assert(tipCopies[0].includes("dinosaur") && tipCopies[0].includes("frame sequences"), "The prompt is not grounded in the chosen feature sample.");
+
+            // Clipboard denial must leave the complete idea available to select.
+            document.execCommand = () => { throw new Error("Legacy clipboard blocked"); };
+            navigator.clipboard.writeText = async text => tipCopies.push(text);
+            copyTipButton.click();
+            await waitFor(() => tipCopies.length === 3, "clipboard fallback after a thrown legacy copy");
+            assert(tipCopies[2] === tipCopies[0], "The thrown-copy fallback changed the idea.");
+            document.execCommand = () => false;
+            navigator.clipboard.writeText = async () => { throw new Error("Clipboard denied"); };
+            copyTipButton.click();
+            const manualPrompt = await waitFor(() => coach.querySelector('textarea[aria-label="Prompt to copy"]'), "a selectable full prompt after clipboard denial");
+            assert(manualPrompt.readOnly && manualPrompt.value === tipCopies[0], "The manual-copy fallback doesn't expose the whole idea.");
+            assert(document.activeElement === manualPrompt && manualPrompt.selectionEnd === manualPrompt.value.length, "Manual copying must focus and select the full idea.");
+
+            // A slow clipboard response belongs to the idea that requested it.
+            coach.querySelector('button[aria-label^="Go to idea 3:"]').click();
+            await waitFor(() => coach.textContent.includes("Give it your own look"), "the remix idea");
+            let releaseTipCopy;
+            navigator.clipboard.writeText = () => new Promise(resolve => { releaseTipCopy = resolve; });
+            [...coach.querySelectorAll("button")].find(button => button.textContent.trim() === "Copy for Codex").click();
+            await waitFor(() => releaseTipCopy, "a pending clipboard request");
+            coach.querySelector('button[aria-label^="Go to idea 4:"]').click();
+            await waitFor(() => coach.textContent.includes("Turn this idea into a tiny game"), "moving on during a pending copy");
+            releaseTipCopy();
+            await delay(50);
+            assert(!coach.textContent.includes("Copied —"), "An old clipboard request marked a different idea as copied.");
+            document.execCommand = copyCommand;
+            navigator.clipboard.writeText = clipboardWrite;
+            coach.querySelector('button[aria-label^="Go to idea 2:"]').click();
+            await waitFor(() => coach.textContent.includes("Understand it, then change it"), "returning to the explanation");
             coach.querySelector('[aria-label="Hide Codex ideas"]').click();
             await waitFor(() => document.querySelector('aside[aria-label="Codex tips"]')?.textContent.includes("Show Codex ideas"), "collapsing the bottom tips");
             document.querySelector('aside[aria-label="Codex tips"] button').click();
@@ -939,9 +999,10 @@ startUnavailableInspection();
             // Launch the actual game catalog, not only the integration fixture.
             // This also checks loading and visible error capture without WebMCP.
             const gameStarters = demos.filter(isPlayableStartingPoint);
+            const regressionStarters = demos.filter(sample => ["advancedbinding", "loadingScreen"].includes(sample.key));
             const gameStartups = [];
             await activate("Assets");
-            for (const starter of gameStarters) {
+            for (const starter of [...gameStarters, ...regressionStarters]) {
                 const previousRun = useEditor.getState().previewRunId;
                 chooser.value = `starter:${starter.key}`;
                 chooser.dispatchEvent(new Event("change", { bubbles: true }));
@@ -964,6 +1025,77 @@ startUnavailableInspection();
                 gameStartups.push({ key: starter.key, ready: true, errorCount: errorMessages.length });
             }
             assert((await db.getAllKeys("projects")).length === beforeFeatureCount, "Starting the game catalog created saved projects.");
+
+            // Collect every startup outcome so the optional catalog gate can
+            // report all broken samples together. Prompt wiring is checked
+            // for every sample and idea, including examples with no controls.
+            const catalogAudit = [];
+            if (auditCatalog) {
+                const { EXAMPLE_COACH_PROMPTS } = await import("/src/integrations/webmcp/exampleCoachPrompts.ts");
+                const { CODEX_PLAY_STEPS } = await import("/src/integrations/webmcp/agentGuide.ts");
+                const { createCodexPlayGuideForContext } = await import("/src/integrations/webmcp/codexPlayContext.ts");
+                for (const sample of demos) {
+                    const previousRun = useEditor.getState().previewRunId;
+                    chooser.value = `starter:${sample.key}`;
+                    chooser.dispatchEvent(new Event("change", { bubbles: true }));
+                    let startupError = null;
+                    try {
+                        await waitFor(() => {
+                            const preview = useEditor.getState();
+                            return useProject.getState().demoKey === sample.key
+                                && (useGameConsole.getState().entries.some(entry => entry.level === "error")
+                                    || (preview.previewRunId !== previousRun && preview.previewReadiness !== null));
+                        }, `auditing ${sample.key}`, 10_000);
+                        await delay(300);
+                    } catch (error) {
+                        startupError = error.message;
+                    }
+                    assert(useProject.getState().demoKey === sample.key, `The chooser didn't open ${sample.key}.`);
+                    const state = useProject.getState();
+                    const preview = useEditor.getState();
+                    const guide = createCodexPlayGuideForContext({
+                        demoKey: state.demoKey,
+                        projectKey: state.projectKey,
+                        projectName: state.project.name,
+                        projectCreatedAt: state.project.createdAt,
+                        projectSource: sample.code,
+                    });
+                    const expectedPrompts = sample.key === "webmcpAgent"
+                        ? CODEX_PLAY_STEPS.slice(1).map(step => step.prompt)
+                        : Object.values(EXAMPLE_COACH_PROMPTS[sample.key]);
+                    const copies = [];
+                    document.execCommand = command => {
+                        if (command !== "copy") return false;
+                        copies.push(document.activeElement.value);
+                        return true;
+                    };
+                    try {
+                        const tips = document.querySelector('aside[aria-label="Codex tips"]');
+                        for (let index = 0; index < 4; index++) {
+                            tips.querySelector(`button[aria-label^="Go to idea ${index + 2}:"]`).click();
+                            await waitFor(() => tips.textContent.includes(expectedPrompts[index]), `${sample.key} idea ${index + 2}`);
+                            [...tips.querySelectorAll("button")].find(button => button.textContent.trim() === "Copy for Codex").click();
+                            await waitFor(() => copies.length === index + 1, `copying ${sample.key} idea ${index + 2}`);
+                            assert(copies[index] === expectedPrompts[index], `${sample.key} copied the wrong idea ${index + 2}.`);
+                        }
+                    } finally {
+                        document.execCommand = copyCommand;
+                    }
+                    assert(useProject.getState().projectKey === null && useProject.getState().saveStatus === "draft", `${sample.key} was saved by reading its ideas.`);
+                    assert(useProject.getState().projectRevision === state.projectRevision && useEditor.getState().previewRunId === preview.previewRunId, `${sample.key} changed or restarted while copying an idea.`);
+                    catalogAudit.push({
+                        key: sample.key,
+                        title: sample.formattedName,
+                        presentation: guide.presentation,
+                        readiness: preview.previewReadiness,
+                        stopped: preview.stopped,
+                        startupError,
+                        errors: useGameConsole.getState().entries.filter(entry => entry.level === "error").slice(0, 5),
+                        copiedPrompts: copies.length,
+                    });
+                    console.log(`Catalog audit ${catalogAudit.length}/${demos.length}: ${sample.key}`);
+                }
+            }
 
             // Going home must finish pending persistence before replacing the game.
             const beforeHome = useProject.getState();
@@ -1016,7 +1148,10 @@ startUnavailableInspection();
                 featureTipsConfirmed: true,
                 assetPathsConfirmed: true,
                 gameStarterCount: gameStarters.length,
+                regressionStarterCount: regressionStarters.length,
                 gameStartups,
+                catalogAudit,
+                catalogExpectedCount: auditCatalog ? demos.length : 0,
                 pendingAssetsStatus: pendingRun.status,
                 inspectionErrorStatus: inspectionErrorRun.status,
                 diagnosticErrorStatus: diagnosticRun.status,

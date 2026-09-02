@@ -1,0 +1,711 @@
+{
+  "baseCommit": "5e557d8a4a00b8ca52946721bcf29e5ecf19b612",
+  "startedAt": "2026-09-02T15:51:36.632Z",
+  "appUrl": "http://127.0.0.1:5273/?example=webmcpAgent",
+  "checks": [
+    {
+      "name": "starter actual pointer play",
+      "result": {
+        "status": "passed",
+        "revision": "1:2",
+        "runId": "run-81602f89-0b03-4ea1-80a5-e523c6163c80",
+        "readiness": "ready",
+        "diagnostics": {
+          "available": true,
+          "errorCount": 0,
+          "items": [],
+          "sourceCurrent": true,
+          "sourcePath": "main.js",
+          "total": 0,
+          "truncated": false
+        },
+        "consoleErrors": [],
+        "warnings": [
+          [
+            "camPos is deprecated. Use setCamPos / getCamPos instead."
+          ],
+          [
+            "camScale is deprecated. Use setCamScale / getCamScale instead."
+          ],
+          [
+            "camRot is deprecated. Use setCamRot / getCamRot instead."
+          ]
+        ],
+        "summary": "The current game run is ready and has no detected code or console errors.",
+        "incompleteReasons": [],
+        "text": [
+          "Moonlit Apple Run",
+          "Apples  5 / 5",
+          "Move: arrows / WASD  •  or click anywhere",
+          "You did it!\nPress R to play again"
+        ],
+        "objectCount": 7,
+        "focus": {
+          "canvasFocused": true,
+          "requested": false
+        }
+      }
+    },
+    {
+      "name": "starter keyboard replay",
+      "result": {
+        "status": "passed",
+        "revision": "1:2",
+        "runId": "run-81602f89-0b03-4ea1-80a5-e523c6163c80",
+        "readiness": "ready",
+        "diagnostics": {
+          "available": true,
+          "errorCount": 0,
+          "items": [],
+          "sourceCurrent": true,
+          "sourcePath": "main.js",
+          "total": 0,
+          "truncated": false
+        },
+        "consoleErrors": [],
+        "warnings": [
+          [
+            "camPos is deprecated. Use setCamPos / getCamPos instead."
+          ],
+          [
+            "camScale is deprecated. Use setCamScale / getCamScale instead."
+          ],
+          [
+            "camRot is deprecated. Use setCamRot / getCamRot instead."
+          ]
+        ],
+        "summary": "The current game run is ready and has no detected code or console errors.",
+        "incompleteReasons": [],
+        "text": [
+          "Moonlit Apple Run",
+          "Apples  0 / 5",
+          "Move: arrows / WASD  •  or click anywhere"
+        ],
+        "objectCount": 8,
+        "focus": {
+          "canvasFocused": true,
+          "requested": false
+        }
+      }
+    },
+    {
+      "name": "Sprite animation: single native right-arrow press",
+      "result": {
+        "status": "passed",
+        "revision": "1:2",
+        "runId": "run-78e3008f-1901-448b-be6e-18e7b6d14e6b",
+        "readiness": "ready",
+        "diagnostics": {
+          "available": true,
+          "errorCount": 0,
+          "items": [],
+          "sourceCurrent": true,
+          "sourcePath": "main.js",
+          "total": 0,
+          "truncated": false
+        },
+        "consoleErrors": [],
+        "warnings": [
+          [
+            "camPos is deprecated. Use setCamPos / getCamPos instead."
+          ],
+          [
+            "camScale is deprecated. Use setCamScale / getCamScale instead."
+          ],
+          [
+            "camRot is deprecated. Use setCamRot / getCamRot instead."
+          ]
+        ],
+        "summary": "The current game run is ready and has no detected code or console errors.",
+        "incompleteReasons": [],
+        "text": [
+          "Anim: idle\nFrame: 2"
+        ],
+        "objectCount": 3,
+        "focus": {
+          "canvasFocused": true,
+          "requested": false
+        }
+      },
+      "before": [
+        {
+          "x": 98.5,
+          "y": 85.60396
+        }
+      ],
+      "after": [
+        {
+          "x": 98.5,
+          "y": 128.75
+        }
+      ],
+      "outcome": "inconclusive",
+      "note": "The sprite continued falling, but its x position did not change. This native keypress does not prove horizontal movement; the automated held-key browser check supplies that evidence."
+    },
+    {
+      "name": "native reproduction of catalog findings",
+      "results": [
+        {
+          "key": "advancedbinding",
+          "status": "failed",
+          "revision": "2:3",
+          "runId": "run-bc18a085-1b5d-4988-bba1-59c0f7a7be0e",
+          "summary": "The game could not start.",
+          "focus": {
+            "canvasFocused": false,
+            "requested": false
+          }
+        },
+        {
+          "key": "loadingScreen",
+          "status": "passed",
+          "revision": "3:4",
+          "runId": "run-d4f5c116-5c9d-4e51-b5af-68114702b8a4",
+          "readiness": "ready",
+          "diagnostics": {
+            "available": true,
+            "errorCount": 0,
+            "items": [],
+            "sourceCurrent": true,
+            "sourcePath": "main.js",
+            "total": 0,
+            "truncated": false
+          },
+          "consoleErrors": [],
+          "warnings": [
+            [
+              "volume is deprecated. Use setVolume / getVolume instead."
+            ],
+            [
+              "camPos is deprecated. Use setCamPos / getCamPos instead."
+            ],
+            [
+              "camScale is deprecated. Use setCamScale / getCamScale instead."
+            ],
+            [
+              "camRot is deprecated. Use setCamRot / getCamRot instead."
+            ]
+          ],
+          "summary": "The game loaded its assets, rendered a frame, and has no detected code or console errors.",
+          "incompleteReasons": [],
+          "text": [],
+          "objectCount": 0,
+          "focus": {
+            "canvasFocused": true,
+            "requested": false
+          }
+        },
+        {
+          "key": "onLoadError",
+          "status": "passed",
+          "revision": "4:5",
+          "runId": "run-4d94d2e8-e60a-4bd4-a987-1d07c24d9e7a",
+          "readiness": "ready",
+          "diagnostics": {
+            "available": true,
+            "errorCount": 0,
+            "items": [],
+            "sourceCurrent": true,
+            "sourcePath": "main.js",
+            "total": 0,
+            "truncated": false
+          },
+          "consoleErrors": [],
+          "warnings": [
+            [
+              "camPos is deprecated. Use setCamPos / getCamPos instead."
+            ],
+            [
+              "camScale is deprecated. Use setCamScale / getCamScale instead."
+            ],
+            [
+              "camRot is deprecated. Use setCamRot / getCamRot instead."
+            ]
+          ],
+          "summary": "The game loaded its assets, rendered a frame, and has no detected code or console errors.",
+          "incompleteReasons": [],
+          "text": [],
+          "objectCount": 0,
+          "focus": {
+            "canvasFocused": true,
+            "requested": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "atomic invalid-path rejection",
+      "atomicError": {
+        "error": "Error: Browser Use encountered an error interacting with this webpage: Error: path must be a normalized project-relative path."
+      },
+      "unchangedRevision": true,
+      "unchangedRun": true
+    },
+    {
+      "name": "Beginner explanation prompt: lasting title",
+      "outcome": "passed",
+      "run": {
+        "status": "passed",
+        "revision": "1:2",
+        "runId": "run-8910be00-7528-411d-a480-e98ed6868a44",
+        "readiness": "ready",
+        "diagnostics": {
+          "available": true,
+          "errorCount": 0,
+          "items": [],
+          "sourceCurrent": true,
+          "sourcePath": "main.js",
+          "total": 0,
+          "truncated": false
+        },
+        "consoleErrors": [],
+        "warnings": [],
+        "summary": "The game loaded its assets, rendered a frame, and has no detected code or console errors.",
+        "incompleteReasons": [],
+        "text": [
+          "My First Tiny World"
+        ],
+        "objectCount": 1,
+        "focus": {
+          "canvasFocused": true,
+          "requested": true
+        }
+      },
+      "save": {
+        "committed": true,
+        "name": "QA Beginner Canvas",
+        "previousRevision": "1:2",
+        "projectId": "01a062dd-40fb-7393-9df1-4fc4862b94c8",
+        "renamed": true,
+        "revision": "1:3",
+        "saved": true,
+        "storage": "autosaved"
+      },
+      "source": {
+        "files": [
+          {
+            "content": "// Get started with KAPLAY [💡]\n\n/* 💡 KAPLAY Context 💡\nThe kaplay() function is the entry point to your game. It sets up the game and\nexports all the functions and variables you need to use in your game, like\nadd(), loadSprite(), debug.log(), pos(), and many more. This is called the context.\n*/\n\n// We initialize the context\nkaplay({\n    // We can optionally pass options to it!\n    background: \"#5ba675\", // Set the background color\n});\n\n// Now you have access to the context functions:\ndebug.log(\"Hello from game!\");\n\nadd([\n    text(\"My First Tiny World\", { size: 32, align: \"center\", width: width() - 40 }),\n    pos(center()),\n    anchor(\"center\"),\n    color(\"#fff7d6\"),\n]);\n",
+            "kind": "main",
+            "language": "javascript",
+            "path": "main.js",
+            "sizeBytes": 687
+          }
+        ],
+        "revision": "1:3",
+        "totalBytes": 687
+      }
+    },
+    {
+      "name": "Native stale save rejection",
+      "rejected": true,
+      "message": "Error: Browser Use encountered an error interacting with this webpage: Error: The game changed since it was inspected. Expected revision 1:2, found 1:3. Inspect the game again before continuing."
+    },
+    {
+      "name": "Native explicit save and reload",
+      "outcome": "passed",
+      "projectId": "01a062dd-40fb-7393-9df1-4fc4862b94c8",
+      "saveStatus": "saved",
+      "projectName": "QA Beginner Canvas",
+      "persistedTitle": true
+    },
+    {
+      "name": "Advanced Bindings after asset fix",
+      "outcome": "passed",
+      "run": {
+        "status": "passed",
+        "revision": "2:3",
+        "runId": "run-b10af1ae-b305-4486-8155-10bf4efae7ac",
+        "readiness": "ready",
+        "diagnostics": {
+          "available": true,
+          "errorCount": 0,
+          "items": [],
+          "sourceCurrent": true,
+          "sourcePath": "main.js",
+          "total": 0,
+          "truncated": false
+        },
+        "consoleErrors": [],
+        "warnings": [],
+        "summary": "The game loaded its assets, rendered a frame, and has no detected code or console errors.",
+        "incompleteReasons": [],
+        "text": [
+          "bag",
+          "\\[shift + tab] <-            -> \\[tab]"
+        ],
+        "objectCount": 3,
+        "focus": {
+          "canvasFocused": true,
+          "requested": true
+        }
+      }
+    },
+    {
+      "name": "Advanced Bindings Tab changes the selected character",
+      "before": {
+        "status": "passed",
+        "revision": "2:3",
+        "runId": "run-b10af1ae-b305-4486-8155-10bf4efae7ac",
+        "readiness": "ready",
+        "diagnostics": {
+          "available": true,
+          "errorCount": 0,
+          "items": [],
+          "sourceCurrent": true,
+          "sourcePath": "main.js",
+          "total": 0,
+          "truncated": false
+        },
+        "consoleErrors": [],
+        "warnings": [],
+        "summary": "The game loaded its assets, rendered a frame, and has no detected code or console errors.",
+        "incompleteReasons": [],
+        "text": [
+          "bag",
+          "\\[shift + tab] <-            -> \\[tab]"
+        ],
+        "objectCount": 3,
+        "focus": {
+          "canvasFocused": true,
+          "requested": true
+        }
+      },
+      "after": {
+        "status": "passed",
+        "revision": "2:3",
+        "runId": "run-b10af1ae-b305-4486-8155-10bf4efae7ac",
+        "readiness": "ready",
+        "diagnostics": {
+          "available": true,
+          "errorCount": 0,
+          "items": [],
+          "sourceCurrent": true,
+          "sourcePath": "main.js",
+          "total": 0,
+          "truncated": false
+        },
+        "consoleErrors": [],
+        "warnings": [],
+        "summary": "The current game run is ready and has no detected code or console errors.",
+        "incompleteReasons": [],
+        "text": [
+          "bean",
+          "\\[shift + tab] <-            -> \\[tab]"
+        ],
+        "objectCount": 3,
+        "focus": {
+          "canvasFocused": true,
+          "requested": true
+        }
+      }
+    },
+    {
+      "name": "Custom Loading Screen after compatibility fix",
+      "run": {
+        "status": "passed",
+        "revision": "3:4",
+        "runId": "run-0e86f8f8-ace9-44fd-ad88-6cd15a629deb",
+        "readiness": "ready",
+        "diagnostics": {
+          "available": true,
+          "errorCount": 0,
+          "items": [],
+          "sourceCurrent": true,
+          "sourcePath": "main.js",
+          "total": 0,
+          "truncated": false
+        },
+        "consoleErrors": [],
+        "warnings": [
+          [
+            "volume is deprecated. Use setVolume / getVolume instead."
+          ]
+        ],
+        "summary": "The game loaded its assets, rendered a frame, and has no detected code or console errors.",
+        "incompleteReasons": [],
+        "text": [],
+        "objectCount": 0,
+        "focus": {
+          "canvasFocused": true,
+          "requested": true
+        }
+      }
+    },
+    {
+      "name": "Updated starter pointer win and replay",
+      "win": {
+        "status": "passed",
+        "revision": "4:5",
+        "runId": "run-8f1072c9-26b3-4331-b8e6-f41ab9de62a4",
+        "readiness": "ready",
+        "diagnostics": {
+          "available": true,
+          "errorCount": 0,
+          "items": [],
+          "sourceCurrent": true,
+          "sourcePath": "main.js",
+          "total": 0,
+          "truncated": false
+        },
+        "consoleErrors": [],
+        "warnings": [],
+        "summary": "The current game run is ready and has no detected code or console errors.",
+        "incompleteReasons": [],
+        "text": [
+          "Moonlit Apple Run",
+          "Apples  5 / 5",
+          "Move: arrows / WASD  •  or click anywhere",
+          "You did it!\nClick or press R to replay"
+        ],
+        "objectCount": 7,
+        "focus": {
+          "canvasFocused": true,
+          "requested": false
+        }
+      },
+      "replay": {
+        "status": "passed",
+        "revision": "4:5",
+        "runId": "run-8f1072c9-26b3-4331-b8e6-f41ab9de62a4",
+        "readiness": "ready",
+        "diagnostics": {
+          "available": true,
+          "errorCount": 0,
+          "items": [],
+          "sourceCurrent": true,
+          "sourcePath": "main.js",
+          "total": 0,
+          "truncated": false
+        },
+        "consoleErrors": [],
+        "warnings": [],
+        "summary": "The current game run is ready and has no detected code or console errors.",
+        "incompleteReasons": [],
+        "text": [
+          "Moonlit Apple Run",
+          "Apples  0 / 5",
+          "Move: arrows / WASD  •  or click anywhere"
+        ],
+        "objectCount": 8,
+        "focus": {
+          "canvasFocused": true,
+          "requested": false
+        }
+      },
+      "sameRun": true
+    },
+    {
+      "name": "Candy-cloud prompt execution",
+      "prompt": "Give this game a candy-cloud theme. Rename it Sweet Bean Dreams, make the bean bubble-gum pink, and use a soft sunset background. Keep the controls and score working, then let me try the updated game.",
+      "update": {
+        "changeCount": 1,
+        "changes": [
+          {
+            "action": "replace",
+            "path": "main.js",
+            "sizeBytes": 6186
+          }
+        ],
+        "committed": true,
+        "editorSync": {
+          "available": true,
+          "complete": true,
+          "errors": []
+        },
+        "focusPath": null,
+        "previewRan": false,
+        "previousRevision": "4:5",
+        "revision": "4:6",
+        "totalBytes": 6186,
+        "updated": true
+      },
+      "run": {
+        "status": "passed",
+        "revision": "4:6",
+        "runId": "run-d9bc2589-30db-4149-beae-1eb6d385a370",
+        "readiness": "ready",
+        "diagnostics": {
+          "available": true,
+          "errorCount": 0,
+          "items": [],
+          "sourceCurrent": true,
+          "sourcePath": "main.js",
+          "total": 0,
+          "truncated": false
+        },
+        "consoleErrors": [],
+        "warnings": [],
+        "summary": "The current game run is ready and has no detected code or console errors.",
+        "incompleteReasons": [],
+        "text": [
+          "Sweet Bean Dreams",
+          "Apples  0 / 5",
+          "Move: arrows / WASD  •  or click anywhere"
+        ],
+        "objectCount": 8,
+        "focus": {
+          "canvasFocused": true,
+          "requested": true
+        }
+      },
+      "save": {
+        "committed": true,
+        "name": "Sweet Bean Dreams",
+        "previousRevision": "4:6",
+        "projectId": "01a062f3-ad69-7a99-990e-e2112e430083",
+        "renamed": true,
+        "revision": "4:7",
+        "saved": true,
+        "storage": "autosaved"
+      },
+      "played": {
+        "status": "failed",
+        "revision": "4:7",
+        "runId": "run-d9bc2589-30db-4149-beae-1eb6d385a370",
+        "readiness": "ready",
+        "summary": "The current game run belongs to an older revision. Restart it before checking this revision.",
+        "focus": {
+          "canvasFocused": false,
+          "requested": false
+        }
+      },
+      "note": "Renaming the project changed the revision, so checking the earlier run was correctly rejected. The next recorded scenario restarts the renamed revision and confirms scoring."
+    },
+    {
+      "name": "Candy-cloud saved revision gameplay",
+      "run": {
+        "status": "passed",
+        "revision": "4:7",
+        "runId": "run-04ac173e-804b-4ed6-a411-ad6335db714c",
+        "readiness": "ready",
+        "diagnostics": {
+          "available": true,
+          "errorCount": 0,
+          "items": [],
+          "sourceCurrent": true,
+          "sourcePath": "main.js",
+          "total": 0,
+          "truncated": false
+        },
+        "consoleErrors": [],
+        "warnings": [],
+        "summary": "The game loaded its assets, rendered a frame, and has no detected code or console errors.",
+        "incompleteReasons": [],
+        "text": [
+          "Sweet Bean Dreams",
+          "Apples  0 / 5",
+          "Move: arrows / WASD  •  or click anywhere"
+        ],
+        "objectCount": 8,
+        "focus": {
+          "canvasFocused": true,
+          "requested": true
+        }
+      },
+      "played": {
+        "status": "passed",
+        "revision": "4:7",
+        "runId": "run-04ac173e-804b-4ed6-a411-ad6335db714c",
+        "readiness": "ready",
+        "diagnostics": {
+          "available": true,
+          "errorCount": 0,
+          "items": [],
+          "sourceCurrent": true,
+          "sourcePath": "main.js",
+          "total": 0,
+          "truncated": false
+        },
+        "consoleErrors": [],
+        "warnings": [],
+        "summary": "The current game run is ready and has no detected code or console errors.",
+        "incompleteReasons": [],
+        "text": [
+          "Sweet Bean Dreams",
+          "Apples  1 / 5",
+          "Move: arrows / WASD  •  or click anywhere"
+        ],
+        "objectCount": 8,
+        "focus": {
+          "canvasFocused": true,
+          "requested": false
+        }
+      },
+      "sameRun": true
+    },
+    {
+      "name": "Local production build browser smoke",
+      "editorOrigin": "http://127.0.0.1:5373",
+      "sandboxOrigin": "http://127.0.0.1:5374",
+      "starter": {
+        "status": "passed",
+        "revision": "1:2",
+        "runId": "run-c5b41ce6-7d1c-4e26-8f98-ca044fe50d05",
+        "readiness": "ready",
+        "diagnostics": {
+          "available": true,
+          "errorCount": 0,
+          "items": [],
+          "sourceCurrent": true,
+          "sourcePath": "main.js",
+          "total": 0,
+          "truncated": false
+        },
+        "consoleErrors": [],
+        "warnings": [],
+        "summary": "The game loaded its assets, rendered a frame, and has no detected code or console errors.",
+        "incompleteReasons": [],
+        "text": [
+          "Moonlit Apple Run",
+          "Apples  0 / 5",
+          "Move: arrows / WASD  •  or click anywhere"
+        ],
+        "objectCount": 8,
+        "focus": {
+          "canvasFocused": true,
+          "requested": true
+        }
+      },
+      "advancedBindings": {
+        "status": "passed",
+        "revision": "2:3",
+        "runId": "run-0306d930-66e2-48b6-8544-234052b63649",
+        "readiness": "ready",
+        "diagnostics": {
+          "available": true,
+          "errorCount": 0,
+          "items": [],
+          "sourceCurrent": true,
+          "sourcePath": "main.js",
+          "total": 0,
+          "truncated": false
+        },
+        "consoleErrors": [],
+        "warnings": [],
+        "summary": "The game loaded its assets, rendered a frame, and has no detected code or console errors.",
+        "incompleteReasons": [],
+        "text": [
+          "bag",
+          "\\[shift + tab] <-            -> \\[tab]"
+        ],
+        "objectCount": 3,
+        "focus": {
+          "canvasFocused": true,
+          "requested": true
+        }
+      },
+      "portrait": {
+        "width": 390,
+        "height": 844,
+        "scrollWidth": 390,
+        "fullPromptVisible": true
+      }
+    }
+  ],
+  "limitations": [
+    "The native Browser virtual clipboard did not expose text copied by document.execCommand. Exact payloads, clipboard failures, modal placement and focus were verified with controlled responses in the real browser fixture.",
+    "The first-edit autosave changed the page address while a later native tool call awaited its security check. Refreshing the tool handles and inspecting the saved revision resolved the interruption without repeating the edit.",
+    "Representative native requests were executed by this testing agent from the displayed suggestions; 508 separate conversational AI generations were not evaluated."
+  ],
+  "completedAt": "2026-09-02T16:37:26.891Z"
+}

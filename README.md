@@ -10,7 +10,7 @@
 
 ## Play, change, repeat
 
-Open KAPLAYGROUND in Codex Browser and start with **Bean's Snack Dash**. Move the bean with the arrow keys or WASD, collect the apples, then use the small Codex coach below the game.
+Open KAPLAYGROUND in Codex Browser and start with **Moonlit Apple Run**. Click an apple or move the bean with the arrow keys or WASD, collect five apples, then use the small Codex coach below the game. Click or press R to replay after winning.
 
 The coach shows one playful idea at a time. Copy the idea into Codex, keep the game open, and watch Codex update and run it. Play the result, move to the next idea, or write your own request in ordinary language.
 
@@ -66,6 +66,12 @@ Run the verification suite with:
 ```sh
 npm run verify:webmcp
 ```
+
+For a complete starting-point and coach audit, run `npm run test:catalog`.
+It opens every sample, records startup readiness and errors, and checks all four
+copyable ideas for each sample. The regular browser suite also exercises
+clipboard failures, modal focus, delayed copy responses, saved projects, and
+desktop and portrait layouts.
 
 The app and preview sandbox use a versioned message protocol and must be released together. Deploy `sandbox/` with `npm run sandbox:deploy`, then set `VITE_SANDBOX_URL` to that deployment when building the app. An older sandbox is rejected before project code is sent because it cannot acknowledge runs, pause state, or inspection requests.
 

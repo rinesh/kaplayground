@@ -204,11 +204,11 @@ function celebrate() {
         pos(center()),
         anchor("center"),
         color("#244b72"),
-        outline(3, color("#8ee3ef")),
+        outline(3, rgb("#8ee3ef")),
         z(50),
     ]);
     winMessage.add([
-        text("You did it!\\nPress R to play again", {
+        text("You did it!\\nClick or press R to replay", {
             size: 20,
             align: "center",
             width: Math.max(60, Math.min(330, width() - 70)),
@@ -263,7 +263,10 @@ player.onUpdate(() => {
 });
 
 onMousePress(() => {
-    if (won) return;
+    if (won) {
+        restartGame();
+        return;
+    }
     const bounds = playArea();
     clickTarget = vec2(
         clamp(mousePos().x, bounds.left, bounds.right),
@@ -271,7 +274,7 @@ onMousePress(() => {
     );
 });
 
-onKeyPress("r", () => {
+function restartGame() {
     if (!won) return;
     score = 0;
     won = false;
@@ -280,7 +283,9 @@ onKeyPress("r", () => {
     player.pos = randomPlayPosition();
     updateScore();
     fillApples();
-});
+}
+
+onKeyPress("r", restartGame);
 
 updateScore();
 fillApples();`,
@@ -309,6 +314,23 @@ export const difficultyByName = (name: string) =>
 export const demos = [webMCPExample, ...examplesList].map((example) => {
     const obj: Example = {
         ...example,
+        // The checked-out engine accepts an asset handle where the hosted
+        // engine also accepts raw SpriteData. Keep this lesson valid in both,
+        // and demonstrate managed fetches with a reliable same-site asset.
+        code: example.name === "loadingScreen"
+            ? example.code
+                .replace(".onLoad((data) =>", ".onLoad(() =>")
+                .replace(
+                    "The promise resolves to the raw sprite data",
+                    "Keep the loaded asset handle for drawing",
+                )
+                .replace("spr = data;", "spr = getSprite(\"bean\");")
+                .replace(
+                    "load(fetch(\"https://kaboomjs.com/\"));",
+                    "load(fetch(\"/sprites/bean.png\"));",
+                )
+                .replace("raw sprite data here", "the loaded asset handle here")
+            : example.code,
         tags: example.tags.map(tag => ({
             name: tag,
             ...(tags as ExamplesDataRecord)?.[tag],

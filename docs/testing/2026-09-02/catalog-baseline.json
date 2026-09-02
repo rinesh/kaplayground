@@ -1,0 +1,2290 @@
+[
+  {
+    "key": "webmcpAgent",
+    "title": "Play & Remix with Codex",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "advancedbinding",
+    "title": "Advanced Bindings",
+    "presentation": "interactive",
+    "readiness": null,
+    "stopped": true,
+    "startupError": null,
+    "errors": [
+      {
+        "timestamp": 1788364553453,
+        "level": "error",
+        "values": [
+          "Error: Failed to load image from \"/crew/bag.png\""
+        ],
+        "runId": null
+      }
+    ],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "ai",
+    "title": "AI with State Machines",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "analogtriggers",
+    "title": "Gamepad Analog Triggers",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "animation",
+    "title": "Animate with animate()",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "audio",
+    "title": "Audio Playing",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "automaticCollider",
+    "title": "Create a polygon shape with a sprite",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "basicEventsObject",
+    "title": "Object Events",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "basicsCompRender",
+    "title": "Render Components",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "basicsComponents",
+    "title": "Components",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "basicsEvents",
+    "title": "Events",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "basicsGlobals",
+    "title": "The KAPLAY Context",
+    "presentation": "output",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "basicsObject",
+    "title": "Add game objects",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "basicsStart",
+    "title": "Create your first game",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "bbcode",
+    "title": "BBCode Formatting",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "binding",
+    "title": "Button Bindings",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "blend",
+    "title": "Blend modes",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "burp",
+    "title": "Burp",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "button",
+    "title": "Buttons",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "camera",
+    "title": "Camera",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "children",
+    "title": "Children",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "clicktopmost",
+    "title": "clicktopmost",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "clip",
+    "title": "Clipped Lines",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "closestpoint",
+    "title": "closestpoint",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "collision",
+    "title": "Collision",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "collisionshapes",
+    "title": "Collision Shapes",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "component",
+    "title": "Custom Components",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "concert",
+    "title": "Concert",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "confetti",
+    "title": "Confetti",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "constraint",
+    "title": "constraint",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "constraintsflip",
+    "title": "constraintsflip",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "convexhull",
+    "title": "convexhull",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "curves",
+    "title": "Curves",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "customCompDebug",
+    "title": "Custom Components Debug",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "decisiontree",
+    "title": "decisiontree",
+    "presentation": "output",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "doublejump",
+    "title": "Double Jump",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "drag",
+    "title": "Drag",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "draw",
+    "title": "Draw",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "drawon",
+    "title": "Drawon Component",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "drawoncanvas",
+    "title": "drawoncanvas",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "eatlove",
+    "title": "Eat Love",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "egg",
+    "title": "Egg",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "fadeIn",
+    "title": "Fade In",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "fakeMouse",
+    "title": "Fake Mouse",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "fixed_click",
+    "title": "fixed_click",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "fixedclick",
+    "title": "fixedclick",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "flamebar",
+    "title": "Flame bar",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "flappy",
+    "title": "Flappy",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "floodfill",
+    "title": "floodfill",
+    "presentation": "output",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "fps",
+    "title": "fps",
+    "presentation": "output",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "frames",
+    "title": "Frames",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "friction",
+    "title": "Friction",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "gacha",
+    "title": "Gacha Machine",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "gamepad",
+    "title": "Gamepad",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "gamepadMulti",
+    "title": "Multi-Gamepad",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "ghosthunting",
+    "title": "Ghost hunting",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "gravity",
+    "title": "Gravity",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "health",
+    "title": "Health",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "hover",
+    "title": "Hover",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "kaboom",
+    "title": "Kaboom!",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "kaplayLogoAnim",
+    "title": "KAPLAY Logo Animation",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "layer",
+    "title": "Layer",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "layers",
+    "title": "Layers",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "lerp",
+    "title": "Lerp",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "lerpAngle",
+    "title": "Look Towards the Mouse",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "level",
+    "title": "Level",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "levelRaycast",
+    "title": "Level Raycast",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "levelcomp",
+    "title": "Level component",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "lifespan",
+    "title": "Lifespan",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "linecap",
+    "title": "Lines",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "linejoin",
+    "title": "Line join",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "livequery",
+    "title": "Live query",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "loadingScreen",
+    "title": "Custom Loading Screen",
+    "presentation": "interactive",
+    "readiness": null,
+    "stopped": true,
+    "startupError": null,
+    "errors": [
+      {
+        "timestamp": 1788364616781,
+        "level": "error",
+        "values": [
+          "Error: Invalid sprite: [object Object]"
+        ],
+        "runId": null
+      }
+    ],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "maze",
+    "title": "Maze",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "mazeRaycastedLight",
+    "title": "Maze Raycasted Light",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "movement",
+    "title": "Movement",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "multitexture",
+    "title": "multitexture",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "onLoadError",
+    "title": "Load Error",
+    "presentation": "output",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "out",
+    "title": "Out of Screen",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "overlap",
+    "title": "Overlap",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "particle",
+    "title": "Particle",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "particleTrail",
+    "title": "Particle Trail",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "patrol",
+    "title": "Patrol",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "pauseMenu",
+    "title": "Pause Menu (Flappy)",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "picture",
+    "title": "Picture",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "piecewise",
+    "title": "piecewise",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "platformEffector",
+    "title": "One-way Platforms",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "platformer",
+    "title": "Platformer",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "polygon",
+    "title": "Polygon",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "polygonbug",
+    "title": "polygonbug",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "polygongeneration",
+    "title": "polygongeneration",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "pong",
+    "title": "Pong",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "postEffect",
+    "title": "Post-Effect",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "quadtree",
+    "title": "quadtree",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "query",
+    "title": "Query",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "raycastObject",
+    "title": "Raycast Object",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "raycastShape",
+    "title": "Raycast Shape",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "raycaster3d",
+    "title": "3D",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "rebinding",
+    "title": "Re-Bind Buttons",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "restitution",
+    "title": "Restitution",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "retrieve",
+    "title": "Retrieve",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "rodbuilder",
+    "title": "rodbuilder",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "rpg",
+    "title": "RPG",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "runner",
+    "title": "Runner",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "scaletest",
+    "title": "scaletest",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "scenes",
+    "title": "Scenes",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "scopes",
+    "title": "Lifetime Scopes",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "shader",
+    "title": "Shaders",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "shapeRect",
+    "title": "Rect",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "shooter",
+    "title": "Shooter",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "size",
+    "title": "Keep Aspect Ratio",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "slice9",
+    "title": "Slice-9",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "slice9Tiled",
+    "title": "Slice-9 Tiled",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "sokoban",
+    "title": "Sokoban",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "spriteAnim",
+    "title": "Sprite Animations",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "spriteatlas",
+    "title": "Sprite-Atlas",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "text",
+    "title": "Text",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "textInput",
+    "title": "Text Input",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "tightspritearea",
+    "title": "tightspritearea",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "tiled",
+    "title": "Tiled",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "timer",
+    "title": "Timer",
+    "presentation": "visual",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "truck",
+    "title": "truck",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "tween",
+    "title": "Tween",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "tweenEasings",
+    "title": "Tween Easings",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "tweenEasingsCustom",
+    "title": "Custom Easings",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "video",
+    "title": "Video",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  },
+  {
+    "key": "vn",
+    "title": "Visual Novel",
+    "presentation": "interactive",
+    "readiness": {
+      "status": "ready",
+      "moduleExecuted": true,
+      "contextCaptured": true,
+      "assetsLoaded": true,
+      "firstFrame": true,
+      "canvasPresent": true,
+      "reason": null
+    },
+    "stopped": false,
+    "startupError": null,
+    "errors": [],
+    "copiedPrompts": 4
+  }
+]

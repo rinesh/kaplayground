@@ -1,0 +1,58 @@
+[
+  {
+    "origin": "http://127.0.0.1:5373",
+    "path": "/crew/bag.png",
+    "status": 200,
+    "bytes": 630,
+    "exactBytes": true
+  },
+  {
+    "origin": "http://127.0.0.1:5373",
+    "path": "/crew/bag-o.png",
+    "status": 200,
+    "bytes": 742,
+    "exactBytes": true
+  },
+  {
+    "origin": "http://127.0.0.1:5373",
+    "path": "/crew/bean_voice.wav",
+    "status": 200,
+    "bytes": 2161,
+    "exactBytes": true
+  },
+  {
+    "origin": "http://127.0.0.1:5373",
+    "path": "/crew/happy.png",
+    "status": 200,
+    "bytes": 7579,
+    "exactBytes": true
+  },
+  {
+    "origin": "http://127.0.0.1:5374",
+    "path": "/crew/bag.png",
+    "status": 200,
+    "bytes": 630,
+    "exactBytes": true
+  },
+  {
+    "origin": "http://127.0.0.1:5374",
+    "path": "/crew/bag-o.png",
+    "status": 200,
+    "bytes": 742,
+    "exactBytes": true
+  },
+  {
+    "origin": "http://127.0.0.1:5374",
+    "path": "/crew/bean_voice.wav",
+    "status": 200,
+    "bytes": 2161,
+    "exactBytes": true
+  },
+  {
+    "origin": "http://127.0.0.1:5374",
+    "path": "/crew/happy.png",
+    "status": 200,
+    "bytes": 7579,
+    "exactBytes": true
+  }
+]
