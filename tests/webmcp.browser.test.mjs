@@ -180,6 +180,8 @@ async function main() {
             chromeExecutable(),
             [
                 "--headless=new",
+                // Decode and play media without depending on the host's audio device.
+                "--disable-audio-output",
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--use-gl=angle",
@@ -483,6 +485,7 @@ async function main() {
             await assertCanvasFollowsGame("the expanded game");
         };
         const layoutChecks = [];
+        const tipsContentChecks = [];
         for (
             const [width, height] of [[1042, 936], [1440, 1000], [390, 844], [
                 390,
@@ -570,6 +573,68 @@ async function main() {
                     "Portrait logs must follow the asset/code panel.",
                 );
             }
+            const stepHeights = [];
+            for (let step = 1; step <= 5; step++) {
+                await clickControl(
+                    `aside[aria-label="Codex tips"] button[aria-label^="Go to idea ${step}:"]`,
+                );
+                const tip = await pageValue(`(() => {
+                    const coach = document.querySelector('aside[aria-label="Codex tips"]');
+                    const pane = document.querySelector('#workspace-preview-second').getBoundingClientRect();
+                    const card = coach.querySelector('section').getBoundingClientRect();
+                    const footer = coach.querySelector('footer').getBoundingClientRect();
+                    const game = document.querySelector('#game-view').getBoundingClientRect();
+                    return { paneHeight: pane.height, cardHeight: card.height, gameHeight: game.height,
+                        footerInside: footer.top >= pane.top && footer.bottom <= pane.bottom,
+                        scrollsInside: getComputedStyle(coach.querySelector('section > div')).overflowY === 'auto' };
+                })()`);
+                assert(
+                    Math.abs(tip.paneHeight - layout.coachPane.height) <= 1
+                        && Math.abs(tip.cardHeight - tip.paneHeight) <= 2
+                        && Math.abs(tip.gameHeight - layout.preview.height) <= 1
+                        && tip.footerInside && tip.scrollsInside,
+                    `Idea ${step} changed the game or card height at ${width}px: ${
+                        JSON.stringify(tip)
+                    }`,
+                );
+                stepHeights.push(tip.cardHeight);
+            }
+            tipsContentChecks.push({ width, height, stepHeights });
+            await clickControl("button[aria-label=\"Minimize Codex ideas\"]");
+            await assertCanvasFollowsGame("minimizing the ideas to their dock");
+            const minimized = await pageValue(`(() => {
+                const pane = document.querySelector('#workspace-preview-second');
+                const show = pane.querySelector('[aria-label="Show Codex ideas"]');
+                return { height: pane.getBoundingClientRect().height, inert: pane.inert,
+                    contentHidden: document.querySelector('#codex-coach-content').hidden,
+                    showFocused: document.activeElement === show, showVisible: show?.getClientRects().length > 0 };
+            })()`);
+            assert(
+                minimized.height === 40 && !minimized.inert
+                    && minimized.contentHidden
+                    && minimized.showFocused && minimized.showVisible,
+                `Minimize didn't leave an accessible ideas dock: ${
+                    JSON.stringify(minimized)
+                }`,
+            );
+            await clickControl("button[aria-label=\"Show Codex ideas\"]");
+            await assertCanvasFollowsGame(
+                "restoring the ideas from their dock",
+            );
+            const restoredTips = await pageValue(`(() => {
+                const pane = document.querySelector('#workspace-preview-second');
+                return { height: pane.getBoundingClientRect().height,
+                    focused: document.activeElement === pane.querySelector('[aria-label="Minimize Codex ideas"]'),
+                    step: pane.querySelector('[aria-current="step"]')?.getAttribute('aria-label') };
+            })()`);
+            assert(
+                Math.abs(restoredTips.height - layout.coachPane.height) <= 2
+                    && restoredTips.focused
+                    && restoredTips.step?.startsWith("Go to idea 5:"),
+                `Restoring ideas lost the height, focus, or selected step: ${
+                    JSON.stringify(restoredTips)
+                }`,
+            );
             if (screenshotDirectory) {
                 const screenshot = await client.send("Page.captureScreenshot", {
                     format: "png",
@@ -721,7 +786,19 @@ async function main() {
             "[aria-label=\"Resize game and Codex ideas\"]",
             "bottom",
         );
-        await assertExpandedGame();
+        assert.equal(
+            await pageValue(
+                "document.querySelector('#workspace-preview-second').getBoundingClientRect().height",
+            ),
+            140,
+            "Dragging the ideas divider should stop at the reading minimum.",
+        );
+        assert.equal(
+            await pageValue(
+                "document.querySelector('#workspace-preview-second').inert",
+            ),
+            false,
+        );
         await clickControl("button[aria-label=\"Restore panels\"]");
         assert.equal(
             await pageValue(
@@ -735,32 +812,45 @@ async function main() {
             await pageValue(
                 "document.querySelector('#workspace-columns-first').inert",
             ),
-            true,
-            "Dragging to the left didn't snap the preview closed.",
+            false,
+            "The tools sidebar must never snap the game closed.",
         );
-        assert.equal(
-            await pageValue(
-                "document.querySelector('[aria-label=\"Workspace panels\"]').getBoundingClientRect().width",
-            ),
-            1042,
-            "The tools didn't expand across the workspace.",
+        const cappedToolsWidth = await pageValue(
+            "document.querySelector('[aria-label=\"Workspace panels\"]').getBoundingClientRect().width",
         );
-        await clickControl("button[aria-label=\"Restore panels\"]");
+        assert(
+            cappedToolsWidth <= 1042 * 0.45 + 1 && cappedToolsWidth <= 560,
+            "The tools sidebar exceeded its width limit.",
+        );
+        await assertCanvasFollowsGame("the widest allowed tools sidebar");
+        await dragDivider("[aria-label=\"Resize workspace panels\"]", {
+            x: cappedToolsWidth - savedToolsWidth,
+            y: 0,
+        });
 
-        // Keyboard users can snap closed and restore without dragging a tiny edge.
+        // Keyboard resizing follows the same sidebar and tips limits as dragging.
         for (
-            const [label, key, code, hiddenId] of [
+            const [label, key, code, hiddenId, expectedHidden] of [
+                [
+                    "Resize workspace panels",
+                    "Home",
+                    36,
+                    "workspace-columns-first",
+                    false,
+                ],
                 [
                     "Resize workspace panels",
                     "End",
                     35,
                     "workspace-columns-second",
+                    true,
                 ],
                 [
                     "Resize game and Codex ideas",
                     "End",
                     35,
                     "workspace-preview-second",
+                    false,
                 ],
             ]
         ) {
@@ -779,10 +869,27 @@ async function main() {
             await delay(100);
             assert.equal(
                 await pageValue(`document.querySelector('#${hiddenId}').inert`),
-                true,
-                `${label} didn't snap closed from the keyboard.`,
+                expectedHidden,
+                `${label} did not honor its keyboard visibility limit.`,
             );
+            if (key === "Home") {
+                assert(
+                    await pageValue(
+                        "document.querySelector('[aria-label=\"Workspace panels\"]').getBoundingClientRect().width <= 1042 * 0.45 + 1",
+                    ),
+                    "Keyboard resizing exceeded the tools sidebar width limit.",
+                );
+            }
         }
+        await clickControl("button[aria-label=\"Restore panels\"]");
+        const keyboardToolsWidth = await pageValue(
+            "document.querySelector('[aria-label=\"Workspace panels\"]').getBoundingClientRect().width",
+        );
+        await dragDivider("[aria-label=\"Resize workspace panels\"]", {
+            x: keyboardToolsWidth - savedToolsWidth,
+            y: 0,
+        });
+        await clickControl("button[aria-label=\"Expand game\"]");
         await assertExpandedGame();
         await client.send("Emulation.setDeviceMetricsOverride", {
             width: 390,
@@ -804,10 +911,12 @@ async function main() {
         const workspacePanelChecks = {
             proportionalWindowResize: { originalProportions, widerProportions },
             canvasResizeChecks,
+            tipsContentChecks,
             expandAndRestore: true,
             horizontalSnapping: true,
-            verticalSnapping: true,
-            keyboardSnapping: true,
+            toolsWidthLimit: true,
+            tipsMinimizeAndRestore: true,
+            keyboardPanelLimits: true,
             expandedViewportChanges: true,
         };
         await client.send("Runtime.evaluate", {

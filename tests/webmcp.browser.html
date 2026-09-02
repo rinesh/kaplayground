@@ -336,7 +336,11 @@
                 if (audio.duration < 1) assert(document.querySelector(".asset-browser").textContent.includes("Short clip"), "Subsecond clips need a duration that doesn't round down to 0:00.");
                 document.documentElement.dataset.webmcpPhase = `sound-preview-${key}`;
                 await new Promise(resolve => { globalThis.__webmcpSoundInputComplete = resolve; });
-                await waitFor(() => audio.currentTime > 0, `playing ${key} from its visible controls`, 10_000);
+                try {
+                    await waitFor(() => audio.currentTime > 0, `playing ${key} from its visible controls`, 10_000);
+                } catch (error) {
+                    throw new Error(`${error.message} ${JSON.stringify({ time: audio.currentTime, duration: audio.duration, paused: audio.paused, ended: audio.ended, readyState: audio.readyState, connected: audio.isConnected, error: audio.error?.message })}`);
+                }
                 assert(!audio.error, `${key} failed to decode.`);
                 soundPreviews.push({ key, duration: audio.duration, played: true });
                 previousAudio = audio;
@@ -1098,10 +1102,13 @@ startUnavailableInspection();
             assert(tipCopies[2] === tipCopies[0], "The thrown-copy fallback changed the idea.");
             document.execCommand = () => false;
             navigator.clipboard.writeText = async () => { throw new Error("Clipboard denied"); };
+            const beforeManualCopy = coach.querySelector('section').getBoundingClientRect().height;
             copyTipButton.click();
             const manualPrompt = await waitFor(() => coach.querySelector('textarea[aria-label="Prompt to copy"]'), "a selectable full prompt after clipboard denial");
             assert(manualPrompt.readOnly && manualPrompt.value === tipCopies[0], "The manual-copy fallback doesn't expose the whole idea.");
             assert(document.activeElement === manualPrompt && manualPrompt.selectionEnd === manualPrompt.value.length, "Manual copying must focus and select the full idea.");
+            assert(coach.querySelector('section').getBoundingClientRect().height === beforeManualCopy, "Manual copying changed the ideas panel height.");
+            assert(coach.querySelector('footer').getBoundingClientRect().bottom <= document.querySelector('#workspace-preview-second').getBoundingClientRect().bottom, "Manual copying pushed the ideas controls out of view.");
 
             // A slow clipboard response belongs to the idea that requested it.
             coach.querySelector('button[aria-label^="Go to idea 3:"]').click();
@@ -1119,10 +1126,12 @@ startUnavailableInspection();
             navigator.clipboard.writeText = clipboardWrite;
             coach.querySelector('button[aria-label^="Go to idea 2:"]').click();
             await waitFor(() => coach.textContent.includes("Understand it, then change it"), "returning to the explanation");
-            coach.querySelector('[aria-label="Hide Codex ideas"]').click();
-            await waitFor(() => document.querySelector('#workspace-preview-second').inert, "collapsing the bottom tips");
-            document.querySelector('[aria-label="Restore panels"]').click();
-            await waitFor(() => !document.querySelector('#workspace-preview-second').inert && document.querySelector('aside[aria-label="Codex tips"]')?.textContent.includes("Understand it, then change it"), "remembering the tip step after reopening");
+            const tipsHeight = document.querySelector('#workspace-preview-second').getBoundingClientRect().height;
+            coach.querySelector('[aria-label="Minimize Codex ideas"]').click();
+            await waitFor(() => document.querySelector('#workspace-preview-second').getBoundingClientRect().height === 40 && coach.querySelector('[aria-label="Show Codex ideas"]'), "minimizing the bottom tips to their dock");
+            assert(!document.querySelector('#workspace-preview-second').inert, "The minimized ideas dock must remain usable.");
+            coach.querySelector('[aria-label="Show Codex ideas"]').click();
+            await waitFor(() => Math.abs(document.querySelector('#workspace-preview-second').getBoundingClientRect().height - tipsHeight) <= 2 && !document.querySelector('#codex-coach-content').hidden && coach.textContent.includes("Understand it, then change it"), "remembering the tip step and height after reopening");
             assert(useProject.getState().projectRevision === featureRevision && useProject.getState().projectKey === null && useProject.getState().saveStatus === "draft", "Reading or copying tips edited/saved the sample.");
             assert(useEditor.getState().previewRunId === featureRun, "Reading or collapsing tips restarted the sample.");
             assert((await db.getAllKeys("projects")).length === beforeFeatureCount, "A feature sample was saved without an edit.");

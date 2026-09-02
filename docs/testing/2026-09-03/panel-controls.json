@@ -1,0 +1,169 @@
+{
+  "date": "2026-09-03",
+  "validation": "npm run verify:webmcp",
+  "passed": true,
+  "unitTests": {
+    "passed": 67,
+    "suites": 14
+  },
+  "manualCopyKeepsCardHeightAndFooterVisible": true,
+  "layoutChecks": [
+    {
+      "width": 1042,
+      "height": 936,
+      "passed": true
+    },
+    {
+      "width": 1440,
+      "height": 1000,
+      "passed": true
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "passed": true
+    },
+    {
+      "width": 390,
+      "height": 700,
+      "passed": true
+    },
+    {
+      "width": 1042,
+      "height": 936,
+      "passed": true
+    }
+  ],
+  "workspacePanelChecks": {
+    "proportionalWindowResize": {
+      "originalProportions": {
+        "game": 0.6727447216890595,
+        "tips": 0.27303370786516856
+      },
+      "widerProportions": {
+        "game": 0.6729166666666667,
+        "tips": 0.27253668763102723
+      }
+    },
+    "tipsContentChecks": [
+      {
+        "width": 1042,
+        "height": 936,
+        "stepHeights": [
+          242,
+          242,
+          242,
+          242,
+          242
+        ]
+      },
+      {
+        "width": 1440,
+        "height": 1000,
+        "stepHeights": [
+          259,
+          259,
+          259,
+          259,
+          259
+        ]
+      },
+      {
+        "width": 390,
+        "height": 844,
+        "stepHeights": [
+          204,
+          204,
+          204,
+          204,
+          204
+        ]
+      },
+      {
+        "width": 390,
+        "height": 700,
+        "stepHeights": [
+          165,
+          165,
+          165,
+          165,
+          165
+        ]
+      },
+      {
+        "width": 1042,
+        "height": 936,
+        "stepHeights": [
+          241,
+          241,
+          241,
+          241,
+          241
+        ]
+      }
+    ],
+    "expandAndRestore": true,
+    "horizontalSnapping": true,
+    "toolsWidthLimit": true,
+    "tipsMinimizeAndRestore": true,
+    "keyboardPanelLimits": true,
+    "expandedViewportChanges": true
+  },
+  "runtimeResizeChecks": {
+    "passed": 28,
+    "tolerancePx": 2,
+    "labels": [
+      "the initial desktop layout",
+      "a wider, taller window",
+      "the 1042 by 936 workspace",
+      "minimizing the ideas to their dock",
+      "restoring the ideas from their dock",
+      "the expanded game",
+      "the 1440 by 1000 workspace",
+      "minimizing the ideas to their dock",
+      "restoring the ideas from their dock",
+      "the expanded game",
+      "the 390 by 844 workspace",
+      "minimizing the ideas to their dock",
+      "restoring the ideas from their dock",
+      "the expanded game",
+      "the 390 by 700 workspace",
+      "minimizing the ideas to their dock",
+      "restoring the ideas from their dock",
+      "the expanded game",
+      "the 1042 by 936 workspace",
+      "minimizing the ideas to their dock",
+      "restoring the ideas from their dock",
+      "the expanded game",
+      "a horizontal divider drag",
+      "a vertical divider drag",
+      "the widest allowed tools sidebar",
+      "the expanded game",
+      "the expanded game",
+      "the expanded game"
+    ]
+  },
+  "soundPreviews": [
+    {
+      "key": "bean_voice",
+      "duration": 0.048005,
+      "played": true
+    },
+    {
+      "key": "mark_voice",
+      "duration": 0.048005,
+      "played": true
+    },
+    {
+      "key": "burp",
+      "duration": 0.425021,
+      "played": true
+    },
+    {
+      "key": "kaboom2000",
+      "duration": 20.923968,
+      "played": true
+    }
+  ],
+  "audioOutput": "Chromium test output stream; hardware speaker output was not established."
+}

@@ -14,6 +14,7 @@ type Props = {
     guide: CodexPlayGuide;
     className?: string;
     condensed?: boolean;
+    contained?: boolean;
 };
 
 type StepChangeDetail = {
@@ -25,6 +26,7 @@ export const WebMCPTutorial = ({
     guide,
     className,
     condensed = false,
+    contained = false,
 }: Props) => {
     const steps = guide.steps;
     const [stepIndex, setStepIndex] = useState(() =>
@@ -124,12 +126,15 @@ export const WebMCPTutorial = ({
                 "overflow-hidden rounded-2xl border border-fuchsia-200/20",
                 "bg-gradient-to-br from-[#241b3c] via-[#1c1831] to-[#121827]",
                 condensed ? "p-3 sm:p-4" : "p-5 sm:p-6",
+                contained && "flex h-full min-h-0 flex-col",
                 className,
             )}
         >
             <div
                 className={cn(
                     "grid items-center gap-4",
+                    contained
+                        && "min-h-0 flex-1 overflow-y-auto scrollbar-thin",
                     condensed
                         && "@2xl:grid-cols-[minmax(15rem,0.8fr)_minmax(21rem,1.2fr)]",
                 )}
@@ -234,7 +239,7 @@ export const WebMCPTutorial = ({
                 </div>
             </div>
 
-            <footer className="mt-3 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
+            <footer className="mt-3 flex shrink-0 items-center justify-between gap-3 border-t border-white/10 pt-3">
                 <div className="flex gap-1.5" aria-label="Remix progress">
                     {steps.map((playStep, index) => (
                         <button

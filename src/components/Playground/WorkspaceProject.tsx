@@ -27,9 +27,23 @@ export const WorkspaceProject: FC<Props> = ({ onMount }) => {
     const [filesOpen, setFilesOpen] = useState(false);
     const filesRef = useRef<HTMLDivElement>(null);
     const [messagesVisible, setMessagesVisible] = useState(true);
+    const mainRef = useRef<HTMLElement>(null);
+    const [workspaceWidth, setWorkspaceWidth] = useState(window.innerWidth);
     const gameExpanded = visiblePanels.game && !visiblePanels.tools
         && !visiblePanels.tips;
     useWorkspaceRuntime();
+
+    useEffect(() => {
+        const main = mainRef.current;
+        if (!main) return;
+        const observer = new ResizeObserver(([entry]) => {
+            if (entry.contentRect.width > 0) {
+                setWorkspaceWidth(entry.contentRect.width);
+            }
+        });
+        observer.observe(main);
+        return () => observer.disconnect();
+    }, []);
 
     useEffect(() => {
         if (activeTab === "code") {
@@ -68,7 +82,7 @@ export const WorkspaceProject: FC<Props> = ({ onMount }) => {
             <header className="min-h-11 shrink-0">
                 <Toolbar />
             </header>
-            <main className="workspace-main">
+            <main ref={mainRef} className="workspace-main">
                 <WorkspaceSplit
                     id="workspace-columns"
                     label="Resize workspace panels"
@@ -76,12 +90,15 @@ export const WorkspaceProject: FC<Props> = ({ onMount }) => {
                     layoutKey={desktop ? "desktop" : "mobile"}
                     defaultSizes={sizes.getAllotmentSize("editor", [700, 340])}
                     minSizes={[180, 260]}
+                    maxSizes={[
+                        undefined,
+                        Math.max(260, Math.min(560, workspaceWidth * 0.45)),
+                    ]}
+                    snap={[false, true]}
                     visible={[visiblePanels.game, visiblePanels.tools]}
-                    onVisibleChange={(index, visible) =>
-                        setPanelVisible(
-                            index === 0 ? "game" : "tools",
-                            visible,
-                        )}
+                    onVisibleChange={(index, visible) => {
+                        if (index === 1) setPanelVisible("tools", visible);
+                    }}
                     onDragEnd={value => {
                         if (value.every(size => size > 0)) {
                             sizes.setAllotmentSize("editor", value);

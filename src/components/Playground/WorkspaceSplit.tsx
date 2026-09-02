@@ -7,8 +7,10 @@ type Props = {
     children: ReactNode;
     defaultSizes: number[];
     minSizes: [number, number];
+    maxSizes?: [number | undefined, number | undefined];
     visible: [boolean, boolean];
     snap?: [boolean, boolean];
+    onChange?: (sizes: number[]) => void;
     onVisibleChange: (index: number, visible: boolean) => void;
     onDragEnd: (sizes: number[]) => void;
     vertical?: boolean;
@@ -29,6 +31,7 @@ export const WorkspaceSplit = (props: Props) => {
 
     const updateSize = (sizes: number[]) => {
         currentSizes.current = sizes;
+        latest.current.onChange?.(sizes);
         const total = sizes[0] + sizes[1];
         sash.current?.setAttribute(
             "aria-valuenow",
@@ -81,7 +84,14 @@ export const WorkspaceSplit = (props: Props) => {
             }
             const [first, second] = currentSizes.current;
             const total = first + second;
-            const [minFirst, minSecond] = options.minSizes;
+            const minFirst = Math.max(
+                options.minSizes[0],
+                total - (options.maxSizes?.[1] ?? Infinity),
+            );
+            const minSecond = Math.max(
+                options.minSizes[1],
+                total - (options.maxSizes?.[0] ?? Infinity),
+            );
             let next = event.key === "Home"
                 ? 0
                 : event.key === "End"
@@ -140,6 +150,7 @@ export const WorkspaceSplit = (props: Props) => {
                         key={index}
                         snap={props.snap?.[index] ?? true}
                         minSize={props.minSizes[index]}
+                        maxSize={props.maxSizes?.[index] ?? Infinity}
                         priority={index === 0
                             ? LayoutPriority.High
                             : LayoutPriority.Low}
