@@ -174,7 +174,9 @@ async function main() {
                 "--headless=new",
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
-                "--disable-gpu",
+                "--use-gl=angle",
+                "--use-angle=swiftshader",
+                "--enable-unsafe-swiftshader",
                 "--disable-extensions",
                 "--disable-background-networking",
                 "--disable-default-apps",
@@ -255,6 +257,7 @@ async function main() {
         assert.equal(result.saveReopenConfirmed, true);
         assert.equal(result.pendingAssetsStatus, "incomplete");
         assert.equal(result.inspectionErrorStatus, "failed");
+        assert.equal(result.diagnosticErrorStatus, "failed");
         assert.equal(result.unavailableInspectionStatus, "incomplete");
         assert.equal(result.declinedCommitted, false);
         assert.equal(typeof result.opened, "string");
@@ -371,6 +374,12 @@ function chromeExecutable() {
     const candidates = [
         process.env.CHROME_PATH,
         process.env.CHROME_BIN,
+        ...(process.platform === "darwin"
+            ? [
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                "/Applications/Chromium.app/Contents/MacOS/Chromium",
+            ]
+            : []),
         "google-chrome",
         "google-chrome-stable",
         "chromium",

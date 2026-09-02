@@ -548,12 +548,12 @@ describe("bounded agent-visible data", () => {
         });
     });
 
-    it("requires diagnostics to match the current source model", () => {
+    it("requires a language worker and matching source models", async () => {
         const files = new Map([
             ["main.js", { value: "kaplay();\n" }],
         ]);
         assert.deepEqual(
-            collectMonacoDiagnostics(undefined, files, "main.js"),
+            await collectMonacoDiagnostics(undefined, files, "main.js"),
             {
                 available: false,
                 sourcePath: "main.js",
@@ -562,19 +562,9 @@ describe("bounded agent-visible data", () => {
             },
         );
 
-        let modelValue = "kaplay();\n";
-        const monaco = {
-            MarkerSeverity: { Error: 8, Warning: 4, Info: 2, Hint: 1 },
-            Uri: { file: path => ({ path }) },
-            editor: {
-                getModelMarkers: () => [],
-                getModel: uri => uri.path === "main.js"
-                    ? { getValue: () => modelValue }
-                    : null,
-            },
-        };
+        const { monaco, models } = diagnosticsFixture(files);
         assert.deepEqual(
-            collectMonacoDiagnostics(monaco, files, "main.js"),
+            await collectMonacoDiagnostics(monaco, files, "main.js"),
             {
                 available: true,
                 sourcePath: "main.js",
@@ -583,10 +573,124 @@ describe("bounded agent-visible data", () => {
             },
         );
 
-        modelValue = "stale source";
+        models.get("main.js").value = "stale source";
         assert.equal(
-            collectMonacoDiagnostics(monaco, files, "main.js").sourceCurrent,
+            (await collectMonacoDiagnostics(monaco, files, "main.js"))
+                .sourceCurrent,
             false,
         );
     });
+
+    it("checks every source through the worker instead of trusting cached markers", async () => {
+        const files = new Map([
+            ["main.js", { value: "kaplay();" }],
+            ["utils/score.ts", { value: "const score: number = 'wrong';" }],
+        ]);
+        const { monaco, worker, checkedUris } = diagnosticsFixture(files);
+        monaco.editor.getModelMarkers = () => [];
+        worker.getSemanticDiagnostics = async (uri) => uri.endsWith("score.ts")
+            ? [{
+                category: 1,
+                code: 2322,
+                start: 6,
+                length: 5,
+                messageText: "Type 'string' is not assignable to type 'number'.",
+            }]
+            : [];
+        const result = await collectMonacoDiagnostics(monaco, files, "main.js");
+        assert.equal(result.sourceCurrent, true);
+        assert.deepEqual(checkedUris.sort(), [
+            "file:///main.js",
+            "file:///utils/score.ts",
+        ]);
+        assert.equal(result.diagnostics.length, 1);
+        assert.equal(result.diagnostics[0].path, "utils/score.ts");
+        assert.equal(result.diagnostics[0].code, 2322);
+        assert.equal(result.diagnostics[0].startColumn, 7);
+    });
+
+    it("rejects stale worker source and source changed during diagnostics", async () => {
+        const files = new Map([["main.js", { value: "kaplay();" }]]);
+        const { monaco, worker, models } = diagnosticsFixture(files);
+        worker.getScriptText = async () => "previous source";
+        assert.equal(
+            (await collectMonacoDiagnostics(monaco, files, "main.js"))
+                .sourceCurrent,
+            false,
+        );
+
+        let release;
+        let started;
+        const checking = new Promise((resolve) => { started = resolve; });
+        worker.getScriptText = async () => "kaplay();";
+        worker.getSemanticDiagnostics = () => {
+            started();
+            return new Promise((resolve) => { release = resolve; });
+        };
+        const pending = collectMonacoDiagnostics(monaco, files, "main.js");
+        await checking;
+        models.get("main.js").version += 1;
+        release([{ category: 1, code: 1, messageText: "Old error" }]);
+        const result = await pending;
+        assert.equal(result.sourceCurrent, false);
+        assert.deepEqual(result.diagnostics, []);
+    });
+
+    it("reports unavailable diagnostics when the language worker fails", async () => {
+        const files = new Map([["main.js", { value: "kaplay();" }]]);
+        const { monaco, worker } = diagnosticsFixture(files);
+        worker.getSemanticDiagnostics = async () => {
+            throw new Error("Worker unavailable");
+        };
+        const result = await collectMonacoDiagnostics(monaco, files, "main.js");
+        assert.equal(result.available, false);
+        assert.equal(result.sourceCurrent, false);
+    });
 });
+
+function diagnosticsFixture(files) {
+    const uriFor = (path) => ({ toString: () => `file:///${path}` });
+    const models = new Map([...files].map(([path, { value }]) => {
+        const model = {
+            value,
+            version: 1,
+            uri: uriFor(path),
+            getValue: () => model.value,
+            getVersionId: () => model.version,
+            getLanguageId: () => path.endsWith(".ts") ? "typescript" : "javascript",
+            isDisposed: () => false,
+            getPositionAt(offset) {
+                const lines = model.value.slice(0, offset).split("\n");
+                return { lineNumber: lines.length, column: lines.at(-1).length + 1 };
+            },
+        };
+        return [path, model];
+    }));
+    const checkedUris = [];
+    const worker = {
+        async getSyntacticDiagnostics(uri) {
+            checkedUris.push(uri);
+            return [];
+        },
+        getSemanticDiagnostics: async () => [],
+        getScriptText: async (uri) => models.get(uri.slice("file:///".length))?.value,
+    };
+    const getWorker = async () => async () => worker;
+    return {
+        models,
+        worker,
+        checkedUris,
+        monaco: {
+            Uri: { file: uriFor },
+            editor: {
+                getModel: (uri) => models.get(uri.toString().slice("file:///".length)),
+            },
+            languages: {
+                typescript: {
+                    getJavaScriptWorker: getWorker,
+                    getTypeScriptWorker: getWorker,
+                },
+            },
+        },
+    };
+}

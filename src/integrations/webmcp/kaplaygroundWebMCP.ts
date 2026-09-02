@@ -610,10 +610,13 @@ function createTools(
                 await settleEditor(signal);
                 const projectStore = useProject.getState();
                 const editor = useEditor.getState();
-                const diagnosticsCapture = collectMonacoDiagnostics(
-                    editor.runtime.monaco ?? undefined,
-                    projectStore.project.files,
-                    editor.runtime.currentFile,
+                const diagnosticsCapture = await waitWithAbort(
+                    collectMonacoDiagnostics(
+                        editor.runtime.monaco ?? undefined,
+                        projectStore.project.files,
+                        editor.runtime.currentFile,
+                    ),
+                    signal,
                 );
                 const diagnosticErrors = diagnosticsCapture.diagnostics.filter(
                     ({ severity }) => severity === "error",

@@ -395,6 +395,30 @@ startInspectionError();
                 "The inspection-time console error was sampled too early.",
             );
 
+            const diagnosticUpdate = await invoke("kaplayground_update_game", {
+                expectedRevision: inspectionErrorUpdate.revision,
+                changes: [{
+                    action: "replace",
+                    path: "main.js",
+                    content: `// @ts-check
+kaplay({ width: 320, height: 240 });
+/** @type {number} */
+const score = "not a number";
+add([rect(16, 16), pos(20, 20), "type-error"]);
+`,
+                }],
+            });
+            const diagnosticRun = await invoke("kaplayground_run_game", {
+                expectedRevision: diagnosticUpdate.revision,
+                inspectTag: "type-error",
+            });
+            assert(diagnosticRun.status === "failed", "A current-source type error must fail verification.");
+            assert(diagnosticRun.diagnostics.sourceCurrent === true, "Type diagnostics were not current.");
+            assert(
+                diagnosticRun.diagnostics.items.some(item => item.code === 2322),
+                "The language worker did not report the current type mismatch.",
+            );
+
             const unavailableSource = `
 function startUnavailableInspection() {
     const k = kaplay({ global: false, width: 320, height: 240 });
@@ -409,7 +433,7 @@ function startUnavailableInspection() {
 startUnavailableInspection();
 `;
             const unavailableUpdate = await invoke("kaplayground_update_game", {
-                expectedRevision: inspectionErrorUpdate.revision,
+                expectedRevision: diagnosticUpdate.revision,
                 changes: [{
                     action: "replace",
                     path: "main.js",
@@ -504,6 +528,7 @@ startUnavailableInspection();
                 saveReopenConfirmed: reopened.projectId === saved.projectId,
                 pendingAssetsStatus: pendingRun.status,
                 inspectionErrorStatus: inspectionErrorRun.status,
+                diagnosticErrorStatus: diagnosticRun.status,
                 unavailableInspectionStatus: unavailableRun.status,
                 declinedCommitted: declined.committed,
                 opened: opened.opened,
