@@ -162,16 +162,19 @@ export function startFixture() {
         background: [24, 28, 36],
     });
 
-    const player = add([
-        rect(24, 32),
-        pos(40, 120),
-        area(),
-        anchor("center"),
-        color(96, 165, 250),
-        "webmcp-player",
-    ]);
+    scene("webmcp-ready-scene", () => {
+        const player = add([
+            rect(24, 32),
+            pos(40, 120),
+            area(),
+            anchor("center"),
+            color(96, 165, 250),
+            "webmcp-player",
+        ]);
 
-    onKeyDown("right", () => player.move(PLAYER_SPEED, 0));
+        onKeyDown("right", () => player.move(PLAYER_SPEED, 0));
+    });
+    go("webmcp-ready-scene");
 }
 `;
             const movementSource = "export const PLAYER_SPEED = 180;\n";
@@ -227,7 +230,7 @@ export function startFixture() {
                 consoleLimit: 20,
                 objectLimit: 10,
             });
-            assert(run.status === "passed", `Healthy run was ${run.status}: ${run.summary}`);
+            assert(run.status === "passed", `Healthy run was ${run.status}: ${JSON.stringify(run)}`);
             assert(typeof run.runId === "string", "run_game did not return a run id.");
             assert(run.readiness?.status === "ready", "Healthy run was not ready.");
             assert(run.readiness?.assetsLoaded === true, "Asset readiness was not confirmed.");
@@ -235,6 +238,7 @@ export function startFixture() {
             assert(run.focus?.canvasFocused === true, "Canvas focus was not confirmed.");
             assert(run.diagnostics?.sourceCurrent === true, "Diagnostics were not current.");
             assert(run.scene?.objectsAvailable === true, "Healthy scene objects were unavailable.");
+            assert(run.scene?.scene === "webmcp-ready-scene", "The initial scene transition did not complete.");
 
             const initialPlayer = sceneObject(run, "webmcp-player");
             assert(initialPlayer, "The fixture player was not inspected.");
@@ -276,6 +280,22 @@ export function startFixture() {
                 movedPlayer?.position?.x > initialPlayer.position.x + 5,
                 "Supported browser input did not move the focused player.",
             );
+
+            // Cancel the navigation event without issuing a pagehide or pageshow.
+            const cancelUnload = event => event.preventDefault();
+            window.addEventListener("beforeunload", cancelUnload);
+            const unloadEvent = new Event("beforeunload", { cancelable: true });
+            try {
+                window.dispatchEvent(unloadEvent);
+            } finally {
+                window.removeEventListener("beforeunload", cancelUnload);
+            }
+            assert(unloadEvent.defaultPrevented, "The unload event was not canceled.");
+            assert(tools.size === 8, "Canceling navigation removed the WebMCP tools.");
+            assert(registeredNames.length === 8, "Canceling navigation replaced the tool registrations.");
+            const canceledInspection = await invoke("kaplayground_inspect_game", {});
+            assert(canceledInspection.revision === updated.revision, "Canceling navigation changed the active game.");
+            assert(canceledInspection.activeRunId === run.runId, "Canceling navigation replaced the preview run.");
 
             const savedName = `WebMCP fixture ${Date.now()}`;
             const saved = await invoke("kaplayground_save_game", {
@@ -522,6 +542,8 @@ startUnavailableInspection();
                 runStatus: run.status,
                 currentCheckStatus: checked.status,
                 readinessStatus: run.readiness.status,
+                sceneTransitionConfirmed: run.scene.scene === "webmcp-ready-scene",
+                canceledUnloadConfirmed: canceledInspection.revision === updated.revision,
                 focusConfirmed: run.focus.canvasFocused,
                 movementConfirmed: movedPlayer.position.x > initialPlayer.position.x,
                 dimensionsConfirmed: true,
