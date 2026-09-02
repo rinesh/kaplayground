@@ -1,33 +1,53 @@
 import { assets } from "@kaplayjs/crew";
+import { toast } from "react-toastify";
+import { useProject } from "../../features/Projects/stores/useProject";
+import { WEBMCP_EXAMPLE_NAME } from "../../integrations/webmcp/constants";
+import { confirmNavigate } from "../../util/confirmNavigate";
 import ExampleList from "./ExampleList";
 import { ProjectStatus } from "./ProjectStatus";
 import ToolbarToolsMenu from "./ToolbarToolsMenu";
 
-export const Toolbar = () => {
-    return (
-        <div
-            className="flex flex-1 shrink-0 justify-between items-center bg-base-300 rounded-b-xl pl-1 md:pl-0"
-            role="toolbar"
+export const Toolbar = () => (
+    <div
+        className="grid grid-cols-[28px_minmax(0,1fr)_minmax(0,1fr)] min-h-11 items-center gap-x-2 bg-base-300 rounded-b-xl px-1 min-[900px]:flex"
+        role="toolbar"
+        aria-label="Game workspace"
+    >
+        <a
+            href={`/?example=${WEBMCP_EXAMPLE_NAME}`}
+            aria-label="KAPLAYGROUND home"
+            title="Open Play & Remix with Codex"
+            className="btn btn-ghost h-9 min-h-0 w-7 shrink-0 rounded-sm p-0"
+            onClick={event => {
+                if (
+                    event.button !== 0 || event.metaKey || event.ctrlKey
+                    || event.shiftKey || event.altKey
+                ) return;
+                event.preventDefault();
+                void confirmNavigate(() =>
+                    useProject.getState().createNewProject(
+                        "ex",
+                        {},
+                        WEBMCP_EXAMPLE_NAME,
+                    )
+                ).catch(error =>
+                    toast.error(
+                        error instanceof Error
+                            ? error.message
+                            : "Couldn't open the starting point.",
+                    )
+                );
+            }}
         >
-            <a
-                className="hidden lg:flex btn btn-sm btn-ghost px-2 rounded-sm items-center justify-center h-full rounded-bl-xl"
-                href="/?example=webmcpAgent"
-            >
-                <figure>
-                    <img
-                        alt="Logo"
-                        // @ts-ignore
-                        src={assets.ka.outlined}
-                        className="h-6"
-                        draggable={false}
-                    />
-                    <h1 className="sr-only">KAPLAY</h1>
-                </figure>
-            </a>
-
-            <ProjectStatus />
-            <ExampleList />
-            <ToolbarToolsMenu />
-        </div>
-    );
-};
+            <img
+                src={assets.ka.outlined}
+                alt=""
+                draggable={false}
+                className="h-6 w-7 object-contain"
+            />
+        </a>
+        <ProjectStatus />
+        <ExampleList />
+        <ToolbarToolsMenu />
+    </div>
+);

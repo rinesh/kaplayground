@@ -1,20 +1,25 @@
 /// <reference types="webmcp-types" preserve="true" />
 
-import { Decode } from "console-feed";
-import { SANDBOX_ORIGIN } from "../../config/common";
 import {
     assetBrewCatalog,
     type AssetBrewKind,
     searchAssetBrewEntries,
 } from "../../data/assetBrewCatalog.ts";
 import { demos, getDemo } from "../../data/demos.ts";
+import { matchesGameAsset } from "../../data/gameAssetSearch";
+import {
+    compareStartingPoints,
+    matchesStartingPoint,
+} from "../../data/startingPoints";
 import { waitForPlaygroundReady } from "../../features/Projects/application/playgroundReadiness";
 import { validateProjectName } from "../../features/Projects/application/validateProjectName";
 import type { File } from "../../features/Projects/models/File";
 import { useProject } from "../../features/Projects/stores/useProject";
 import { useEditor } from "../../hooks/useEditor";
+import { gameConsoleCapture } from "../../hooks/useGameConsole";
+import { useWorkspace } from "../../hooks/useWorkspace";
 import { confirm } from "../../util/confirm";
-import { createBoundedConsoleCapture } from "./boundedConsoleCapture";
+import type { BoundedConsoleCapture } from "./boundedConsoleCapture";
 import {
     assertGameRevision,
     classifyGameRun,
@@ -42,12 +47,8 @@ import {
     spriteFrameGridFromLoader,
 } from "./imageDimensions";
 import { collectMonacoDiagnostics } from "./monacoDiagnostics";
-import {
-    resetWebMCPActivityOnProjectReplacement,
-    useWebMCPActivity,
-} from "./webMCPActivity";
+import { useWebMCPActivity } from "./webMCPActivity";
 
-const MAX_RETAINED_LOGS = 500;
 const MAX_DIAGNOSTIC_RESULTS = 200;
 const MAX_VISIBLE_STRING = 10_000;
 const MAX_PROJECT_NAME_LENGTH = 120;
@@ -133,66 +134,13 @@ export function registerKaplaygroundWebMCP(): () => void {
 
     const context = modelContext;
     const controller = new AbortController();
-    const consoleCapture = createBoundedConsoleCapture(MAX_RETAINED_LOGS);
+    const consoleCapture = gameConsoleCapture;
     const registeredNames: string[] = [];
     let invocationSerial = 0;
-    let transientBaselineRevision = useProject.getState().projectRevision;
     let cleanedUp = false;
 
-    const hasUnsavedChanges = () => {
-        const projectStore = useProject.getState();
-        return useEditor.getState().runtime.hasUnsavedChanges
-            || (
-                projectStore.projectKey === null
-                && projectStore.projectRevision !== transientBaselineRevision
-            );
-    };
-
-    const handleMessage = (event: MessageEvent<unknown>) => {
-        const iframeWindow = useEditor.getState().runtime.iframe?.contentWindow;
-        if (event.origin !== SANDBOX_ORIGIN || event.source !== iframeWindow) {
-            return;
-        }
-        if (!isConsoleMessage(event.data)) return;
-
-        let decoded: { method?: string; data?: unknown[] };
-        try {
-            decoded = Decode(event.data.log) as typeof decoded;
-        } catch {
-            return;
-        }
-
-        const values = decoded.data ?? [];
-        if (values.some((value) => String(value).startsWith("[sandbox]"))) {
-            return;
-        }
-        if (values.some((value) => String(value).startsWith("[vite]"))) return;
-
-        consoleCapture.add({
-            timestamp: Date.now(),
-            runId: event.data.runId,
-            level: normalizeConsoleLevel(decoded.method),
-            values,
-        });
-    };
-
-    window.addEventListener("message", handleMessage);
-    const unsubscribeProject = useProject.subscribe((state, previous) => {
-        if (state.projectGeneration !== previous.projectGeneration) {
-            const generation = state.projectGeneration;
-            queueMicrotask(() => {
-                const current = useProject.getState();
-                if (current.projectGeneration === generation) {
-                    transientBaselineRevision = current.projectRevision;
-                }
-            });
-        }
-        resetWebMCPActivityOnProjectReplacement(
-            state,
-            previous,
-            () => consoleCapture.clear(),
-        );
-    });
+    const hasUnsavedChanges = () =>
+        useProject.getState().hasUnsavedProjectChanges();
 
     useWebMCPActivity.getState().setConnection("registering", []);
     const tools = createTools(consoleCapture, hasUnsavedChanges);
@@ -207,8 +155,6 @@ export function registerKaplaygroundWebMCP(): () => void {
         if (!controller.signal.aborted) controller.abort();
         if (!cleanedUp) {
             cleanedUp = true;
-            unsubscribeProject();
-            window.removeEventListener("message", handleMessage);
         }
         registeredNames.length = 0;
         useWebMCPActivity.getState().setConnection(status, []);
@@ -280,7 +226,7 @@ export function registerKaplaygroundWebMCP(): () => void {
 }
 
 function createTools(
-    consoleCapture: ReturnType<typeof createBoundedConsoleCapture>,
+    consoleCapture: BoundedConsoleCapture,
     hasUnsavedChanges: () => boolean,
 ): ToolDefinition[] {
     const projectMutations = createSerialTaskQueue();
@@ -322,6 +268,9 @@ function createTools(
                     name: projectStore.project.name,
                     projectId: projectStore.projectKey,
                     storage: projectStore.getProjectStorageState(),
+                    saveStatus: projectStore.saveStatus,
+                    editorVisible: useWorkspace.getState().activeTab === "code",
+                    selectedAsset: boundedSelectedAsset(),
                     kaplayVersion: projectStore.project.kaplayVersion,
                     mode: projectStore.project.mode,
                     buildMode: projectStore.project.buildMode,
@@ -697,7 +646,9 @@ function createTools(
                     );
                 }
                 if (!isReadyEvidence(readiness)) {
-                    incompleteReasons.push(readinessIncompleteReason(readiness));
+                    incompleteReasons.push(
+                        readinessIncompleteReason(readiness),
+                    );
                 }
                 if (scene.available !== true) {
                     incompleteReasons.push(
@@ -811,15 +762,7 @@ function createTools(
 
                 if (source !== "library") {
                     for (const asset of before.project.assets.values()) {
-                        if (kind !== undefined && asset.kind !== kind) continue;
-                        if (
-                            query.length > 0
-                            && !`${asset.name} ${asset.path} ${asset.kind}`
-                                .toLowerCase()
-                                .includes(query)
-                        ) {
-                            continue;
-                        }
+                        if (!matchesGameAsset(asset, query, kind)) continue;
                         descriptors.push({
                             asset: {
                                 source: "game",
@@ -1006,14 +949,8 @@ function createTools(
                         !tag
                         || example.tags.some(({ name }) => name === tag)
                     )
-                    .filter((example) =>
-                        query.length === 0
-                        || `${example.key} ${example.formattedName} ${
-                            example.description ?? ""
-                        } ${example.tags.map(({ name }) => name).join(" ")}`
-                            .toLowerCase()
-                            .includes(query)
-                    )
+                    .filter(example => matchesStartingPoint(example, query))
+                    .sort(compareStartingPoints)
                     .map((example) => ({
                         key: example.key,
                         title: example.formattedName,
@@ -1056,7 +993,21 @@ function createTools(
                     const example = getDemo(key);
                     if (!example) {
                         throw new Error(
-                            `Starting game not found: ${key}. Find examples again before opening one.`,
+                            `Starting point not found: ${key}. Find starting points again before opening one.`,
+                        );
+                    }
+
+                    if (hasUnsavedChanges()) {
+                        try {
+                            await useProject.getState().persistActiveProject();
+                        } catch {
+                            // Failed edits stay pending; only the page's explicit
+                            // discard confirmation may allow replacement below.
+                        }
+                        throwIfAborted(signal);
+                        assertGameRevision(
+                            useProject.getState(),
+                            expectedRevision,
                         );
                     }
 
@@ -1076,6 +1027,7 @@ function createTools(
                                         type: "warning",
                                         confirmText: "Discard and open",
                                         dismissText: "Keep my game",
+                                        cancelImmediate: true,
                                     },
                                 ),
                                 signal,
@@ -1229,39 +1181,17 @@ function parseGameChanges(value: unknown): GameChange[] {
     });
 }
 
-function isConsoleMessage(
-    value: unknown,
-): value is {
-    type: "CONSOLE";
-    runId: string | null;
-    log: Parameters<typeof Decode>[0];
-} {
-    if (typeof value !== "object" || value === null) return false;
-    const candidate = value as {
-        type?: unknown;
-        runId?: unknown;
-        log?: unknown;
+function boundedSelectedAsset() {
+    const selected = useWorkspace.getState().selectedAsset;
+    if (!selected) return null;
+    const identity = {
+        source: selected.source,
+        kind: selected.kind,
+        name: selected.name.slice(0, 256),
     };
-    return candidate.type === "CONSOLE"
-        && (
-            candidate.runId === null
-            || (typeof candidate.runId === "string"
-                && candidate.runId.length <= 128)
-        )
-        && Array.isArray(candidate.log);
-}
-
-function normalizeConsoleLevel(
-    method: string | undefined,
-): KaplaygroundConsoleEntry["level"] {
-    const level = method?.toLowerCase();
-    if (
-        level === "debug" || level === "info" || level === "warn"
-        || level === "error"
-    ) {
-        return level;
-    }
-    return "log";
+    return selected.source === "library"
+        ? { ...identity, key: selected.key.slice(0, 256) }
+        : { ...identity, path: selected.path.slice(0, 512) };
 }
 
 function assetSource(

@@ -32,6 +32,8 @@ export default defineConfig({
                         "!kaplay/examples/examples.json",
                     ],
                     dest: "",
+                    // Match the public URLs used by starting points and previews.
+                    rename: { stripBase: 2 },
                 },
             ],
         }),

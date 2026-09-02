@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-export const useBeforeUnload = async (
+export const useBeforeUnload = (
     hasUnsavedChanges: boolean,
     focusQuerySelector: string = "#project-save-button",
 ) => {

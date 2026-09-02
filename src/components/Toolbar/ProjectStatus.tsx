@@ -1,180 +1,107 @@
 import { assets } from "@kaplayjs/crew";
-import { useEffect, useRef, useState } from "react";
-import { validateProjectName } from "../../features/Projects/application/validateProjectName";
+import { useEffect, useState } from "react";
+import { toast } from "react-toastify";
+import { openProjectPreferences } from "../../features/Projects/services/projectActions";
 import { useProject } from "../../features/Projects/stores/useProject";
-import { useEditor } from "../../hooks/useEditor.ts";
-import { cn } from "../../util/cn.ts";
-import { ProjectKaplayVersion } from "../Project/ProjectKaplayVersion";
-import { ToolbarSeparator } from "./ToolbarSeparator";
+import { ToolbarButton } from "./ToolbarButton";
 
 export const ProjectStatus = () => {
-    const saveNewProject = useProject((s) => s.saveNewProject);
-    const projectMode = useProject((s) => s.project.mode);
-    const setProject = useProject((s) => s.setProject);
-    const projectName = useProject((s) => s.project.name);
-    const projectKey = useProject((s) => s.projectKey);
-    const demoKey = useProject((s) => s.demoKey);
-    const hasUnsavedChanges = useEditor((s) =>
-        s.getRuntime().hasUnsavedChanges
-    );
-    const [isEditing, setIsEditing] = useState(false);
-    const [initialName, setInitialName] = useState(() => projectName);
-    // the name is the name of the project
-    // the current value of the input that will be displayed
-    const [inputValue, setInputValue] = useState(() => projectName);
-    const nameInput = useRef<HTMLInputElement>(null);
-    const [error, setError] = useState<string>("");
+    const name = useProject(state => state.project.name);
+    const generation = useProject(state => state.projectGeneration);
+    const status = useProject(state => state.saveStatus);
+    const error = useProject(state => state.saveError);
+    const [value, setValue] = useState(name);
+    useEffect(() => setValue(name), [generation, name]);
 
-    const setNameInputValue = (value: string) => {
-        if (nameInput.current) {
-            nameInput.current.value = value;
-        }
+    const saveProject = () => {
+        void useProject.getState().persistActiveProject().catch(error =>
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : "Couldn't save this project.",
+            )
+        );
     };
-
-    const blur = () => {
-        setTimeout(() => {
-            nameInput.current?.blur();
-        });
-    };
-
-    const isSaved = () => {
-        return Boolean(projectKey);
-    };
-
-    const handleSaveProject = async () => {
-        if (!isSaved() && await isValid()) saveNewProject();
-    };
-
-    const setProjectName = (newName = initialName) => {
-        if (newName == projectName) return;
-        setProject({
-            name: newName,
-        });
-    };
-
-    const handleInputChange = (t: React.ChangeEvent<HTMLInputElement>) => {
-        setInputValue(t.target.value || initialName);
-        if (error) setError("");
-    };
-
-    const handleInputBlur = () => {
-        if (!isEditing) return;
-
-        if (!error) setInitialName(projectName);
-
-        setIsEditing(false);
-    };
-
-    const resetValue = () => {
-        setInputValue(initialName);
-        setIsEditing(false);
-        setNameInputValue(initialName);
-        setError("");
-        setTimeout(blur);
-    };
-
-    const isValid = async () => {
-        const [valid, err] = await validateProjectName(inputValue);
-        setError(err ? err : "");
-        return valid;
-    };
-
-    // Save project name
-    useEffect(() => {
-        const timeout = setTimeout(async () => {
-            if (inputValue == projectName) return;
-            setProjectName(await isValid() ? inputValue : initialName);
-        }, 500);
-        return () => clearTimeout(timeout);
-    }, [inputValue]);
-
-    // This is when a new project is loaded
-    useEffect(() => {
-        if (isEditing) return;
-
-        setInitialName(projectName);
-        setNameInputValue(projectName);
-        setInputValue(projectName);
-        setError("");
-    }, [projectKey, projectName]);
 
     return (
-        <div className="flex flex-row gap-2 items-center h-full">
-            {(!demoKey || hasUnsavedChanges) && (
-                <>
-                    <button
-                        className="btn btn-xs btn-ghost uppercase font-semibold tracking-wider bg-base-50 rounded-xl max-lg:ml-1"
-                        type="button"
-                        onClick={() =>
-                            document.querySelector<HTMLDialogElement>(
-                                "#project-preferences",
-                            )?.showModal()}
-                        data-tooltip-id="global"
-                        data-tooltip-content={"Project Preferences"}
-                        data-tooltip-place="bottom-start"
-                    >
-                        {projectMode === "pj" ? "Project" : "Example"}
-                    </button>
-
-                    <input
-                        id="projectNameInput"
-                        ref={nameInput}
-                        className={cn(
-                            "input input-xs w-32 lg:w-auto placeholder:text-base-content/45",
-                            {
-                                "border-error focus-visible:outline-error":
-                                    error,
-                            },
-                        )}
-                        defaultValue={inputValue}
-                        placeholder={initialName}
-                        onChange={handleInputChange}
-                        onBlur={handleInputBlur}
-                        onFocus={() => setIsEditing(true)}
-                        data-tooltip-id="global-open"
-                        data-tooltip-content={error}
-                        data-tooltip-hidden={!error}
-                        data-tooltip-variant="error"
-                        data-tooltip-place="bottom-start"
-                        onKeyUpCapture={e => {
-                            if (e.key === "Escape") resetValue();
-                            else if (e.key === "Enter" && !error) {
-                                handleSaveProject();
-                                blur();
-                            }
-                        }}
-                    >
-                    </input>
-                </>
-            )}
-
+        <div className="flex min-w-0 flex-wrap items-center gap-1 py-1 min-[900px]:w-48 min-[900px]:flex-1 min-[900px]:max-w-72">
             <button
-                id="project-save-button"
-                className={cn(
-                    "btn btn-xs btn-ghost px-px rounded-sm items-center justify-center h-full focus-visible:-outline-offset-2 first:px-1.5 first:-mr-1.5 first:rounded-bl-xl",
-                    {
-                        "hover:bg-transparent cursor-default": isSaved(),
-                    },
-                )}
-                onClick={() => handleSaveProject()}
-                data-tooltip-id="global"
-                data-tooltip-html={isSaved()
-                    ? "Autosave Enabled"
-                    : "Save as My Project"}
-                data-tooltip-place="bottom-end"
+                type="button"
+                className="btn btn-xs shrink-0 rounded-full px-2 uppercase"
+                aria-label="Project settings"
+                aria-haspopup="dialog"
+                aria-controls="project-preferences"
+                onClick={() => openProjectPreferences()}
             >
-                <img
-                    src={assets.save.outlined}
-                    alt="Save Project"
-                    className={cn("w-6 h-6 transition-all p-[3px]", {
-                        "grayscale opacity-30": isSaved(),
-                    })}
-                />
+                Project
             </button>
-
-            <ToolbarSeparator className="-ml-2 -mr-0.5" />
-
-            <ProjectKaplayVersion />
+            <div className="min-w-0 flex-1">
+                <input
+                    id="projectNameInput"
+                    aria-label="Project name"
+                    className="input input-xs min-w-0 w-full px-2 font-medium text-white"
+                    value={value}
+                    maxLength={120}
+                    onChange={event => {
+                        const name = event.target.value;
+                        setValue(name);
+                        useProject.getState().setProject({ name });
+                    }}
+                    onBlur={() => {
+                        const normalized = value.trim() || "Untitled";
+                        setValue(normalized);
+                        useProject.getState().setProject({ name: normalized });
+                    }}
+                    onKeyDown={event => {
+                        if (event.key === "Enter") event.currentTarget.blur();
+                    }}
+                />
+            </div>
+            <ToolbarButton
+                id="project-save-button"
+                type="button"
+                icon={assets.save.outlined}
+                text={status === "error" ? "Retry save" : "Save project"}
+                compact
+                aria-busy={status === "saving"}
+                aria-describedby={status === "error"
+                    ? "project-save-error"
+                    : undefined}
+                tip={status === "error"
+                    ? "Retry saving this project"
+                    : status === "draft"
+                    ? "Save a copy to My games"
+                    : "Save project"}
+                className={`h-9 shrink-0 px-1.5 ${
+                    status === "saved"
+                        ? "opacity-45 hover:opacity-100"
+                        : status === "error"
+                        ? "text-error"
+                        : ""
+                }`}
+                disabled={status === "saving"}
+                onClick={saveProject}
+            />
+            {status === "error" && (
+                <div
+                    id="project-save-error"
+                    role="alert"
+                    className="flex basis-full items-center gap-1 px-2 text-xs leading-4 text-error"
+                    title={error ?? undefined}
+                >
+                    <span>Couldn’t save</span>
+                    <span aria-hidden="true">·</span>
+                    <button
+                        id="project-save-retry"
+                        type="button"
+                        className="link min-h-6 px-1 font-semibold"
+                        aria-label="Retry saving project"
+                        onClick={saveProject}
+                    >
+                        Retry
+                    </button>
+                </div>
+            )}
         </div>
     );
 };

@@ -5,6 +5,7 @@ import { db } from "../../../db/client/db";
 import { confirm } from "../../../util/confirm";
 import { downloadBlob } from "../../../util/download";
 import { openDialog } from "../../../util/openDialog";
+import { loadProject } from "../application/loadProject";
 import { useProject } from "../stores/useProject";
 
 type ToastOptions = {
@@ -53,10 +54,13 @@ export async function exportProject(
     key: string | null = useProject.getState().projectKey,
     options?: ToastOptions,
 ) {
-    const { saveNewProject, getProjectMetadata, serializeProject } = useProject
-        .getState();
+    const { persistActiveProject, getProjectMetadata, serializeProject } =
+        useProject
+            .getState();
 
-    key ??= saveNewProject();
+    if (key === null || key === useProject.getState().projectKey) {
+        key = await persistActiveProject();
+    }
 
     const project = await db.get("projects", key);
 
@@ -127,8 +131,6 @@ export async function confirmAndDeleteProject(
         return false;
     }
 
-    const currentProjectKey = useProject.getState().projectKey;
-
     const projectName = (await useProject.getState().getProject(key)).name
         ?? key;
     const title = options?.confirmTitle ?? `Delete project '${projectName}'?`;
@@ -167,8 +169,24 @@ export async function confirmAndDeleteProject(
 
     if (!confirmOk) return false;
 
-    const copy = await db.get("projects", key);
-    const result = useProject.getState().removeProject(key);
+    const active = useProject.getState();
+    const activeCopy = active.projectKey === key ? active.project : null;
+    const copy = activeCopy
+        ? { ...activeCopy, id: key }
+        : await db.get("projects", key);
+    let result: boolean;
+    try {
+        result = await useProject.getState().removeProject(key);
+    } catch {
+        toast.error(
+            "Couldn't delete the project. Your saved project and current edits have been kept.",
+            {
+                ...(options?.toastContainerId
+                    && { containerId: options.toastContainerId }),
+            },
+        );
+        return false;
+    }
 
     if (!result) {
         errorToast();
@@ -184,13 +202,23 @@ export async function confirmAndDeleteProject(
                     type="button"
                     className="btn btn-xs btn-success rounded-md"
                     onClick={async () => {
-                        if (currentProjectKey == key) {
-                            useProject.getState().saveNewProject();
-                        } else {
+                        try {
                             await db.put("projects", copy);
-                            useProject.getState().updateSavedProjects();
+                            await useProject.getState().updateSavedProjects();
+                            const current = useProject.getState();
+                            if (
+                                current.project === activeCopy
+                                && current.projectKey === null
+                                && current.saveStatus === "draft"
+                            ) {
+                                await loadProject(key);
+                            }
+                            toast.dismiss(successToast);
+                        } catch {
+                            toast.error(
+                                "Couldn't restore the project. Try Undo again.",
+                            );
                         }
-                        toast.dismiss(successToast);
                     }}
                 >
                     Undo

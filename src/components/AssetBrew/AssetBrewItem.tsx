@@ -1,6 +1,6 @@
 import { assets, SpriteCrewItem } from "@kaplayjs/crew";
 import type { FC } from "react";
-import { insertAfterCursor } from "../../features/Editor/application/insertAfterCursor";
+import { useWorkspace } from "../../hooks/useWorkspace";
 import { cn } from "../../util/cn";
 
 interface AssetBrewItemProps {
@@ -16,22 +16,24 @@ export const AssetBrewItem: FC<AssetBrewItemProps> = ({ asset: assetKey }) => {
         : null;
 
     const handleClick = () => {
-        insertAfterCursor(asset.imports.importInPG.original);
-    };
-
-    const handleResourceDrag = (e: React.DragEvent) => {
-        e.dataTransfer.setData(
-            "text",
-            asset.imports.importInPG.original,
-        );
+        useWorkspace.getState().selectAsset({
+            source: "library",
+            key: assetKey,
+            name: asset.name,
+            kind: asset.kind === "Sound"
+                ? "sound"
+                : asset.kind === "Font"
+                ? "font"
+                : "sprite",
+        });
     };
 
     return (
-        <div
-            className="relative flex items-center justify-center bg-base-300 min-w-14 min-h-14 rounded-lg cursor-grab hover:bg-base-100 active:bg-base-50 transition-colors focus:outline-none focus-visible:ring-2 ring-base-content/20 focus-visible:z-[1]"
-            draggable
+        <button
+            type="button"
+            className="relative flex flex-col items-center justify-center bg-base-300 min-w-14 min-h-14 rounded-lg hover:bg-base-100 active:bg-base-50 transition-colors focus:outline-none focus-visible:ring-2 ring-base-content/20 focus-visible:z-[1]"
+            draggable={false}
             onClick={handleClick}
-            onDragStartCapture={handleResourceDrag}
             data-tooltip-id="global"
             data-tooltip-content={asset.name + (typeTip ? ` (${typeTip})` : "")}
             data-tooltip-place="top"
@@ -61,6 +63,7 @@ export const AssetBrewItem: FC<AssetBrewItemProps> = ({ asset: assetKey }) => {
                     title={asset.name}
                 />
             )}
-        </div>
+            <span className="text-xs">{assetKey}</span>
+        </button>
     );
 };

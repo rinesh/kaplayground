@@ -5,6 +5,7 @@ import {
     createCodexPlayGuideKey,
 } from "./codexPlayGuide.ts";
 import { getExampleCoachPrompts } from "./exampleCoachPrompts.ts";
+import { getExampleLesson } from "./exampleLessons.ts";
 
 export type CodexPlayContext = {
     demoKey: string | null;
@@ -31,5 +32,6 @@ export function createCodexPlayGuideForContext(
         source: context.projectSource ?? sourceDemo?.code,
         isStarter: sourceDemo?.key === WEBMCP_EXAMPLE_NAME,
         prompts: getExampleCoachPrompts(sourceDemo?.key),
+        lesson: getExampleLesson(sourceDemo?.key),
     });
 }

@@ -190,7 +190,7 @@ export const EXAMPLE_COACH_PROMPTS = {
         explain:
             "Move left and right, jump with Space, collect the coin to zoom in, and click to place an explosion in the world. Explain how the camera follows the bean while the score stays fixed on screen.",
         remix:
-            "Turn the camera example into a dramatic treasure pickup. Ease into the zoom, briefly slow time, add a golden flash around the coin, and smoothly return to normal framing.",
+            "Turn the camera starting point into a dramatic treasure pickup. Ease into the zoom, briefly slow time, add a golden flash around the coin, and smoothly return to normal framing.",
         build:
             "Make a tiny camera-tour platformer with three coins at different heights. Pan ahead while moving, add a soft landing bump, and frame the final treasure with a celebratory zoom.",
         invent:
@@ -338,7 +338,7 @@ export const EXAMPLE_COACH_PROMPTS = {
     },
     decisiontree: {
         explain:
-            "The example learns a yes-or-no decision tree from weather, temperature, humidity, and wind samples, then prints the result. Explain one path through that tree in plain language.",
+            "The starting point learns a yes-or-no decision tree from weather, temperature, humidity, and wind samples, then prints the result. Explain one path through that tree in plain language.",
         remix:
             "Bring the weather decision tree onto the game screen as a branching forecast map. Color each question, animate the chosen path, and reveal the final play-outside answer.",
         build:
@@ -358,7 +358,7 @@ export const EXAMPLE_COACH_PROMPTS = {
     },
     drag: {
         explain:
-            "Grab a bean, drag it around, and release it. Explain how the example remembers which object is being held, preserves the pointer offset, and stops movement on release.",
+            "Grab a bean, drag it around, and release it. Explain how the starting point remembers which object is being held, preserves the pointer offset, and stops movement on release.",
         remix:
             "Turn the draggable beans into fridge magnets with soft shadows, a slight tilt while held, and a satisfying snap when released near matching outlines.",
         build:
@@ -478,7 +478,7 @@ export const EXAMPLE_COACH_PROMPTS = {
     },
     floodfill: {
         explain:
-            "The example computes reachable cells in small grids and prints the results. Explain how flood fill starts from one cell, visits connected neighbors, and stops at cells that fail the rule.",
+            "The starting point computes reachable cells in small grids and prints the results. Explain how flood fill starts from one cell, visits connected neighbors, and stops at cells that fail the rule.",
         remix:
             "Visualize the flood fill on screen as water spreading through a tiny tiled garden. Animate each visited cell in order and color blocked cells like stone walls.",
         build:
@@ -528,7 +528,7 @@ export const EXAMPLE_COACH_PROMPTS = {
     },
     gamepad: {
         explain:
-            "Connect a gamepad, press its buttons, move its sticks, and watch the bean respond. Explain how the example detects connection, reads input, and shows a fallback message when no gamepad exists.",
+            "Connect a gamepad, press its buttons, move its sticks, and watch the bean respond. Explain how the starting point detects connection, reads input, and shows a fallback message when no gamepad exists.",
         remix:
             "Turn the gamepad tester into a friendly controller diagram that lights each matching button and stick direction, with a bean mirroring the latest input.",
         build:
@@ -718,7 +718,7 @@ export const EXAMPLE_COACH_PROMPTS = {
     },
     loadingScreen: {
         explain:
-            "Reload and watch the custom loading screen before the beans and ghosts appear, then press Space if the example offers another transition. Explain what can be drawn while assets load.",
+            "Reload and watch the custom loading screen before the beans and ghosts appear, then press Space if the starting point offers another transition. Explain what can be drawn while assets load.",
         remix:
             "Turn the loader into a tiny campsite where a fire grows with progress, stars appear one by one, and the finished scene opens with a sunrise.",
         build:
@@ -768,7 +768,7 @@ export const EXAMPLE_COACH_PROMPTS = {
     },
     onLoadError: {
         explain:
-            "The example deliberately tries to load a missing asset and handles the failure. Explain what error is caught, how the game stays alive, and what feedback the player receives.",
+            "The starting point deliberately tries to load a missing asset and handles the failure. Explain what error is caught, how the game stays alive, and what feedback the player receives.",
         remix:
             "Replace the plain load failure with a friendly missing-character card that shows a fallback silhouette, a short message, and a retry animation.",
         build:

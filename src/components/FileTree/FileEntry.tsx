@@ -22,18 +22,21 @@ export const logoByKind: Record<FileKind, string> = {
 const FileButton: FC<{
     onClick: MouseEventHandler;
     icon: SpriteCrewAsset;
+    label: string;
     rotate?: 0 | 90 | 180 | 270;
     hidden?: boolean;
 }> = (props) => {
     return (
         <button
+            type="button"
+            aria-label={props.label}
             className="btn btn-ghost btn-xs rounded-md px-1 [.btn-primary_&:hover]:bg-white/30"
             onClick={props.onClick}
             hidden={props.hidden}
         >
             <img
                 src={assets[props.icon].outlined}
-                alt="Delete"
+                alt=""
                 className="h-4 data-[rotation=90]:rotate-90 data-[rotation=180]:rotate-180 data-[rotation=270]:-rotate-90"
                 data-rotation={props.rotate}
             />
@@ -65,6 +68,7 @@ export const FileEntry: FC<FileEntryProps> = ({ file }) => {
             await confirm("You cannot remove this file", null, {
                 type: "neutral",
             });
+            return;
         }
 
         if (
@@ -146,6 +150,19 @@ export const FileEntry: FC<FileEntryProps> = ({ file }) => {
                 },
             )}
             onClick={handleClick}
+            role="button"
+            tabIndex={0}
+            aria-label={`Open ${file.path}`}
+            aria-current={currentFile === file.path ? "page" : undefined}
+            onKeyDown={event => {
+                if (
+                    event.target === event.currentTarget
+                    && (event.key === "Enter" || event.key === " ")
+                ) {
+                    event.preventDefault();
+                    setCurrentFile(file.path);
+                }
+            }}
             data-file-kind={file.kind}
         >
             {isRoot() && (
@@ -162,15 +179,18 @@ export const FileEntry: FC<FileEntryProps> = ({ file }) => {
                 <FileButton
                     onClick={handleDelete}
                     icon="trash"
+                    label={`Delete ${file.path}`}
                 />
                 <FileButton
                     onClick={handleMoveUp}
                     icon="arrow"
+                    label={`Move ${file.path} up`}
                     rotate={270}
                 />
                 <FileButton
                     onClick={handleMoveDown}
                     icon="arrow"
+                    label={`Move ${file.path} down`}
                     rotate={90}
                 />
             </div>

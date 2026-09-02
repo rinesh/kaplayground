@@ -26,7 +26,7 @@ export const KAPLAYGROUND_WEBMCP_TOOL_SURFACE = [
         name: "kaplayground_inspect_game",
         title: "Inspect the open KAPLAYGROUND game",
         description:
-            "Use this before changing the game. Returns the current game, one bounded page of file metadata, editor state, and the revision required by update, run, save, and example-opening tools.",
+            "Use this before changing the game. Returns the current game, one bounded page of file metadata, editor state, and the revision required by update, run, save, and starting-point opening tools. Also reports saveStatus, editorVisible, selectedAsset, and the engine version used internally.",
         inputSchema: inspectGameSchema(),
         annotations: readAnnotations(),
     },
@@ -70,17 +70,17 @@ export const KAPLAYGROUND_WEBMCP_TOOL_SURFACE = [
     },
     {
         name: "kaplayground_find_examples",
-        title: "Find KAPLAYGROUND starting games",
+        title: "Find KAPLAYGROUND starting points",
         description:
-            "Find ready-made games and examples by idea or tag when the user asks for a different starting point.",
+            "Find game starting points by idea or tag when the user asks for a different starting point.",
         inputSchema: findExamplesSchema(),
         annotations: readAnnotations(),
     },
     {
         name: "kaplayground_open_example",
-        title: "Open a KAPLAYGROUND starting game",
+        title: "Open a KAPLAYGROUND starting point",
         description:
-            "Replace the open game with one exact result from find_examples. Unsaved work is discarded only after an in-page confirmation clicked by the user.",
+            "Replace the open game with one exact result from find_examples. Pending saves are flushed first; unsaved work is discarded only after an in-page confirmation clicked by the user.",
         inputSchema: openExampleSchema(),
     },
 ] as const satisfies readonly KaplaygroundToolSurface[];
@@ -236,7 +236,7 @@ function updateGameSchema(): object {
                 minLength: 1,
                 maxLength: 512,
                 description:
-                    "Optional file to show in the editor after the update commits. It must exist after the update.",
+                    "Optional file to select in the editor after the update commits, without activating Code. It must exist after the update.",
             },
         },
         required: ["expectedRevision", "changes"],
@@ -345,12 +345,12 @@ function findExamplesSchema(): object {
                 type: "string",
                 maxLength: 120,
                 description:
-                    "Case-insensitive example title, description, key, or tag search.",
+                    "Case-insensitive starting point title, description, key, or tag search.",
             },
             tag: {
                 type: "string",
                 maxLength: 64,
-                description: "Optional exact example tag.",
+                description: "Optional exact starting point tag.",
             },
             limit: pageLimitSchema(MAX_EXAMPLE_RESULTS, 30),
             offset: pageOffsetSchema(),
@@ -388,7 +388,8 @@ function openExampleSchema(): object {
                 type: "string",
                 minLength: 1,
                 maxLength: 128,
-                description: "Exact example key returned by find_examples.",
+                description:
+                    "Exact starting point key returned by find_examples.",
             },
             discardUnsavedChanges: {
                 type: "boolean",

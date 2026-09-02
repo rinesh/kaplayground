@@ -62,8 +62,9 @@ export const createFilesSlice: StateCreator<ProjectStore, [], [], FilesSlice> =
     (_set, get) => ({
         addFile(file) {
             debug(0, "[files] Adding file", file.path);
-            get().project.files.set(file.path, file);
-            get().setProject({});
+            get().setProject({
+                files: new Map(get().project.files).set(file.path, file),
+            });
         },
 
         removeFile(path) {
@@ -73,8 +74,9 @@ export const createFilesSlice: StateCreator<ProjectStore, [], [], FilesSlice> =
             const foundFile = files.has(path) ? files.get(path) : null;
             if (!foundFile) return console.debug("File not found", path);
 
-            get().project.files.delete(path);
-            get().setProject({});
+            const next = new Map(files);
+            next.delete(path);
+            get().setProject({ files: next });
         },
 
         getFile(path) {
@@ -120,11 +122,12 @@ export const createFilesSlice: StateCreator<ProjectStore, [], [], FilesSlice> =
 
             debug(0, "[files] Updating file", foundFile.path);
 
-            get().project.files.set(foundFile.path, {
-                ...foundFile,
-                value,
+            get().setProject({
+                files: new Map(files).set(foundFile.path, {
+                    ...foundFile,
+                    value,
+                }),
             });
-            get().setProject({});
         },
 
         getKAPLAYFile() {

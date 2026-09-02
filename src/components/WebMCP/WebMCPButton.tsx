@@ -44,13 +44,8 @@ export const WebMCPButton = () => {
                 />
             </span>
             <span className="font-semibold tracking-wide">
-                Remix with Codex
-            </span>
-            <span
-                className="hidden text-[10px] font-semibold uppercase tracking-wider text-primary/80 xl:inline"
-                aria-hidden="true"
-            >
-                Play · change · repeat
+                <span className="hidden sm:inline">Remix with Codex</span>
+                <span className="sm:hidden">Remix</span>
             </span>
         </button>
     );

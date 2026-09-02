@@ -11,8 +11,10 @@ export const AboutButton = () => {
         <ToolbarButton
             onClick={handleModalOpenClick}
             icon={assets.question_mark.outlined}
-            text={"About"}
-            tip="About"
+            text="Help"
+            compact
+            aria-label="Help and about"
+            tip="Help and about"
         />
     );
 };

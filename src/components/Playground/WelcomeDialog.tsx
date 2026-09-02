@@ -1,5 +1,5 @@
 import { assets } from "@kaplayjs/crew";
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { WEBMCP_EXAMPLE_NAME } from "../../data/demos";
 import { useProject } from "../../features/Projects/stores/useProject";
 import { confirmNavigate } from "../../util/confirmNavigate";
@@ -12,19 +12,12 @@ type WelcomeDialogProps = {
     isLoading: boolean;
 };
 
-export const WelcomeDialog = ({ isLoading }: WelcomeDialogProps) => {
+export const WelcomeDialog = (_props: WelcomeDialogProps) => {
     const dialogRef = useRef<HTMLDialogElement>(null);
     const createNewProject = useProject((state) => state.createNewProject);
     const demoKey = useProject((state) => state.demoKey);
 
-    const searchParams = new URLSearchParams(location.search);
-    const isStarterDemoLink =
-        searchParams.get("example") === WEBMCP_EXAMPLE_NAME
-        && [...searchParams.keys()].every((key) => key === "example");
-    const isStarterLanding = location.pathname === "/"
-        && (!location.search || isStarterDemoLink);
     const isStarterReady = demoKey === WEBMCP_EXAMPLE_NAME;
-    const hasSeenWelcome = localStorage.getItem(WELCOME_STORAGE_KEY) === "true";
 
     const markWelcomeSeen = () => {
         localStorage.setItem(WELCOME_STORAGE_KEY, "true");
@@ -66,18 +59,6 @@ export const WelcomeDialog = ({ isLoading }: WelcomeDialogProps) => {
         closeWelcome();
         requestAnimationFrame(openDemoBrowser);
     };
-
-    useEffect(() => {
-        if (
-            isLoading
-            || hasSeenWelcome
-            || !isStarterLanding
-            || !isStarterReady
-        ) return;
-
-        localStorage.setItem(WELCOME_STORAGE_KEY, "true");
-        dialogRef.current?.showModal();
-    }, [hasSeenWelcome, isLoading, isStarterLanding, isStarterReady]);
 
     return (
         <Dialog
@@ -215,8 +196,8 @@ export const WelcomeDialog = ({ isLoading }: WelcomeDialogProps) => {
                                         Pick another starting point
                                     </span>
                                     <span className="text-sm">
-                                        Open any example, play it, and remix it
-                                        with Codex.
+                                        Open any starting point, play it, and
+                                        remix it with Codex.
                                     </span>
                                 </button>
                             </div>

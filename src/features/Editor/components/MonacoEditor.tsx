@@ -5,12 +5,11 @@ import {
     FocusFrame,
     useFocusFrameRef,
 } from "../../../components/UI/FocusFrame";
-import { useBeforeUnload } from "../../../hooks/useBeforeUnload";
 import { useConfig } from "../../../hooks/useConfig.ts";
 import { useEditor } from "../../../hooks/useEditor.ts";
 import { useProject } from "../../Projects/stores/useProject.ts";
 import { loadFileInModel } from "../application/loadFileInModel";
-import makeKeybindingsGlobal from "../application/makeKeybindingsGlobal";
+import { synchronizeProjectModels } from "../application/projectModels";
 import { formatAction } from "../monaco/actions/format.ts";
 import { createConfetti } from "../monaco/fun/createConfetti";
 import { configMonaco } from "../monaco/monacoConfig.ts";
@@ -22,7 +21,6 @@ interface MonacoEditorProps {
 export const MonacoEditor: FC<MonacoEditorProps> = (props) => {
     const updateFile = useProject((s) => s.updateFile);
     const getFile = useProject((s) => s.getFile);
-    const projectIsSaved = useProject((s) => s.projectIsSaved);
     const run = useEditor((s) => s.run);
     const pause = useEditor((s) => s.pause);
     const stop = useEditor((s) => s.stop);
@@ -31,22 +29,12 @@ export const MonacoEditor: FC<MonacoEditorProps> = (props) => {
     const setRuntime = useEditor((s) => s.setRuntime);
     const getRuntime = useEditor((s) => s.getRuntime);
     const focusGame = useEditor((s) => s.focusGame);
-    const updateEditorLastSavedValue = useEditor((s) =>
-        s.updateEditorLastSavedValue
-    );
-    const updateHasUnsavedChanges = useEditor((s) => s.updateHasUnsavedChanges);
-    const hasUnsavedChanges = useEditor((s) =>
-        s.getRuntime().hasUnsavedChanges
-    );
     const getConfig = useConfig((s) => s.getConfig);
     const setConfigKey = useConfig((s) => s.setConfigKey);
     const focusFrameRef = useFocusFrameRef();
 
-    useBeforeUnload(hasUnsavedChanges);
-
     const handleEditorBeforeMount = (monaco: Monaco) => {
         configMonaco(monaco);
-        run();
     };
 
     const handleEditorMount = (
@@ -61,8 +49,8 @@ export const MonacoEditor: FC<MonacoEditorProps> = (props) => {
 
         const currentFile = getRuntime().currentFile;
 
-        props.onMount?.();
-        editor.setValue(getFile(currentFile)?.value ?? "");
+        synchronizeProjectModels(monaco, useProject.getState().project.files);
+        useEditor.getState().setCurrentFile(currentFile);
 
         editor.onDidChangeModelContent((ev) => {
             if (ev.isFlush) return;
@@ -83,15 +71,9 @@ export const MonacoEditor: FC<MonacoEditorProps> = (props) => {
             updateImageDecorations();
         });
 
-        editor.onDidChangeModelContent(() => {
-            const projectKey = useProject.getState().projectKey;
-            const isSaved = projectKey && projectIsSaved(projectKey);
-            if (isSaved) updateEditorLastSavedValue();
-            updateHasUnsavedChanges();
-        });
-
+        // Local editor actions mirror the workspace-level shortcuts.
         // Editor Shortcuts
-        editor.addAction(makeKeybindingsGlobal({
+        editor.addAction({
             id: "run-game",
             label: "Run Game",
             keybindings: [
@@ -106,9 +88,9 @@ export const MonacoEditor: FC<MonacoEditorProps> = (props) => {
                     editor.getAction("format-kaplay")?.run();
                 }
             },
-        }));
+        });
 
-        editor.addAction(makeKeybindingsGlobal({
+        editor.addAction({
             id: "pause-resume-game",
             label: "Pause/Resume Game",
             keybindings: [
@@ -119,9 +101,9 @@ export const MonacoEditor: FC<MonacoEditorProps> = (props) => {
             run: () => {
                 pause();
             },
-        }));
+        });
 
-        editor.addAction(makeKeybindingsGlobal({
+        editor.addAction({
             id: "stop-game",
             label: "Stop Game",
             keybindings: [
@@ -133,7 +115,7 @@ export const MonacoEditor: FC<MonacoEditorProps> = (props) => {
             run: () => {
                 stop();
             },
-        }));
+        });
 
         editor.addAction({
             id: "sync-file",
@@ -160,7 +142,7 @@ export const MonacoEditor: FC<MonacoEditorProps> = (props) => {
             },
         });
 
-        editor.addAction(makeKeybindingsGlobal({
+        editor.addAction({
             id: "focus-editor",
             label: "Focus Editor",
             keybindings: [
@@ -170,9 +152,9 @@ export const MonacoEditor: FC<MonacoEditorProps> = (props) => {
                 editor.focus();
                 focusFrameRef.current?.blink();
             },
-        }));
+        });
 
-        editor.addAction(makeKeybindingsGlobal({
+        editor.addAction({
             id: "focus-editor-game",
             label: "Focus between Editor and Game",
             keybindings: [
@@ -187,7 +169,7 @@ export const MonacoEditor: FC<MonacoEditorProps> = (props) => {
                     focusFrameRef.current?.blink();
                 }
             },
-        }));
+        });
 
         let decorations = editor.createDecorationsCollection([]);
 
@@ -198,8 +180,9 @@ export const MonacoEditor: FC<MonacoEditorProps> = (props) => {
         updateImageDecorations();
 
         for (const file of useProject.getState().project.files.values()) {
-            loadFileInModel(file);
+            void loadFileInModel(file);
         }
+        props.onMount?.();
 
         // #4386 pasting bug treating plaintext as a snippet with escaped string adding '$0' at the end
         editor.getContainerDomNode().addEventListener("drop", e => {
@@ -238,7 +221,7 @@ export const MonacoEditor: FC<MonacoEditorProps> = (props) => {
     };
 
     useEffect(() => {
-        useConfig.subscribe((state) => {
+        return useConfig.subscribe((state) => {
             useEditor.getState().runtime.editor?.updateOptions({
                 wordWrap: state.config.wordWrap ? "on" : "off",
             });
@@ -251,14 +234,13 @@ export const MonacoEditor: FC<MonacoEditorProps> = (props) => {
             className="h-full bg-base-200 rounded-xl relative"
         >
             <Editor
-                defaultPath={getRuntime().currentFile}
+                defaultPath={`file:///${getRuntime().currentFile}`}
                 defaultLanguage="javascript"
                 defaultValue={getFile(getRuntime().currentFile)?.value}
                 beforeMount={handleEditorBeforeMount}
                 onMount={handleEditorMount}
                 theme={"Spiker"}
                 loading={null}
-                language="javascript"
                 options={{
                     fontFamily: "\"DM Mono\", monospace",
                     fontSize:

@@ -12,13 +12,16 @@ interface ActiveProjectPersistenceDependencies<Project, Snapshot> {
     getActiveProject(): ActiveProjectState<Project>;
     getActiveIdentity(): ActiveProjectIdentity;
     snapshotProject(project: Project): Snapshot;
-    generateId(snapshot: Snapshot): string;
+    getDraftId(): string;
     writeProject(id: string, snapshot: Snapshot): Promise<void>;
-    deleteProject(id: string): Promise<void>;
-    commitTransientProject(id: string): void;
+    onSaving(identity: ActiveProjectIdentity): void;
+    onSaved(id: string, identity: ActiveProjectIdentity): void;
+    onError(error: unknown, identity: ActiveProjectIdentity): void;
 }
 
-/** Serializes explicit saves while binding each request to its call-time project. */
+export type ProjectSaveStatus = "draft" | "saving" | "saved" | "error";
+
+/** Serializes immutable snapshots, reusing one draft id across saves and retries. */
 export function createActiveProjectPersister<Project, Snapshot>(
     dependencies: ActiveProjectPersistenceDependencies<Project, Snapshot>,
 ): () => Promise<string> {
@@ -32,25 +35,28 @@ export function createActiveProjectPersister<Project, Snapshot>(
             revision: active.revision,
             snapshot: dependencies.snapshotProject(active.project),
         };
-        const id = captured.key ?? dependencies.generateId(captured.snapshot);
+        const id = captured.key ?? dependencies.getDraftId();
+        dependencies.onSaving(captured);
 
         const operation = async () => {
-            assertStillActive(dependencies.getActiveIdentity(), captured);
-
-            await dependencies.writeProject(id, captured.snapshot);
-
+            if (
+                dependencies.getActiveIdentity().generation
+                    !== captured.generation
+            ) {
+                throw new Error(
+                    "The active project changed while it was saving",
+                );
+            }
             try {
-                assertStillActive(dependencies.getActiveIdentity(), captured);
+                await dependencies.writeProject(id, captured.snapshot);
             } catch (error) {
-                if (captured.key === null) {
-                    await dependencies.deleteProject(id);
-                }
+                dependencies.onError(error, captured);
                 throw error;
             }
 
-            if (captured.key === null) {
-                dependencies.commitTransientProject(id);
-            }
+            // An acknowledged older write must not mark newer edits saved.
+            dependencies.onSaved(id, captured);
+            assertStillActive(dependencies.getActiveIdentity(), captured);
 
             return id;
         };
@@ -70,7 +76,6 @@ function assertStillActive(
 ): void {
     if (
         active.generation !== captured.generation
-        || active.key !== captured.key
         || active.revision !== captured.revision
     ) {
         throw new Error("The active project changed while it was saving");

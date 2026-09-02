@@ -23,7 +23,7 @@ import {
     type SandboxRunResultMessage,
 } from "./previewProtocol";
 import { createPreviewRunCoordinator } from "./previewRunCoordinator";
-import { useConfig } from "./useConfig";
+import { useWorkspace } from "./useWorkspace";
 
 const PREVIEW_READY_TIMEOUT_MS = 10_000;
 const PREVIEW_RUN_TIMEOUT_MS = 30_000;
@@ -182,7 +182,8 @@ export const useEditor = create<EditorStore>((set, get) => ({
         if (!currentFileModel) {
             currentFileModel = monaco.editor.createModel(
                 useProject.getState().getFile(newCurrentFile)?.value ?? "",
-                "javascript",
+                useProject.getState().getFile(newCurrentFile)?.language
+                    ?? "javascript",
                 monaco.Uri.file(newCurrentFile),
             );
         }
@@ -202,7 +203,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
             editor.restoreViewState(viewState);
         }
 
-        editor.focus();
+        if (useWorkspace.getState().activeTab === "code") editor.focus();
 
         set((state) => ({
             runtime: {
@@ -263,7 +264,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
         const url = new URL(get().runtime.iframeSrc);
         url.searchParams.set(
             "console",
-            (useConfig.getState().getConfig().console ?? true).toString(),
+            "true",
         );
         return url.href;
     },
@@ -682,14 +683,11 @@ export const useEditor = create<EditorStore>((set, get) => ({
         }));
     },
     updateHasUnsavedChanges() {
-        const editor = get().runtime.editor;
-        if (!editor) return;
-
         set((state) => ({
             runtime: {
                 ...state.runtime,
-                hasUnsavedChanges: get().getRuntime().editorLastSavedValue
-                    != editor.getValue(),
+                hasUnsavedChanges: useProject.getState()
+                    .hasUnsavedProjectChanges(),
             },
         }));
     },

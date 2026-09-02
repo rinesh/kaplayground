@@ -78,9 +78,9 @@ export const parseAssetPath = (
     return path;
 };
 
-// TODO: Remplaze with normalize() from path.ts
 const normalize = (path: string) => {
-    const normalizedPath = path.replace(/^\/|\/$/g, "").replace(/"/g, "");
+    const normalizedPath = path.replace(/^(?:\.\/)+/, "")
+        .replace(/^\/|\/$/g, "").replace(/"/g, "");
 
     return normalizedPath;
 };

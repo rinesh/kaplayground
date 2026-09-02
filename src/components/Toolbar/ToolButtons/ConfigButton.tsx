@@ -11,8 +11,9 @@ export const ConfigButton = () => {
         <ToolbarButton
             onClick={handleModalOpenClick}
             icon={assets.config.outlined}
-            text={"Config"}
-            tip="Config"
+            text="Settings"
+            compact
+            tip="Settings"
         />
     );
 };

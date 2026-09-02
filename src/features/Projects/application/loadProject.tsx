@@ -1,24 +1,29 @@
 import { toast } from "react-toastify";
 import { db } from "../../../db/client/db";
 import { useConfig } from "../../../hooks/useConfig";
-import { useEditor } from "../../../hooks/useEditor";
 import { confirm } from "../../../util/confirm";
 import { debug } from "../../../util/logs";
 import { siteStorageUsage } from "../../../util/siteStorageUsage";
-import { synchronizeProjectModels } from "../../Editor/application/projectModels";
 import { useProject } from "../stores/useProject";
 
 export const loadProject = async (projectKey: string) => {
     const projectStore = useProject.getState();
-    const editorStore = useEditor.getState();
     const configStore = useConfig.getState();
-    const prevMode = projectStore.project.mode;
     const isInitialLoad = !projectStore.project.createdAt;
     const createNewProject = useProject.getState().createNewProject;
 
     debug(0, "[project] Loading project", projectKey);
 
     const project = await db.get("projects", projectKey);
+    const current = useProject.getState();
+    if (
+        current.projectGeneration !== projectStore.projectGeneration
+        || current.projectRevision !== projectStore.projectRevision
+    ) {
+        throw new Error(
+            "The active project changed while loading. Try opening the project again.",
+        );
+    }
 
     if (!project) {
         await createNewProject("pj");
@@ -102,6 +107,12 @@ export const loadProject = async (projectKey: string) => {
     useProject.setState((state) => ({
         projectGeneration: state.projectGeneration + 1,
         projectRevision: state.projectRevision + 1,
+        savedRevision: state.projectRevision + 1,
+        persistenceReady: true,
+        uploadingAssets: new Map(),
+        draftProjectId: projectKey,
+        saveStatus: "saved",
+        saveError: null,
         projectKey,
         projectWasEdited: false,
         demoKey: null,
@@ -114,20 +125,13 @@ export const loadProject = async (projectKey: string) => {
         },
     }));
 
-    const monaco = editorStore.runtime.monaco;
-    if (monaco) synchronizeProjectModels(monaco, files);
-    editorStore.setCurrentFile("main.js");
-
     configStore.setConfig({
         lastOpenedProject: projectKey,
     });
 
-    // It's already updated and run on mount by editor
-    if (!isInitialLoad && prevMode == project.mode) {
-        editorStore.updateAndRun();
-    }
-
     const url = new URL(window.location.href);
     url.searchParams.delete("example");
+    url.searchParams.delete("code");
+    url.searchParams.delete("version");
     window.history.replaceState({}, "", url);
 };

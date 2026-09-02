@@ -1,5 +1,5 @@
-import { assets } from "@kaplayjs/crew";
-import { type FC, useRef, useState } from "react";
+import { type ChangeEvent, useRef, useState } from "react";
+import { toast } from "react-toastify";
 import { buildProject } from "../../features/Projects/application/buildProject";
 import {
     confirmAndDeleteProject,
@@ -8,143 +8,114 @@ import {
     openProjectPreferences,
 } from "../../features/Projects/services/projectActions";
 import { useProject } from "../../features/Projects/stores/useProject";
-import { useEditor } from "../../hooks/useEditor";
+import { confirmNavigate } from "../../util/confirmNavigate";
 import { downloadBlob } from "../../util/download";
 import { KDropdownMenuSeparator } from "../UI/KDropdown/KDropdownSeparator";
 import { ToolbarDropdown } from "./ToolbarDropdown";
 import { ToolbarDropdownButton } from "./ToolbarDropdownButton";
 
-export const ToolbarProjectDropdown: FC = () => {
-    const showNotification = useEditor((state) => state.showNotification);
-    const createNewProject = useProject((state) => state.createNewProject);
-    const unserializeProject = useProject((state) => state.unserializeProject);
-    const projectKey = useProject((state) => state.projectKey);
+export const ToolbarProjectDropdown = () => {
+    const projectKey = useProject(state => state.projectKey);
     const newFileInput = useRef<HTMLInputElement>(null);
-    const importButton = useRef<HTMLDivElement>(null);
-    const [open, setOpen] = useState<boolean>(false);
-
-    const handleImport = () => {
-        if (newFileInput.current) {
-            newFileInput.current.click();
-        }
-    };
-
-    const handleExport = async () => await exportProject();
+    const [open, setOpen] = useState(false);
+    const attempt = (action: () => Promise<unknown>) =>
+        void action().catch(error =>
+            toast.error(error instanceof Error ? error.message : String(error))
+        );
 
     const handleHTMLBuild = async () => {
         const { project } = useProject.getState();
         const projectCode = await buildProject();
-
-        if (!projectCode) {
-            showNotification("Failed to export project as HTML");
-            return;
-        }
-
-        const blob = new Blob([projectCode], {
-            type: "text/html",
-        });
-
-        downloadBlob(blob, `${project.name.trim()}.html`);
-        showNotification("Downloading HTML5 game...");
+        if (!projectCode) throw new Error("Couldn't export this game as HTML.");
+        downloadBlob(
+            new Blob([projectCode], { type: "text/html" }),
+            `${project.name.trim()}.html`,
+        );
     };
 
-    const handleProjectUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
+    const handleProjectUpload = async (
+        event: ChangeEvent<HTMLInputElement>,
+    ) => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
         if (!file) return;
-
-        const reader = new FileReader();
-
-        reader.onload = async (e) => {
-            const project = unserializeProject(e.target?.result as string);
-            await createNewProject(project.mode, project);
-        };
-
-        reader.readAsText(file);
-        setOpen(false);
-    };
-
-    const handleNewProject = () => {
-        createNewProject("pj");
-    };
-
-    const handleNewExample = () => {
-        createNewProject("ex");
+        const generation = useProject.getState().projectGeneration;
+        try {
+            const project = useProject.getState().unserializeProject(
+                await file.text(),
+            );
+            if (useProject.getState().projectGeneration !== generation) return;
+            await confirmNavigate(() =>
+                useProject.getState().createNewProject(project.mode, project)
+            );
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : "Couldn't import that project.",
+            );
+        }
     };
 
     return (
-        <ToolbarDropdown
-            icon={assets.toolbox.outlined}
-            text="Project"
-            tip="Project Options"
-            open={open}
-            setOpen={setOpen}
-        >
-            <ToolbarDropdownButton
-                onClick={() => openProjectPreferences()}
+        <>
+            <ToolbarDropdown
+                icon={assets.toolbox.outlined}
+                text="Project options"
+                compact
+                tip="Project options"
+                open={open}
+                setOpen={setOpen}
             >
-                Preferences
-            </ToolbarDropdownButton>
-
-            <ToolbarDropdownButton
-                onClick={handleHTMLBuild}
-            >
-                Build (HTML5)
-            </ToolbarDropdownButton>
-
-            <ToolbarDropdownButton
-                onClick={() => openProjectDetails()}
-                disabled={projectKey == null}
-            >
-                Details
-            </ToolbarDropdownButton>
-
-            <ToolbarDropdownButton
-                onClick={() => confirmAndDeleteProject()}
-                type="danger"
-                disabled={projectKey == null}
-            >
-                Delete
-            </ToolbarDropdownButton>
-
-            <KDropdownMenuSeparator />
-
-            <ToolbarDropdownButton
-                ref={importButton}
-                onClick={handleImport}
-                onSelect={(e) => {
-                    e.preventDefault();
-                }}
-            >
-                Import
-            </ToolbarDropdownButton>
-
-            <ToolbarDropdownButton
-                onClick={handleExport}
-            >
-                Export
-            </ToolbarDropdownButton>
-
-            <KDropdownMenuSeparator />
-
-            <ToolbarDropdownButton
-                onClick={handleNewProject}
-            >
-                Create new project
-            </ToolbarDropdownButton>
-
-            <ToolbarDropdownButton
-                onClick={handleNewExample}
-            >
-                Create new example
-            </ToolbarDropdownButton>
-
+                <ToolbarDropdownButton
+                    onClick={() =>
+                        attempt(() =>
+                            useProject.getState().persistActiveProject()
+                        )}
+                >
+                    Save project
+                </ToolbarDropdownButton>
+                <ToolbarDropdownButton onClick={() => openProjectPreferences()}>
+                    Project settings
+                </ToolbarDropdownButton>
+                <ToolbarDropdownButton
+                    onClick={() => attempt(() => openProjectDetails())}
+                    disabled={!projectKey}
+                >
+                    Project details
+                </ToolbarDropdownButton>
+                <KDropdownMenuSeparator />
+                <ToolbarDropdownButton
+                    onClick={() => newFileInput.current?.click()}
+                >
+                    Import project
+                </ToolbarDropdownButton>
+                <ToolbarDropdownButton
+                    onClick={() => attempt(() => exportProject())}
+                >
+                    Export project
+                </ToolbarDropdownButton>
+                <ToolbarDropdownButton onClick={() => attempt(handleHTMLBuild)}>
+                    Export playable HTML
+                </ToolbarDropdownButton>
+                <KDropdownMenuSeparator />
+                <ToolbarDropdownButton
+                    type="danger"
+                    disabled={!projectKey}
+                    onClick={() => attempt(() => confirmAndDeleteProject())}
+                >
+                    Delete project
+                </ToolbarDropdownButton>
+            </ToolbarDropdown>
             <input
                 type="file"
                 className="hidden"
-                onChange={handleProjectUpload}
+                aria-label="Import project file"
+                onChange={event => void handleProjectUpload(event)}
                 accept=".kaplay"
                 ref={newFileInput}
             />
-        </ToolbarDropdown>
+        </>
     );
 };
+import { assets } from "@kaplayjs/crew";

@@ -42,12 +42,12 @@ export const createAssetsSlice: StateCreator<
     assetsLastId: 0,
     uploadingAssets: new Map(),
     addAsset(asset) {
-        const assets = get().project.assets;
+        const assets = new Map(get().project.assets);
         assets.set(asset.path, asset);
 
         debug(0, "[assets] Asset added:", asset.name);
 
-        get().setProject({});
+        get().setProject({ assets });
     },
     uploadAsset(asset) {
         const assets = get().project.assets;
@@ -65,10 +65,12 @@ export const createAssetsSlice: StateCreator<
             set({});
         } else {
             debug(0, "[assets] Adding asset:", asset.name);
+            const generation = get().projectGeneration;
             get().uploadingAssets.set(asset.path, asset);
             const { file, ...sanitizedAsset } = asset;
 
             fileToBase64(file).then((url) => {
+                if (get().projectGeneration !== generation) return;
                 get().addAsset({
                     ...sanitizedAsset,
                     url: url,
@@ -90,7 +92,7 @@ export const createAssetsSlice: StateCreator<
     removeAsset(resourceId) {
         debug(0, "[assets] Removing asset", resourceId);
 
-        const assets = get().project.assets;
+        const assets = new Map(get().project.assets);
 
         if (assets.has(resourceId)) {
             assets.delete(resourceId);
@@ -99,6 +101,6 @@ export const createAssetsSlice: StateCreator<
         }
 
         set({});
-        get().setProject({});
+        get().setProject({ assets });
     },
 });

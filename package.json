@@ -19,7 +19,7 @@
     "prepare": "cd kaplay && npm i && cd .. && npm run generate:lib",
     "sandbox:build": "cd sandbox && vite build",
     "sandbox:deploy": "cd sandbox && wrangler pages deploy --branch=main",
-    "test:webmcp": "npm run generate:all && node --experimental-strip-types --test tests/webmcp.test.mjs tests/boundedConsoleCapture.test.mjs tests/projectModels.test.mjs tests/webMCPLifecycle.test.mjs tests/previewReadiness.test.mjs tests/runtimeInspection.test.mjs tests/rootStartup.test.mjs",
+    "test:webmcp": "npm run generate:all && node --experimental-strip-types --test tests/webmcp.test.mjs tests/boundedConsoleCapture.test.mjs tests/projectModels.test.mjs tests/webMCPLifecycle.test.mjs tests/previewReadiness.test.mjs tests/runtimeInspection.test.mjs tests/rootStartup.test.mjs tests/gameFirst.test.mjs",
     "test:webmcp:browser": "node tests/webmcp.browser.test.mjs",
     "verify:webmcp": "npm run test:webmcp && npm run check && npm run test:webmcp:browser && npm run sandbox:build && npm run build",
     "neu": "neu"

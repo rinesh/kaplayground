@@ -13,6 +13,7 @@ export const ToolbarMoreActionsDropdown: FC = () => {
             icon={"down"}
             className="px-0.5 -ml-0.5 mr-0.5"
             tip="More Actions"
+            aria-label="Run options"
         >
             <ToolbarDropdownButton
                 icon={assets.pause.outlined}

@@ -70,13 +70,6 @@ export const ProjectDetails = forwardRef<HTMLDivElement, ProjectDetailsProps>(
                         <div className="font-medium text-white">Name</div>
                         <h2 className="text-base">{project.formattedName}</h2>
                     </div>
-
-                    <div className="flex flex-col gap-0.5 flex-1">
-                        <h3 className="font-medium text-white">Type</h3>
-                        <div className="mt-0.5 -mx-0.5">
-                            <Tag name={project.type} />
-                        </div>
-                    </div>
                 </div>
 
                 <div className="flex flex-wrap gap-x-4 gap-y-1.5">
@@ -100,13 +93,6 @@ export const ProjectDetails = forwardRef<HTMLDivElement, ProjectDetailsProps>(
                 </div>
 
                 <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-                    <div className="flex flex-col gap-0.5 flex-1 only:contents">
-                        <h3 className="flex-1 font-medium text-white">
-                            KAPLAY Version
-                        </h3>
-                        <div className="flex-1">{project.version}</div>
-                    </div>
-
                     {showBuildMode
                         ? (
                             <div className="flex flex-col gap-0.5 flex-1 only:contents">

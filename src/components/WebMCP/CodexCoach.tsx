@@ -13,7 +13,10 @@ export const CodexCoach = ({ guide }: Props) => {
 
     if (collapsed) {
         return (
-            <div className="flex shrink-0 justify-end rounded-xl bg-base-300 px-2 py-1.5">
+            <aside
+                aria-label="Codex tips"
+                className="flex shrink-0 justify-end rounded-xl bg-base-300 px-2 py-1.5"
+            >
                 <button
                     type="button"
                     className="btn btn-xs border-fuchsia-300/20 bg-fuchsia-300/10 text-fuchsia-100 hover:bg-fuchsia-300/15"
@@ -21,21 +24,22 @@ export const CodexCoach = ({ guide }: Props) => {
                 >
                     ✦ Show Codex ideas
                 </button>
-            </div>
+            </aside>
         );
     }
 
     return (
-        <div className="@container relative shrink-0">
+        <aside aria-label="Codex tips" className="@container relative shrink-0">
             <WebMCPTutorial key={guide.key} guide={guide} condensed />
             <button
                 type="button"
                 className="btn btn-circle btn-ghost btn-xs absolute right-2 top-2 text-white/55 hover:text-white"
                 aria-label="Hide Codex ideas"
-                onClick={() => setCollapsed(true)}
+                onClick={() =>
+                    setCollapsed(true)}
             >
                 ×
             </button>
-        </div>
+        </aside>
     );
 };

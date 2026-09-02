@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { readFile, rm, mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -121,14 +121,16 @@ class CdpClient {
 async function main() {
     let client;
     let profileDirectory;
+    const screenshotDirectory = process.env.WEBMCP_CAPTURE_UI
+        ? await mkdtemp(join(tmpdir(), "kaplayground-ui-review-"))
+        : null;
 
     try {
         const ports = new Set();
         while (ports.size < 3) ports.add(await freePort());
         const [appPort, sandboxPort, debuggingPort] = ports;
         const sandboxUrl = `http://127.0.0.1:${sandboxPort}/`;
-        const appUrl =
-            `http://127.0.0.1:${appPort}/tests/webmcp.browser.html`;
+        const appUrl = `http://127.0.0.1:${appPort}/tests/webmcp.browser.html`;
 
         const sandbox = startProcess(
             viteExecutable(),
@@ -164,6 +166,8 @@ async function main() {
             "app",
         );
         await waitForUrl(appUrl, app, 30_000);
+        await verifyPublicAssetRoutes(sandboxUrl);
+        await verifyPublicAssetRoutes(appUrl);
 
         const fixtures = await loadBrowserFixtures();
         profileDirectory = await mkdtemp(
@@ -211,6 +215,50 @@ async function main() {
         }
 
         const resultPromise = waitForBrowserResult(client, 120_000);
+        const beforeTabs = await Promise.race([
+            waitForBrowserPhase(client, "tabs-ready", 60_000).then(() => null),
+            resultPromise,
+        ]);
+        assert.equal(
+            beforeTabs,
+            null,
+            beforeTabs?.error ?? "Test ended before tab keyboard checks.",
+        );
+        await client.send("Page.bringToFront");
+        const tabRect = await client.send("Runtime.evaluate", {
+            expression:
+                `(() => { const r = document.querySelector('[aria-label="Workspace panels"] [role="tab"]').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`,
+            returnByValue: true,
+        });
+        await client.send("Input.dispatchMouseEvent", {
+            type: "mousePressed",
+            button: "left",
+            clickCount: 1,
+            ...tabRect.result.value,
+        });
+        await client.send("Input.dispatchMouseEvent", {
+            type: "mouseReleased",
+            button: "left",
+            clickCount: 1,
+            ...tabRect.result.value,
+        });
+        await client.send("Input.dispatchKeyEvent", {
+            type: "keyDown",
+            key: "ArrowRight",
+            code: "ArrowRight",
+            windowsVirtualKeyCode: 39,
+            nativeVirtualKeyCode: 39,
+        });
+        await client.send("Input.dispatchKeyEvent", {
+            type: "keyUp",
+            key: "ArrowRight",
+            code: "ArrowRight",
+            windowsVirtualKeyCode: 39,
+            nativeVirtualKeyCode: 39,
+        });
+        await client.send("Runtime.evaluate", {
+            expression: "globalThis.__webmcpTabInputComplete?.()",
+        });
         const earlyResult = await Promise.race([
             waitForBrowserPhase(client, "movement-ready", 90_000).then(
                 () => null,
@@ -221,9 +269,12 @@ async function main() {
             assert.equal(
                 earlyResult.passed,
                 true,
-                earlyResult.error ?? "Browser test failed before movement input.",
+                earlyResult.error
+                    ?? "Browser test failed before movement input.",
             );
-            throw new Error("Browser test finished before requesting movement input.");
+            throw new Error(
+                "Browser test finished before requesting movement input.",
+            );
         }
 
         await client.send("Input.dispatchKeyEvent", {
@@ -245,8 +296,162 @@ async function main() {
             expression: "globalThis.__webmcpMovementInputComplete?.()",
         });
 
+        const beforeLayout = await Promise.race([
+            waitForBrowserPhase(client, "layout-ready", 90_000).then(() =>
+                null
+            ),
+            resultPromise,
+        ]);
+        assert.equal(
+            beforeLayout,
+            null,
+            beforeLayout?.error ?? "Test ended before layout checks.",
+        );
+        const layoutChecks = [];
+        for (
+            const [width, height] of [[1042, 936], [1440, 1000], [390, 844], [
+                1042,
+                936,
+            ]]
+        ) {
+            await client.send("Emulation.setDeviceMetricsOverride", {
+                width,
+                height,
+                deviceScaleFactor: 1,
+                mobile: false,
+            });
+            await delay(250);
+            const evaluated = await client.send("Runtime.evaluate", {
+                expression: `(() => {
+                    const rect = selector => {
+                        const box = document.querySelector(selector)?.getBoundingClientRect();
+                        return box && { x: box.x, y: box.y, width: box.width, height: box.height, bottom: box.bottom, right: box.right };
+                    };
+                    return { preview: rect('#game-view'), coach: rect('aside[aria-label="Codex tips"]'), toolbar: rect('[role="toolbar"]'), panel: rect('[aria-label="Workspace panels"]'), output: rect('#console-wrapper'), width: innerWidth, scrollWidth: document.documentElement.scrollWidth, editors: document.querySelectorAll('.monaco-editor').length };
+                })()`,
+                returnByValue: true,
+            });
+            const layout = evaluated.result.value;
+            assert(
+                layout.preview?.width > 250 && layout.preview.height >= 290,
+                `Preview is unusable at ${width}: ${JSON.stringify(layout)}`,
+            );
+            assert(
+                layout.panel?.width >= 295 && layout.output?.height >= 169,
+                `Right panels are unusable at ${width}: ${
+                    JSON.stringify(layout)
+                }`,
+            );
+            assert(
+                layout.scrollWidth <= width + 1,
+                `Page overflows horizontally at ${width}.`,
+            );
+            assert.equal(
+                layout.editors,
+                1,
+                "The unified workspace must mount exactly one editor.",
+            );
+            assert(
+                layout.coach?.y >= layout.preview.bottom - 1
+                    && layout.coach.height > 100
+                    && Math.abs(layout.coach.width - layout.preview.width) <= 2,
+                `The tips must stay beneath the preview at ${width}.`,
+            );
+            if (width >= 900) {
+                assert(
+                    layout.preview.right <= layout.panel.x + 2,
+                    "Desktop preview and tools must be side by side.",
+                );
+                assert(
+                    Math.abs(layout.preview.y - layout.panel.y) <= 2,
+                    "Desktop columns don't align.",
+                );
+                assert(
+                    layout.output.y > layout.panel.bottom,
+                    "Output must stay below the upper panel.",
+                );
+            } else {
+                assert(
+                    layout.panel.y >= layout.coach.bottom - 2,
+                    "Portrait panels must stack after the preview and tips.",
+                );
+                assert(
+                    layout.output.y > layout.panel.bottom,
+                    "Portrait logs must follow the asset/code panel.",
+                );
+            }
+            if (screenshotDirectory) {
+                const screenshot = await client.send("Page.captureScreenshot", {
+                    format: "png",
+                });
+                await writeFile(
+                    join(screenshotDirectory, `workspace-${width}.png`),
+                    Buffer.from(screenshot.data, "base64"),
+                );
+                if (width < 900) {
+                    await client.send("Runtime.evaluate", {
+                        expression:
+                            "document.querySelector('main').parentElement.scrollTop = 450",
+                    });
+                    await delay(100);
+                    const panels = await client.send("Page.captureScreenshot", {
+                        format: "png",
+                    });
+                    await writeFile(
+                        join(screenshotDirectory, `panels-${width}.png`),
+                        Buffer.from(panels.data, "base64"),
+                    );
+                    await client.send("Runtime.evaluate", {
+                        expression:
+                            "document.querySelector('main').parentElement.scrollTop = 0",
+                    });
+                }
+            }
+            layoutChecks.push({ width, height, passed: true });
+        }
+        await client.send("Runtime.evaluate", {
+            expression:
+                "document.querySelector('[aria-label=\"Resize workspace panels\"]').focus()",
+        });
+        await client.send("Input.dispatchKeyEvent", {
+            type: "keyDown",
+            key: "ArrowLeft",
+            code: "ArrowLeft",
+            windowsVirtualKeyCode: 37,
+            nativeVirtualKeyCode: 37,
+        });
+        await client.send("Input.dispatchKeyEvent", {
+            type: "keyUp",
+            key: "ArrowLeft",
+            code: "ArrowLeft",
+            windowsVirtualKeyCode: 37,
+            nativeVirtualKeyCode: 37,
+        });
+        await delay(100);
+        const resized = await client.send("Runtime.evaluate", {
+            expression:
+                "document.querySelector('[aria-label=\"Workspace panels\"]').getBoundingClientRect().width",
+            returnByValue: true,
+        });
+        assert.equal(
+            resized.result.value,
+            360,
+            "The panel separator didn't resize from the keyboard.",
+        );
+        await client.send("Runtime.evaluate", {
+            expression:
+                "document.querySelectorAll('[aria-label=\"Workspace panels\"] [role=\"tab\"]')[1].focus()",
+        });
+        await client.send("Runtime.evaluate", {
+            expression: "globalThis.__webmcpLayoutChecksComplete?.()",
+        });
+
         const result = await resultPromise;
-        assert.equal(result.passed, true, result.error ?? "Browser test failed.");
+        assert.equal(
+            result.passed,
+            true,
+            result.error ?? "Browser test failed.",
+        );
         assert.equal(result.registered.length, 8);
         assert.equal(new Set(result.registered).size, 8);
         assert.equal(result.runStatus, "passed");
@@ -258,6 +463,31 @@ async function main() {
         assert.equal(result.movementConfirmed, true);
         assert.equal(result.dimensionsConfirmed, true);
         assert.equal(result.saveReopenConfirmed, true);
+        assert.equal(result.readOnlyAssetsConfirmed, true);
+        assert.equal(result.hiddenEditorConfirmed, true);
+        assert.equal(result.failedSaveRetryConfirmed, true);
+        assert.equal(result.firstSaveActivityConfirmed, true);
+        assert.equal(result.sharedConsoleConfirmed, true);
+        assert.equal(result.legacyProjectsConfirmed, true);
+        assert.equal(result.pendingNavigationConfirmed, true);
+        assert.equal(result.explicitDraftSaveConfirmed, true);
+        assert.equal(result.deleteQueueConfirmed, true);
+        assert.equal(result.restoredBrowserConfirmed, true);
+        assert.equal(result.quickSwitchConfirmed, true);
+        assert.equal(result.toolbarShortcutsConfirmed, true);
+        assert.equal(result.homeNavigationConfirmed, true);
+        assert.equal(result.quietSaveStatusConfirmed, true);
+        assert.equal(result.saveErrorRetryConfirmed, true);
+        assert.equal(result.featureTipsConfirmed, true);
+        assert.equal(result.assetPathsConfirmed, true);
+        assert.equal(result.gameStartups.length, result.gameStarterCount);
+        for (const startup of result.gameStartups) {
+            assert.equal(startup.ready, true, startup.key);
+            assert.equal(startup.errorCount, 0, startup.key);
+        }
+        for (const key of ["eatlove", "shooter", "ghosthunting"]) {
+            assert(result.gameStartups.some(startup => startup.key === key));
+        }
         assert.equal(result.pendingAssetsStatus, "incomplete");
         assert.equal(result.inspectionErrorStatus, "failed");
         assert.equal(result.diagnosticErrorStatus, "failed");
@@ -265,8 +495,163 @@ async function main() {
         assert.equal(result.declinedCommitted, false);
         assert.equal(typeof result.opened, "string");
 
+        // A fresh portrait visit uses the real application entry point and an
+        // old starter link, keeping dimensions but not the active Code tab.
+        await client.send("Emulation.setDeviceMetricsOverride", {
+            width: 390,
+            height: 844,
+            deviceScaleFactor: 1,
+            mobile: false,
+        });
+        await client.send("Page.navigate", {
+            url: new URL("/?example=webmcpAgent", appUrl).href,
+        });
+        const freshDeadline = Date.now() + 30_000;
+        let fresh;
+        while (Date.now() < freshDeadline) {
+            const response = await client.send("Runtime.evaluate", {
+                expression: `(async () => {
+                    if (!document.querySelector('#game-view') || !document.querySelector('.monaco-editor')) return null;
+                    const { useEditor } = await import('/src/hooks/useEditor.ts');
+                    if (useEditor.getState().previewReadiness?.status !== 'ready') return null;
+                    const { useProject } = await import('/src/features/Projects/stores/useProject.ts');
+                    const state = useProject.getState();
+                    return { tab: document.querySelector('[aria-label="Workspace panels"] [aria-selected="true"]')?.textContent.trim(), saveStatus: state.saveStatus, projectId: state.projectKey, starter: state.project.sourceDemoKey };
+                })()`,
+                awaitPromise: true,
+                returnByValue: true,
+            });
+            fresh = response.result?.value;
+            if (fresh) break;
+            await delay(100);
+        }
+        assert.deepEqual(
+            fresh,
+            {
+                tab: "Assets",
+                saveStatus: "draft",
+                projectId: null,
+                starter: "webmcpAgent",
+            },
+            "Fresh portrait visits must play the starter with Assets active and without autosaving.",
+        );
+        if (screenshotDirectory) {
+            const portrait = await client.send("Page.captureScreenshot", {
+                format: "png",
+            });
+            await writeFile(
+                join(screenshotDirectory, "portrait-starter.png"),
+                Buffer.from(portrait.data, "base64"),
+            );
+        }
+        await client.send("Emulation.setDeviceMetricsOverride", {
+            width: 1042,
+            height: 936,
+            deviceScaleFactor: 1,
+            mobile: false,
+        });
+        // Let React apply its media-query change before measuring the desktop
+        // column; a loaded game can keep the frame busy beyond a fixed delay.
+        const resizeDeadline = Date.now() + 5_000;
+        let restoredWidth;
+        while (Date.now() < resizeDeadline) {
+            const response = await client.send("Runtime.evaluate", {
+                expression: `(() => {
+                    const panel = document.querySelector('[aria-label="Workspace panels"]');
+                    if (getComputedStyle(panel.closest('main')).display !== 'grid') return null;
+                    return panel.getBoundingClientRect().width;
+                })()`,
+                returnByValue: true,
+            });
+            restoredWidth = response.result?.value;
+            if (restoredWidth !== null && restoredWidth !== undefined) break;
+            await delay(50);
+        }
+        assert.equal(
+            restoredWidth,
+            360,
+            "A fresh visit forgot the resized panel width.",
+        );
+
+        for (const [width, height] of [[390, 844], [1042, 936]]) {
+            await client.send("Emulation.setDeviceMetricsOverride", {
+                width,
+                height,
+                deviceScaleFactor: 1,
+                mobile: false,
+            });
+            await client.send("Runtime.evaluate", {
+                expression:
+                    `Array.from(document.querySelectorAll('[role="toolbar"] button')).find(button => button.textContent.trim() === 'Browse all').click()`,
+            });
+            await delay(150);
+            const modal = await client.send("Runtime.evaluate", {
+                expression: `(() => {
+                    const dialog = document.querySelector('#examples-browser');
+                    const box = dialog.querySelector('.modal-box').getBoundingClientRect();
+                    const panel = dialog.querySelector('[role="tabpanel"][data-state="active"]').getBoundingClientRect();
+                    const footer = dialog.querySelector('footer').getBoundingClientRect();
+                    return { open: dialog.open, left: box.left, right: box.right, top: box.top, bottom: box.bottom, contentHeight: panel.height, footerBottom: footer.bottom, selected: dialog.querySelector('[role="tab"][aria-selected="true"]').textContent.trim() };
+                })()`,
+                returnByValue: true,
+            });
+            const box = modal.result.value;
+            assert(
+                box.open && box.left >= 0 && box.right <= width && box.top >= 0
+                    && box.bottom <= height,
+                `Game browser doesn't fit at ${width}: ${JSON.stringify(box)}`,
+            );
+            assert(
+                box.contentHeight >= 180 && box.footerBottom <= height,
+                `The browser must leave room for samples and New project at ${width}: ${
+                    JSON.stringify(box)
+                }`,
+            );
+            assert.match(box.selected, /Game starting points/);
+            if (screenshotDirectory) {
+                const screenshot = await client.send("Page.captureScreenshot", {
+                    format: "png",
+                });
+                await writeFile(
+                    join(screenshotDirectory, `browser-${width}.png`),
+                    Buffer.from(screenshot.data, "base64"),
+                );
+            }
+            await client.send("Runtime.evaluate", {
+                expression:
+                    `document.querySelector('#examples-browser [role="tab"][aria-selected="true"]').focus()`,
+            });
+            for (const type of ["keyDown", "keyUp"]) {
+                await client.send("Input.dispatchKeyEvent", {
+                    type,
+                    key: "ArrowLeft",
+                    code: "ArrowLeft",
+                    windowsVirtualKeyCode: 37,
+                    nativeVirtualKeyCode: 37,
+                });
+            }
+            await delay(100);
+            const destination = await client.send("Runtime.evaluate", {
+                expression:
+                    `document.querySelector('#examples-browser [role="tab"][aria-selected="true"]').textContent.trim()`,
+                returnByValue: true,
+            });
+            assert.match(destination.result.value, /My games/);
+            await client.send("Runtime.evaluate", {
+                expression:
+                    `document.querySelector('#examples-browser [aria-label="Close game browser"]').click()`,
+            });
+        }
+        result.freshPageDefaultsConfirmed = true;
+        result.keyboardResizeConfirmed = true;
+        result.browserResponsiveConfirmed = true;
+
         console.log("WebMCP browser integration passed:");
         console.log(JSON.stringify(result, null, 2));
+        console.log(JSON.stringify({ layoutChecks }, null, 2));
+        if (screenshotDirectory) {
+            console.log(`UI screenshots: ${screenshotDirectory}`);
+        }
     } catch (error) {
         console.error(error instanceof Error ? error.stack : error);
         for (const [name, output] of logs) {
@@ -286,6 +671,33 @@ async function main() {
     }
 }
 
+async function verifyPublicAssetRoutes(baseUrl) {
+    // Compare bytes as well as status: Vite's HTML fallback can return 200 for
+    // a missing image. Runtime-computed URLs cannot use compile-time embedding.
+    for (
+        const path of [
+            "sprites/apple.png",
+            "sprites/bean.png",
+            "sprites/particle_hexagon_filled.png",
+            "sprites/dungeon.json",
+            "sounds/wooosh.mp3",
+            "fonts/happy_28x36.png",
+        ]
+    ) {
+        const url = new URL(`/${path}`, baseUrl);
+        const response = await fetch(url, {
+            signal: AbortSignal.timeout(10_000),
+        });
+        assert(response.ok, `Asset request failed: ${url}`);
+        const actual = Buffer.from(await response.arrayBuffer());
+        const expected = await readFile(join(root, "kaplay/examples", path));
+        assert(
+            actual.equals(expected),
+            `Asset URL did not serve its file: ${url}`,
+        );
+    }
+}
+
 async function loadBrowserFixtures() {
     const esbuild = await readFile(
         resolve(root, "node_modules", "esbuild-wasm", "esbuild.wasm"),
@@ -294,9 +706,15 @@ async function loadBrowserFixtures() {
         resolve(root, "node_modules", "kaplay", "dist", "kaplay.mjs"),
         resolve(root, "node_modules", "kaplay", "dist", "kaboom.mjs"),
     ]);
+    // Match the current engine to the same checkout that supplies editor types.
+    // The legacy fixture predates loadHappy(), which the existing scaffold uses.
+    const currentKaplay = await readFile(
+        resolve(root, "kaplay", "dist", "kaplay.mjs"),
+    );
     return {
         esbuild: esbuild.toString("base64"),
         kaplay: kaplay.toString("base64"),
+        currentKaplay: currentKaplay.toString("base64"),
     };
 }
 
@@ -335,8 +753,13 @@ async function installFixtureInterception(cdp, fixtures) {
             await cdp.send("Fetch.fulfillRequest", {
                 requestId: event.requestId,
                 responseCode: 200,
-                responseHeaders: fixtureHeaders("text/javascript; charset=utf-8"),
-                body: fixtures.kaplay,
+                responseHeaders: fixtureHeaders(
+                    "text/javascript; charset=utf-8",
+                ),
+                body: url.includes("kaplay.master.mjs")
+                        || url.includes("/kaplay@4000.")
+                    ? fixtures.currentKaplay
+                    : fixtures.kaplay,
             });
             return;
         }

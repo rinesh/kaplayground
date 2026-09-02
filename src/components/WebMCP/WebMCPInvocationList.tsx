@@ -89,8 +89,8 @@ const friendlyActions: Record<string, string> = {
     kaplayground_run_game: "Starting and checking the game",
     kaplayground_find_assets: "Looking through the toy box",
     kaplayground_save_game: "Saving your game",
-    kaplayground_find_examples: "Finding a starting game",
-    kaplayground_open_example: "Opening a starting game",
+    kaplayground_find_examples: "Finding a starting point",
+    kaplayground_open_example: "Opening a starting point",
 };
 
 function friendlyAction(toolName: string): string {

@@ -1,5 +1,5 @@
 import { assets } from "@kaplayjs/crew";
-import type { FC, PropsWithChildren } from "react";
+import { toast } from "react-toastify";
 import { useProject } from "../../features/Projects/stores/useProject";
 import { useEditor } from "../../hooks/useEditor";
 import { WebMCPButton } from "../WebMCP";
@@ -11,60 +11,35 @@ import { AboutButton } from "./ToolButtons/AboutButton";
 import { ConfigButton } from "./ToolButtons/ConfigButton";
 import { ShareButton } from "./ToolButtons/ShareButton";
 
-const ToolbarToolItem: FC<PropsWithChildren> = ({ children }) => {
-    return (
-        <li className="flex h-full group">
-            {children}
-        </li>
+const ToolbarToolsMenu = () => {
+    const canShareLink = useProject(state =>
+        state.project.files.size === 1 && state.project.assets.size === 0
     );
-};
-
-const ToolbarToolsMenu: FC = () => {
-    const projectMode = useProject((state) => state.project.mode);
-    const run = useEditor((state) => state.run);
 
     return (
-        <ul className="flex flex-row items-center justify-center h-full w-auto bg-base-300 rounded-b-xl">
-            <ToolbarToolItem>
-                <WebMCPButton />
-            </ToolbarToolItem>
-
-            <ToolbarToolItem>
-                <ToolbarButton
-                    icon={assets.play.outlined}
-                    iconFirst={true}
-                    text="Run"
-                    onClick={run}
-                    tip="Run Project"
-                    keys={["ctrl", "s"]}
-                    className="pr-1.5"
-                />
-
-                <ToolbarMoreActionsDropdown />
-            </ToolbarToolItem>
-
-            <ToolbarToolItem>
-                <ToolbarSeparator className="hidden md:flex -mx-1 px-0" />
-            </ToolbarToolItem>
-
-            {projectMode == "ex" && (
-                <ToolbarToolItem>
-                    <ShareButton />
-                </ToolbarToolItem>
-            )}
-
-            <ToolbarToolItem>
-                <ToolbarProjectDropdown />
-            </ToolbarToolItem>
-
-            <ToolbarToolItem>
-                <AboutButton />
-            </ToolbarToolItem>
-
-            <ToolbarToolItem>
-                <ConfigButton />
-            </ToolbarToolItem>
-        </ul>
+        <div className="col-span-3 flex h-11 shrink-0 items-center justify-end bg-base-300 min-[900px]:ml-auto">
+            <WebMCPButton />
+            <ToolbarButton
+                icon={assets.play.outlined}
+                iconFirst
+                text="Run"
+                compact
+                aria-label="Run game"
+                onClick={() =>
+                    void useEditor.getState().run().catch(error =>
+                        toast.error(String(error))
+                    )}
+                tip="Run game"
+                keys={["ctrl", "s"]}
+                className="pr-1.5"
+            />
+            <ToolbarMoreActionsDropdown />
+            <ToolbarSeparator className="mx-0 px-0" />
+            {canShareLink && <ShareButton />}
+            <ToolbarProjectDropdown />
+            <AboutButton />
+            <ConfigButton />
+        </div>
     );
 };
 

@@ -121,6 +121,152 @@
             const { useProject } = await import(
                 "/src/features/Projects/stores/useProject.ts"
             );
+            const { useEditor } = await import("/src/hooks/useEditor.ts");
+            const { useWorkspace } = await import("/src/hooks/useWorkspace.ts");
+            const { useGameConsole, gameConsoleCapture } = await import("/src/hooks/useGameConsole.ts");
+            const { useWebMCPActivity } = await import("/src/integrations/webmcp/webMCPActivity.ts");
+            const { db } = await import("/src/db/client/db.tsx");
+            const { loadProject } = await import("/src/features/Projects/application/loadProject.tsx");
+            const { confirmNavigate } = await import("/src/util/confirmNavigate.tsx");
+            await waitFor(() => useEditor.getState().previewReadiness, "initial preview startup");
+            const initial = await invoke("kaplayground_inspect_game", {});
+            const initialIframe = document.querySelector("#game-view");
+            // The preview is intentionally allowed to start before Monaco.
+            const initialEditor = await waitFor(() => useEditor.getState().runtime.editor, "the hidden code editor");
+            assert(initial.editorVisible === false, "Assets must be selected on fresh visits.");
+            assert(initial.selectedAsset === null, "A fresh draft must not select an asset.");
+            assert(initial.saveStatus === "draft" && initial.projectId === null, "Initialization must not save a draft.");
+            assert((await db.getAllKeys("projects")).length === 0, "Startup created a saved project.");
+
+            const toolbar = document.querySelector('[role="toolbar"][aria-label="Game workspace"]');
+            assert(toolbar?.querySelectorAll("select").length === 1, "The toolbar must keep the game chooser without an engine selector.");
+            const saveButton = toolbar.querySelector("#project-save-button");
+            const assertQuietSaveStatus = () => {
+                assert(!toolbar.querySelector('[role="status"]'), "Routine save status should not occupy a toolbar line.");
+                assert(!/Draft · edit to save|Saved locally/.test(toolbar.textContent), "The toolbar still shows a routine save label.");
+                assert(!toolbar.querySelector("#project-save-error"), "A healthy project shows a save failure.");
+            };
+            assert(saveButton && !saveButton.disabled, "Untouched drafts must still have an explicit Save action.");
+            assertQuietSaveStatus();
+            const homeLink = toolbar.querySelector('a[aria-label="KAPLAYGROUND home"]');
+            assert(homeLink?.getAttribute("href") === "/?example=webmcpAgent", "The logo must link back to the Codex starting point.");
+            // Avoid native navigation while checking that modified clicks remain native.
+            homeLink.removeAttribute("href");
+            try {
+                for (const modifiers of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }]) {
+                    const click = new MouseEvent("click", { bubbles: true, cancelable: true, ...modifiers });
+                    homeLink.dispatchEvent(click);
+                    assert(!click.defaultPrevented, "The home link intercepted a modified click.");
+                }
+            } finally {
+                homeLink.setAttribute("href", "/?example=webmcpAgent");
+            }
+            const projectSettings = toolbar.querySelector('button[aria-label="Project settings"]');
+            assert(projectSettings?.textContent.trim() === "Project", "The preferences shortcut must use one project label for every game.");
+            const preferencesDialog = document.querySelector("#project-preferences");
+            const closePreferences = async () => {
+                [...preferencesDialog.querySelectorAll("button")].find(button => button.textContent.trim() === "Close").click();
+                await waitFor(() => !preferencesDialog.open, "closing project preferences");
+                // Dismissal resets the form after the closing transition.
+                // Don't reopen it while that reset is still pending.
+                await Promise.allSettled(preferencesDialog.getAnimations({ subtree: true }).map(animation => animation.finished));
+                await new Promise(requestAnimationFrame);
+            };
+            projectSettings.click();
+            await waitFor(() => preferencesDialog.open && preferencesDialog.querySelector('input[name="name"]').value === useProject.getState().project.name, "the current project's preferences shortcut");
+            await closePreferences();
+            for (const label of ["Browse all", "Run game", "Copy game link", "Project options", "Help and about", "Settings"]) {
+                assert([...toolbar.querySelectorAll("button")].some(button => (button.getAttribute("aria-label") || button.textContent.trim()) === label), `Missing toolbar shortcut: ${label}`);
+            }
+            assert(document.querySelector('aside[aria-label="Codex tips"]'), "Codex tips must appear beneath the game.");
+            const gameBrowser = document.querySelector("#examples-browser");
+            const browseButton = [...toolbar.querySelectorAll("button")].find(button => button.textContent.trim() === "Browse all");
+            browseButton.click();
+            await waitFor(() => gameBrowser.open && gameBrowser.querySelector('[aria-label="Starting point collection"]'), "the starting point browser");
+            const { demos } = await import("/src/data/demos.ts");
+            const { isPlayableStartingPoint } = await import("/src/data/startingPoints.ts");
+            const { parseAssetPath } = await import("/src/util/assetsParsing.ts");
+            const { parseAssets } = await import("/src/util/compiler.ts");
+            const appleData = parseAssetPath("/sprites/apple.png", undefined, new Map());
+            assert(appleData.startsWith("data:image/png;base64,"), "Built-in art must remain embeddable.");
+            for (const path of ["sprites/apple.png", "/sprites/apple.png", "./sprites/apple.png", "././sprites/apple.png"]) {
+                assert(parseAssetPath(path, undefined, new Map()) === appleData, `Local asset prefix was not normalized: ${path}`);
+                assert(parseAssets(`loadSprite("apple", "${path}");`, new Map()).includes(appleData), `The compiler did not embed ${path}.`);
+            }
+            const privatePath = "assets/sprites/private.png";
+            const privateAssets = new Map([[privatePath, { path: privatePath, url: "data:image/png;base64,cHJpdmF0ZQ==" }]]);
+            assert(parseAssetPath(`./${privatePath}`, undefined, privateAssets) === privateAssets.get(privatePath).url, "Relative project assets must use the project snapshot.");
+            for (const path of ["https://example.com/sprites/apple.png", "//example.com/sprites/apple.png", "../sprites/apple.png", "/sprites/missing.png"]) {
+                assert(parseAssetPath(path, undefined, new Map()) === path, `An unrelated asset URL was rewritten: ${path}`);
+            }
+            const computedLoader = 'loadSprite(name, `/sprites/${name}.png`);';
+            assert(parseAssets(computedLoader, new Map()) === computedLoader, "Runtime-computed asset paths must not be rewritten as static strings.");
+            const gamesSection = gameBrowser.querySelector("#starting-points-games").closest("section");
+            assert(gamesSection.querySelector("article h3").textContent === "Play & Remix with Codex", "The Codex game must lead the starting points.");
+            assert(gamesSection.querySelectorAll("article").length === demos.filter(isPlayableStartingPoint).length, "Playable games were removed or mixed with feature demos.");
+            assert(gameBrowser.querySelectorAll("article").length === demos.length, "Every built-in sample must remain discoverable by default.");
+            const collection = gameBrowser.querySelector('[aria-label="Starting point collection"]');
+            assert(collection.value === "all", "The browser must retain games and feature samples by default.");
+            collection.value = "features";
+            collection.dispatchEvent(new Event("change", { bubbles: true }));
+            await waitFor(() => !gameBrowser.querySelector("#starting-points-games"), "the feature-only collection");
+            const starterSearch = gameBrowser.querySelector('[aria-label="Search starting points"]');
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(starterSearch, "spriteAnim");
+            starterSearch.dispatchEvent(new Event("input", { bubbles: true }));
+            await waitFor(() => gameBrowser.querySelectorAll("article").length === 1, "canonical sample key search");
+            assert(gameBrowser.querySelector("article h3").textContent === "Sprite Animations", "Feature samples need name/key search parity.");
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(starterSearch, "");
+            starterSearch.dispatchEvent(new Event("input", { bubbles: true }));
+            collection.value = "all";
+            collection.dispatchEvent(new Event("change", { bubbles: true }));
+            gameBrowser.querySelector('[aria-label="Close game browser"]').click();
+            await waitFor(() => !gameBrowser.open, "closing the game browser");
+
+            const search = document.querySelector('[aria-label="Search assets"]');
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(search, "bean");
+            search.dispatchEvent(new Event("input", { bubbles: true }));
+            await delay(50);
+            const bean = document.querySelector('button[aria-label="Select bean"]');
+            assert(bean && bean.textContent.includes("bean"), "Assets need permanent canonical names.");
+            bean.click();
+            assert(useWorkspace.getState().selectedAsset?.key === "bean", "Asset clicking did not select the canonical key.");
+            const dragData = new DataTransfer();
+            bean.dispatchEvent(new DragEvent("dragstart", { bubbles: true, dataTransfer: dragData }));
+            assert(bean.draggable === false && bean.querySelector("img").draggable === false, "Asset dragging must be disabled.");
+            assert(dragData.getData("text/plain") === "", "Asset dragging generated code.");
+            const copied = [];
+            const clipboardWrite = navigator.clipboard.writeText;
+            navigator.clipboard.writeText = async text => { copied.push(text); };
+            await delay(50);
+            for (const label of ["Copy name", "Copy prompt"]) {
+                [...document.querySelectorAll(".asset-browser button")].find(button => button.textContent.trim() === label).click();
+            }
+            navigator.clipboard.writeText = clipboardWrite;
+            assert(copied[0] === "bean" && copied[1]?.includes("built-in bean"), "Copy actions did not use promptable identifiers.");
+            const library = await invoke("kaplayground_find_assets", { query: "bean", kind: "sprite", source: "library", limit: 50 });
+            assert(library.assets.some(asset => asset.key === useWorkspace.getState().selectedAsset?.key), "Visible asset identifiers differ from find_assets.");
+            const panelTabs = [...document.querySelectorAll('[aria-label="Workspace panels"] [role="tab"]')];
+            const activate = async label => {
+                const button = panelTabs.find(button => button.textContent.trim() === label);
+                button.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+                await waitFor(() => button.getAttribute("aria-selected") === "true", `${label} tab`);
+            };
+            panelTabs[0].focus();
+            document.documentElement.dataset.webmcpPhase = "tabs-ready";
+            await new Promise(resolve => { globalThis.__webmcpTabInputComplete = resolve; });
+            await waitFor(() => useWorkspace.getState().activeTab === "code", "keyboard tab navigation");
+            assert((await invoke("kaplayground_inspect_game", {})).editorVisible === true, "Inspection didn't reflect the Code tab.");
+            initialEditor.setPosition({ lineNumber: 2, column: 1 });
+            for (let index = 0; index < 3; index++) { await activate("Assets"); await activate("Code"); }
+            assert(initialEditor.getPosition().lineNumber === 2, "Tab switching lost the cursor position.");
+            await activate("Assets");
+            const afterViews = await invoke("kaplayground_inspect_game", {});
+            assert(afterViews.revision === initial.revision && afterViews.projectId === null && afterViews.saveStatus === "draft", "View/copy actions modified or saved a draft.");
+            assert(afterViews.activeRunId === initial.activeRunId && initialIframe === document.querySelector("#game-view"), "Switching tabs restarted or replaced gameplay.");
+            assert(useEditor.getState().runtime.editor === initialEditor && search.value === "bean", "Switching tabs lost panel state.");
+            assert((await db.getAllKeys("projects")).length === 0, "View actions wrote a saved project.");
+            const activityBeforePromotion = useWebMCPActivity.getState().entries.map(entry => entry.id);
+            gameConsoleCapture.add({ timestamp: Date.now(), runId: initial.activeRunId, level: "log", values: ["before first save"] });
             const assetPath = "sprites/webmcp-fixture.svg";
             const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="#fff"/></svg>';
             const assets = new Map(useProject.getState().project.assets);
@@ -133,6 +279,14 @@
                     'loadSprite("webmcp-fixture", "assets/sprites/webmcp-fixture.svg", { sliceX: 2, sliceY: 1 });',
             });
             useProject.getState().setProject({ assets });
+            await waitFor(() => useProject.getState().saveStatus === "saved", "first asset edit autosave");
+            const firstProjectId = useProject.getState().projectKey;
+            assert(typeof firstProjectId === "string" && (await db.getAllKeys("projects")).length === 1, "First edit must create exactly one saved project.");
+            assertQuietSaveStatus();
+            assert((await invoke("kaplayground_inspect_game", {})).saveStatus === "saved", "Hiding save labels changed agent-visible persistence state.");
+            assert(useWebMCPActivity.getState().entries.some(entry => activityBeforePromotion.includes(entry.id)), "First save cleared Codex activity.");
+            assert(useGameConsole.getState().entries.some(entry => entry.values.includes("before first save")), "First save cleared game messages.");
+            assert(useProject.getState().project.sourceDemoKey === "webmcpAgent", "First save lost starter provenance.");
 
             const inspected = await invoke("kaplayground_inspect_game", {
                 fileLimit: 100,
@@ -200,6 +354,21 @@ export function startFixture() {
                 focusPath: "main.js",
             });
             assert(updated.committed === true, "update_game was not committed.");
+            assert(useWorkspace.getState().activeTab === "assets", "focusPath activated Code.");
+            assert(useEditor.getState().previewRunId === initial.activeRunId, "Updating hidden code restarted gameplay.");
+            await waitFor(() => useProject.getState().saveStatus === "saved", "hidden-editor update autosave");
+            assert(useProject.getState().projectKey === firstProjectId, "A subsequent edit created another project.");
+            let atomicRejected = false;
+            try {
+                await invoke("kaplayground_update_game", { expectedRevision: updated.revision, changes: [
+                    { action: "replace", path: "main.js", content: "broken" },
+                    { action: "create", path: "../unsafe.js", content: "bad" },
+                ] });
+            } catch { atomicRejected = true; }
+            assert(atomicRejected && useProject.getState().getMainFile().value === healthyMain, "A rejected atomic update changed code.");
+            let staleRejected = false;
+            try { await invoke("kaplayground_save_game", { expectedRevision: inspected.revision }); } catch { staleRejected = true; }
+            assert(staleRejected, "Stale save revisions must be rejected.");
 
             const dimensions = await invoke("kaplayground_find_assets", {
                 query: "webmcp-fixture",
@@ -312,13 +481,7 @@ export function startFixture() {
                 persisted?.files.get("main.js")?.value === healthyMain,
                 "The saved fixture source was not stored.",
             );
-            await useProject.getState().createNewProject(
-                persisted.mode,
-                persisted,
-                undefined,
-                false,
-            );
-            useProject.getState().setProjectKey(saved.projectId);
+            await loadProject(saved.projectId);
             const reopened = await invoke("kaplayground_inspect_game", {
                 fileLimit: 100,
             });
@@ -332,9 +495,13 @@ export function startFixture() {
                 reopenedSource.files[0].content === healthyMain,
                 "The reopened project source changed.",
             );
-            // Keep subsequent failure fixtures transient so example opening still
-            // requires the existing in-page discard confirmation.
-            useProject.getState().setProjectKey(null);
+            // Exercise failed autosaves, then require real user approval before
+            // replacing the still-pending edits with a starting point.
+            const originalPut = db.put.bind(db);
+            let failWrites = true;
+            db.put = (...args) => args[0] === "projects" && failWrites
+                ? Promise.reject(new Error("Fixture storage is full"))
+                : originalPut(...args);
 
             const pendingSource = `
 function startPendingAssets() {
@@ -414,6 +581,26 @@ startInspectionError();
                 consoleContains(inspectionErrorRun, "webmcp inspection-time error"),
                 "The inspection-time console error was sampled too early.",
             );
+            assert(document.querySelector("#webmcp-output-tab").getAttribute("aria-selected") === "true", "A game error switched the output tab.");
+            assert(useWorkspace.getState().activeTab === "assets", "A game error opened Code.");
+            const errorBadge = document.querySelector('#console-output-tab [aria-label$="game errors"]');
+            assert(errorBadge, "Game errors need a badge without switching tabs.");
+            useGameConsole.getState().clearDisplayed();
+            assert(useGameConsole.getState().entries.length === 0, "Clearing displayed messages didn't clear the view.");
+            assert(gameConsoleCapture.snapshot().entries.some(entry => entry.values.includes("webmcp inspection-time error")), "Clearing messages erased run evidence.");
+            const checkedErrors = await invoke("kaplayground_run_game", { expectedRevision: inspectionErrorUpdate.revision, mode: "check-current" });
+            assert(checkedErrors.status === "failed", "Clearing messages made run validation pass.");
+            const { Encode } = await import("console-feed");
+            const sourceFrame = document.querySelector("#game-view").contentWindow;
+            const consoleOrigin = new URL(document.querySelector("#game-view").src).origin;
+            const encoded = Encode({ method: "error", data: ["foreign iframe error"] });
+            const foreignFrame = document.createElement("iframe");
+            document.body.append(foreignFrame);
+            const beforeForeign = gameConsoleCapture.snapshot().entries.length;
+            window.dispatchEvent(new MessageEvent("message", { origin: consoleOrigin, source: foreignFrame.contentWindow, data: { type: "CONSOLE", runId: inspectionErrorRun.runId, log: encoded } }));
+            window.dispatchEvent(new MessageEvent("message", { origin: "https://foreign.invalid", source: sourceFrame, data: { type: "CONSOLE", runId: inspectionErrorRun.runId, log: encoded } }));
+            foreignFrame.remove();
+            assert(gameConsoleCapture.snapshot().entries.length === beforeForeign, "Foreign iframe messages entered the shared capture.");
 
             const diagnosticUpdate = await invoke("kaplayground_update_game", {
                 expectedRevision: inspectionErrorUpdate.revision,
@@ -438,6 +625,19 @@ add([rect(16, 16), pos(20, 20), "type-error"]);
                 diagnosticRun.diagnostics.items.some(item => item.code === 2322),
                 "The language worker did not report the current type mismatch.",
             );
+            await activate("Code");
+            const diagnosticCheck = await invoke("kaplayground_run_game", { expectedRevision: diagnosticUpdate.revision, mode: "check-current" });
+            assert(diagnosticCheck.status === "failed" && diagnosticCheck.runId === diagnosticRun.runId, "Opening Code changed the run or its diagnostics.");
+            const filesButton = document.querySelector('[aria-controls="workspace-files"]');
+            filesButton.click();
+            await waitFor(() => document.querySelector("#workspace-files"), "Files popover");
+            assert(document.querySelector("#workspace-files").textContent.includes("movement"), "Files popover didn't include project files.");
+            const movementFile = document.querySelector('[aria-label="Open scenes/movement.js"]');
+            movementFile.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+            assert(useEditor.getState().runtime.currentFile === "scenes/movement.js", "Keyboard file selection failed.");
+            assert(useProject.getState().projectRevision === Number(diagnosticUpdate.revision.split(":")[1]), "Selecting a file edited the project.");
+            filesButton.click();
+            await activate("Assets");
 
             const unavailableSource = `
 function startUnavailableInspection() {
@@ -483,6 +683,32 @@ startUnavailableInspection();
                 beforeOpen.hasUnsavedChanges === true,
                 "The regression updates should leave unsaved changes.",
             );
+            assert(beforeOpen.saveStatus === "error", "Failed writes must be reported accurately.");
+            const saveFailure = await waitFor(() => toolbar.querySelector('#project-save-error[role="alert"]'), "a visible save failure");
+            assert(saveFailure.textContent.includes("Couldn’t save") && saveFailure.querySelector("#project-save-retry")?.textContent.trim() === "Retry", "Save failures need an explicit Retry action.");
+            assert(saveFailure.title === "Fixture storage is full", "The save failure lost its error detail.");
+            assert(!saveButton.disabled && saveButton.getAttribute("aria-describedby") === "project-save-error", "The save icon must remain accessible after failure.");
+            const beforeHomeCancel = useProject.getState().projectGeneration;
+            homeLink.click();
+            const navDialog = await waitFor(() => document.querySelector("#confirm-dialog[open]"), "failed-save navigation confirmation");
+            [...navDialog.querySelectorAll("button")].find(button => button.textContent.trim() === "Keep editing").click();
+            await waitFor(() => !navDialog.open, "canceling the home link navigation");
+            assert(useProject.getState().projectGeneration === beforeHomeCancel && useProject.getState().getMainFile().value === unavailableSource, "Declining home navigation lost failed edits.");
+            assert(useEditor.getState().previewRunId === beforeOpen.activeRunId, "Canceling home navigation restarted the game.");
+            failWrites = false;
+            const beforeRetryCount = (await db.getAllKeys("projects")).length;
+            toolbar.querySelector("#project-save-retry").click();
+            await waitFor(() => useProject.getState().saveStatus === "saved" && !toolbar.querySelector("#project-save-error"), "saving with the visible Retry action");
+            assertQuietSaveStatus();
+            assert(useProject.getState().projectKey === firstProjectId && (await db.getAllKeys("projects")).length === beforeRetryCount, "Retry created a duplicate project.");
+            assert(useEditor.getState().previewRunId === beforeOpen.activeRunId, "Retry saving restarted the game.");
+            const retried = await invoke("kaplayground_save_game", { expectedRevision: unavailableUpdate.revision });
+            assert(retried.projectId === firstProjectId && useProject.getState().saveStatus === "saved", "Retry didn't retain the same saved project.");
+            assert((await db.get("projects", firstProjectId)).files.get("main.js").value === unavailableSource, "Retry didn't persist pending edits.");
+            failWrites = true;
+            useProject.getState().updateFile("main.js", unavailableSource + "\n// pending edit");
+            await waitFor(() => useProject.getState().saveStatus === "error", "second failed autosave");
+            const replacementRevision = (await invoke("kaplayground_inspect_game", {})).revision;
 
             const found = await invoke("kaplayground_find_examples", {
                 limit: 10,
@@ -492,7 +718,7 @@ startUnavailableInspection();
             assert(example, "find_examples returned no usable example.");
 
             const declining = invoke("kaplayground_open_example", {
-                expectedRevision: unavailableUpdate.revision,
+                expectedRevision: replacementRevision,
                 key: example.key,
                 discardUnsavedChanges: true,
             });
@@ -507,7 +733,7 @@ startUnavailableInspection();
             const declined = await declining;
             assert(declined.committed === false, "Declining still committed a replacement.");
             assert(
-                declined.revision === unavailableUpdate.revision,
+                declined.revision === replacementRevision,
                 "Declining changed the project revision.",
             );
             await waitFor(
@@ -516,7 +742,7 @@ startUnavailableInspection();
             );
 
             const opening = invoke("kaplayground_open_example", {
-                expectedRevision: unavailableUpdate.revision,
+                expectedRevision: replacementRevision,
                 key: example.key,
                 discardUnsavedChanges: true,
             });
@@ -529,12 +755,203 @@ startUnavailableInspection();
             assert(confirmButton, "The discard confirmation button was not rendered.");
             confirmButton.click();
             const opened = await opening;
+            db.put = originalPut;
             assert(opened.committed === true, "Confirmed example opening did not commit.");
             assert(opened.opened === example.key, "open_example returned the wrong key.");
+            assert(useWorkspace.getState().selectedAsset === null, "Project replacement didn't clear asset selection.");
             assert(
                 opened.revision !== unavailableUpdate.revision,
                 "Opening an example did not replace the revision.",
             );
+
+            // Legacy saved examples remain private projects with the same id,
+            // file format, engine choice, and legacy build fallback.
+            const legacy = {
+                ...persisted, id: "legacy-example-fixture", name: "Legacy private project",
+                mode: "ex", kaplayVersion: "3001.0.19", buildMode: undefined,
+                files: new Map([["main.js", { path: "main.js", kind: "main", language: "javascript", value: "kaplay(); add([rect(12, 12), pos(20, 20)]);" }]]),
+                assets: new Map(),
+            };
+            await db.put("projects", legacy);
+            await useProject.getState().updateSavedProjects();
+            const chooser = toolbar.querySelector('[aria-label="Choose a game or starting point"]');
+            await waitFor(() => [...chooser.options].some(option => option.value === `project:${legacy.id}`), "the unified saved-game chooser");
+            chooser.value = `project:${legacy.id}`;
+            chooser.dispatchEvent(new Event("change", { bubbles: true }));
+            await waitFor(() => useProject.getState().projectKey === legacy.id, "quick-switching to a legacy saved game");
+            const legacyState = await invoke("kaplayground_inspect_game", {});
+            assert(legacyState.projectId === legacy.id && legacyState.mode === "ex" && legacyState.buildMode === "legacy", "Legacy project identity or build behavior changed.");
+            assert(legacyState.kaplayVersion === legacy.kaplayVersion, "Loading a legacy project upgraded its engine.");
+            assert((await useProject.getState().getProjectMetadata(legacy.id)).type === "Project", "Saved examples must appear as private projects.");
+            const { openProjectPreferences } = await import("/src/features/Projects/services/projectActions.tsx");
+            const otherProject = await db.get("projects", firstProjectId);
+            openProjectPreferences(firstProjectId, true);
+            await waitFor(() => preferencesDialog.open && preferencesDialog.querySelector('input[name="name"]').value === otherProject.name, "another saved project's preferences");
+            await closePreferences();
+            projectSettings.click();
+            await waitFor(() => preferencesDialog.open && preferencesDialog.querySelector('input[name="name"]').value === legacy.name, "resetting preferences to the active project");
+            await closePreferences();
+            assert(projectSettings.textContent.trim() === "Project" && useProject.getState().projectKey === legacy.id, "The preferences shortcut restored the legacy Project/Example split.");
+
+            // Deleting an open saved project retains a draft without allowing
+            // old queued writes to revive the deleted record.
+            assert(await useProject.getState().removeProject(legacy.id), "Deleting the active fixture failed.");
+            assert(await db.get("projects", legacy.id) === undefined, "Deletion didn't reach storage.");
+            assert(useProject.getState().projectKey === null && useProject.getState().saveStatus === "draft", "A deleted project didn't become an editable draft.");
+            const retained = await invoke("kaplayground_inspect_game", {});
+            const kept = await invoke("kaplayground_save_game", { expectedRevision: retained.revision });
+            assert(kept.projectId !== legacy.id && kept.revision === retained.revision, "Explicit Save must retain an untouched draft without changing its revision.");
+            assert(await db.get("projects", legacy.id) === undefined, "A later save resurrected the deleted id.");
+
+            const savedCount = (await db.getAllKeys("projects")).length;
+            await waitFor(() => chooser.value === `project:${useProject.getState().projectKey}`, "the promoted saved game in the chooser");
+            browseButton.click();
+            await waitFor(() => gameBrowser.open && gameBrowser.querySelector('[data-state="active"][role="tabpanel"] article'), "My games");
+            const savedPanel = gameBrowser.querySelector('[data-state="active"][role="tabpanel"]');
+            await waitFor(() => savedPanel.querySelectorAll("article").length === savedCount, "all saved games in one list");
+            assert(!savedPanel.querySelector("h2"), "Saved games must not be split into Project and Example groups.");
+            const newProjectButton = [...gameBrowser.querySelectorAll("button")].find(button => button.textContent.trim() === "New project");
+            assert(newProjectButton && !gameBrowser.textContent.includes("Create Example"), "The browser must have one New project action.");
+            const oldGeneration = useProject.getState().projectGeneration;
+            newProjectButton.click();
+            await waitFor(() => useProject.getState().projectGeneration !== oldGeneration && !gameBrowser.open, "New project from the browser");
+            assert(useProject.getState().projectKey === null && useProject.getState().saveStatus === "draft", "New project must start as a draft.");
+            assert(useProject.getState().project.files.has("scenes/game.js"), "New project lost the existing scaffold.");
+            assert((await db.getAllKeys("projects")).length === savedCount, "Scaffold initialization triggered persistence.");
+            const pristineRevision = useProject.getState().projectRevision;
+            useProject.getState().updateFile("main.js", useProject.getState().getMainFile().value);
+            useProject.getState().setProject({ name: useProject.getState().project.name });
+            assert(useProject.getState().projectRevision === pristineRevision && useProject.getState().saveStatus === "draft", "No-op edits should not save a draft.");
+            const projectNameInput = document.querySelector('[aria-label="Project name"]');
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(projectNameInput, "Manual first edit");
+            projectNameInput.dispatchEvent(new Event("input", { bubbles: true }));
+            await waitFor(() => useProject.getState().saveStatus === "saved", "manual name edit autosave");
+            const manualId = useProject.getState().projectKey;
+            const scaffoldMain = useProject.getState().getMainFile().value;
+            for (let index = 0; index < 12; index++) useProject.getState().updateFile("main.js", scaffoldMain + `\n// rapid edit ${index}`);
+            await useProject.getState().persistActiveProject();
+            assert(useProject.getState().projectKey === manualId && (await db.getAllKeys("projects")).length === savedCount + 1, "Rapid edits created duplicate projects.");
+            assert((await db.get("projects", manualId)).files.get("main.js").value.endsWith("// rapid edit 11"), "Rapid edits lost the newest snapshot.");
+
+            let releaseWrite;
+            const writeGate = new Promise(resolve => { releaseWrite = resolve; });
+            db.put = async (...args) => { if (args[0] === "projects") await writeGate; return originalPut(...args); };
+            useProject.getState().updateFile("main.js", scaffoldMain + "\n// pending navigation edit");
+            let flushedNavigation = false;
+            const oldRun = useEditor.getState().previewRunId;
+            const flushNavigation = confirmNavigate(async () => { flushedNavigation = true; await loadProject(manualId); });
+            await delay(50);
+            assert(!flushedNavigation && useProject.getState().saveStatus === "saving", "Navigation didn't wait for pending storage writes.");
+            assertQuietSaveStatus();
+            assert(saveButton.disabled && saveButton.getAttribute("aria-busy") === "true", "A pending save must stay detectable without the status line.");
+            releaseWrite();
+            await flushNavigation;
+            db.put = originalPut;
+            assert(flushedNavigation && useProject.getState().getMainFile().value.endsWith("// pending navigation edit"), "Navigation lost a pending edit.");
+            await waitFor(() => useEditor.getState().previewRunId !== oldRun && useEditor.getState().previewReadiness, "new project preview");
+            const layoutRunId = useEditor.getState().previewRunId;
+            document.documentElement.dataset.webmcpPhase = "layout-ready";
+            await new Promise(resolve => { globalThis.__webmcpLayoutChecksComplete = resolve; });
+            assert(useEditor.getState().previewRunId === layoutRunId, "Responsive layout changes restarted the active game.");
+
+            // Removing WebMCP must not remove the application-owned console listener.
+            delete document.modelContext;
+            window.dispatchEvent(new Event("focus"));
+            await waitFor(() => useWebMCPActivity.getState().status === "unsupported", "a browser without WebMCP");
+            const activeFrame = document.querySelector("#game-view");
+            for (let index = 0; index < 510; index++) {
+                window.dispatchEvent(new MessageEvent("message", { origin: new URL(activeFrame.src).origin, source: activeFrame.contentWindow,
+                    data: { type: "CONSOLE", runId: layoutRunId, log: Encode({ method: "log", data: [`Independent capture ${index}`] }) } }));
+            }
+            assert(useGameConsole.getState().entries.length === 500 && gameConsoleCapture.snapshot().droppedCount > 0, "Visible messages did not share the bounded capture without WebMCP.");
+
+            // Feature lessons and prompts remain available without WebMCP.
+            const beforeFeatureCount = (await db.getAllKeys("projects")).length;
+            chooser.value = "starter:spriteAnim";
+            chooser.dispatchEvent(new Event("change", { bubbles: true }));
+            await waitFor(() => useProject.getState().demoKey === "spriteAnim" && useEditor.getState().previewRunId !== layoutRunId && useEditor.getState().previewReadiness?.status === "ready", "the sprite animation sample");
+            const coach = document.querySelector('aside[aria-label="Codex tips"]');
+            await waitFor(() => coach.textContent.includes("named frame sequences"), "the visible feature explanation");
+            const featureRevision = useProject.getState().projectRevision;
+            const featureRun = useEditor.getState().previewRunId;
+            coach.querySelector('button[aria-label^="Go to idea 2:"]').click();
+            await waitFor(() => coach.textContent.includes("Copy for Codex"), "feature-specific prompt");
+            assert(coach.textContent.includes("named frame sequences"), "The explanation must stay alongside its prompt.");
+            const tipCopies = [];
+            const copyCommand = document.execCommand;
+            document.execCommand = command => {
+                if (command !== "copy") return false;
+                tipCopies.push(document.activeElement.value);
+                return true;
+            };
+            navigator.clipboard.writeText = async text => tipCopies.push(text);
+            const copyTipButton = [...coach.querySelectorAll("button")].find(button => button.textContent.trim() === "Copy for Codex");
+            copyTipButton.click();
+            await waitFor(() => tipCopies.length === 1, "copying a feature prompt");
+            document.execCommand = () => false;
+            copyTipButton.click();
+            await waitFor(() => tipCopies.length === 2, "the clipboard fallback for feature prompts");
+            document.execCommand = copyCommand;
+            navigator.clipboard.writeText = clipboardWrite;
+            assert(tipCopies[0] === tipCopies[1], "Clipboard paths copied different prompts.");
+            assert(tipCopies[0].includes("dinosaur") && tipCopies[0].includes("frame sequences"), "The prompt is not grounded in the chosen feature sample.");
+            coach.querySelector('[aria-label="Hide Codex ideas"]').click();
+            await waitFor(() => document.querySelector('aside[aria-label="Codex tips"]')?.textContent.includes("Show Codex ideas"), "collapsing the bottom tips");
+            document.querySelector('aside[aria-label="Codex tips"] button').click();
+            await waitFor(() => document.querySelector('aside[aria-label="Codex tips"]')?.textContent.includes("Understand it, then change it"), "remembering the tip step after reopening");
+            assert(useProject.getState().projectRevision === featureRevision && useProject.getState().projectKey === null && useProject.getState().saveStatus === "draft", "Reading or copying tips edited/saved the sample.");
+            assert(useEditor.getState().previewRunId === featureRun, "Reading or collapsing tips restarted the sample.");
+            assert((await db.getAllKeys("projects")).length === beforeFeatureCount, "A feature sample was saved without an edit.");
+
+            // Launch the actual game catalog, not only the integration fixture.
+            // This also checks loading and visible error capture without WebMCP.
+            const gameStarters = demos.filter(isPlayableStartingPoint);
+            const gameStartups = [];
+            await activate("Assets");
+            for (const starter of gameStarters) {
+                const previousRun = useEditor.getState().previewRunId;
+                chooser.value = `starter:${starter.key}`;
+                chooser.dispatchEvent(new Event("change", { bubbles: true }));
+                const errors = () => useGameConsole.getState().entries.filter(entry => entry.level === "error");
+                await waitFor(() => {
+                    const preview = useEditor.getState();
+                    return useProject.getState().demoKey === starter.key && (
+                        errors().length > 0 ||
+                        (preview.previewRunId !== null && preview.previewRunId !== previousRun && preview.previewReadiness !== null)
+                    );
+                }, `starting ${starter.formattedName}`);
+                await delay(starter.key === "eatlove" ? 1_600 : 250);
+                const preview = useEditor.getState();
+                const errorMessages = errors();
+                assert(!preview.stopped && preview.previewReadiness?.status === "ready" && errorMessages.length === 0,
+                    `${starter.formattedName} failed to start: ${JSON.stringify({ readiness: preview.previewReadiness, errors: errorMessages })}`);
+                assert(useWorkspace.getState().activeTab === "assets", `${starter.formattedName} opened the editor while starting.`);
+                assert(useProject.getState().projectKey === null && useProject.getState().saveStatus === "draft", `${starter.formattedName} was saved just by playing.`);
+                assert(useProject.getState().project.kaplayVersion === starter.version, `${starter.formattedName} changed its engine version.`);
+                gameStartups.push({ key: starter.key, ready: true, errorCount: errorMessages.length });
+            }
+            assert((await db.getAllKeys("projects")).length === beforeFeatureCount, "Starting the game catalog created saved projects.");
+
+            // Going home must finish pending persistence before replacing the game.
+            const beforeHome = useProject.getState();
+            const homeSource = beforeHome.getMainFile().value + "\n// save before going home";
+            let releaseHomeWrite;
+            const homeWriteGate = new Promise(resolve => { releaseHomeWrite = resolve; });
+            db.put = async (...args) => {
+                if (args[0] === "projects") await homeWriteGate;
+                return originalPut(...args);
+            };
+            beforeHome.updateFile("main.js", homeSource);
+            homeLink.click();
+            await delay(50);
+            assert(useProject.getState().projectGeneration === beforeHome.projectGeneration && useProject.getState().saveStatus === "saving", "The home link replaced the game before saving its edits.");
+            releaseHomeWrite();
+            await waitFor(() => useProject.getState().projectGeneration !== beforeHome.projectGeneration && useProject.getState().demoKey === "webmcpAgent", "returning home after saving");
+            db.put = originalPut;
+            const savedBeforeHome = await db.get("projects", beforeHome.draftProjectId);
+            assert(savedBeforeHome.files.get("main.js").value === homeSource && savedBeforeHome.sourceDemoKey === beforeHome.demoKey, "Going home lost pending edits or starter provenance.");
+            assert((await db.getAllKeys("projects")).length === beforeFeatureCount + 1, "Going home created extra saved projects.");
+            assert(useProject.getState().projectKey === null && useProject.getState().saveStatus === "draft", "Going home saved the untouched Codex starting point.");
 
             finish({
                 passed: true,
@@ -548,6 +965,25 @@ startUnavailableInspection();
                 movementConfirmed: movedPlayer.position.x > initialPlayer.position.x,
                 dimensionsConfirmed: true,
                 saveReopenConfirmed: reopened.projectId === saved.projectId,
+                readOnlyAssetsConfirmed: true,
+                hiddenEditorConfirmed: true,
+                failedSaveRetryConfirmed: true,
+                firstSaveActivityConfirmed: true,
+                sharedConsoleConfirmed: true,
+                legacyProjectsConfirmed: true,
+                pendingNavigationConfirmed: true,
+                explicitDraftSaveConfirmed: true,
+                deleteQueueConfirmed: true,
+                restoredBrowserConfirmed: true,
+                quickSwitchConfirmed: true,
+                toolbarShortcutsConfirmed: true,
+                homeNavigationConfirmed: true,
+                quietSaveStatusConfirmed: true,
+                saveErrorRetryConfirmed: true,
+                featureTipsConfirmed: true,
+                assetPathsConfirmed: true,
+                gameStarterCount: gameStarters.length,
+                gameStartups,
                 pendingAssetsStatus: pendingRun.status,
                 inspectionErrorStatus: inspectionErrorRun.status,
                 diagnosticErrorStatus: diagnosticRun.status,

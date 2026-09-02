@@ -1,13 +1,4 @@
-
-/* Show file actions on hoveronly if kind is not scene nor assets nor kaplay */
-.file[data-file-kind="scene"]:hover .file-actions {
-  display: block;
-}
-
-.file[data-file-kind="util"]:hover .file-actions {
-  display: block;
-}
-
-.file[data-file-kind="obj"]:hover .file-actions {
-  display: block;
+/* Keep file actions available to keyboard and pointer users. */
+.file:is([data-file-kind="scene"], [data-file-kind="util"], [data-file-kind="obj"]):is(:hover, :focus-within) .file-actions {
+  display: flex;
 }

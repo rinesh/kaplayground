@@ -4,13 +4,14 @@ import {
     forwardRef,
     useImperativeHandle,
     useRef,
+    useState,
 } from "react";
-import { Slide, ToastContainer } from "react-toastify";
+import { Slide, toast, ToastContainer } from "react-toastify";
 import { ClassNameValue } from "tailwind-merge";
 import { cn } from "../../util/cn";
 
 interface DialogProps extends ComponentProps<"dialog"> {
-    onSave?: () => void;
+    onSave?: () => void | Promise<void>;
     onCloseWithoutSave?: () => void;
     onConfirm?: () => void;
     onDismiss?: () => void;
@@ -45,6 +46,7 @@ export const Dialog: FC<DialogProps> = forwardRef<
     ref,
 ) => {
     const dialogRef = useRef<HTMLDialogElement>(null);
+    const [saving, setSaving] = useState(false);
     useImperativeHandle(ref, () => dialogRef.current as HTMLDialogElement);
 
     const confirmBtnClass = {
@@ -138,10 +140,29 @@ export const Dialog: FC<DialogProps> = forwardRef<
                                 {onSave && (
                                     <button
                                         className="btn btn-primary py-3 min-h-0 h-auto only:ml-auto disabled:bg-neutral disabled:text-base-content/50"
-                                        onClick={onSave}
-                                        disabled={saveDisabled}
+                                        onClick={async event => {
+                                            event.preventDefault();
+                                            setSaving(true);
+                                            try {
+                                                await onSave();
+                                                dialogRef.current?.close();
+                                            } catch (error) {
+                                                toast.error(
+                                                    error instanceof Error
+                                                        ? error.message
+                                                        : "Couldn't save. Your changes are still here.",
+                                                    {
+                                                        containerId:
+                                                            `${props.id}-toasts`,
+                                                    },
+                                                );
+                                            } finally {
+                                                setSaving(false);
+                                            }
+                                        }}
+                                        disabled={saveDisabled || saving}
                                     >
-                                        Save Changes
+                                        {saving ? "Saving…" : "Save Changes"}
                                     </button>
                                 )}
                             </form>

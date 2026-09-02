@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { virtualResolveDirectory } from "../src/features/Projects/application/virtualPaths.ts";
 import { summarizeWebMCPActivityInput } from "../src/integrations/webmcp/activitySummary.ts";
 import { CODEX_PLAY_STEPS } from "../src/integrations/webmcp/agentGuide.ts";
 import { createBoundedConsoleCapture } from "../src/integrations/webmcp/boundedConsoleCapture.ts";
@@ -9,6 +10,10 @@ import {
     createCodexPlayGuideKey,
 } from "../src/integrations/webmcp/codexPlayGuide.ts";
 import { EXAMPLE_COACH_PROMPTS } from "../src/integrations/webmcp/exampleCoachPrompts.ts";
+import {
+    EXAMPLE_LESSONS,
+    getExampleLesson,
+} from "../src/integrations/webmcp/exampleLessons.ts";
 import {
     assertGameRevision,
     classifyGameRun,
@@ -27,7 +32,6 @@ import {
     spriteFrameGridFromLoader,
 } from "../src/integrations/webmcp/imageDimensions.ts";
 import { collectMonacoDiagnostics } from "../src/integrations/webmcp/monacoDiagnostics.ts";
-import { virtualResolveDirectory } from "../src/features/Projects/application/virtualPaths.ts";
 
 const FRIENDLY_PROMPT_FORBIDDEN =
     /@Browser|WebMCP|kaplayground_|contract|revision|\btool\b/i;
@@ -131,7 +135,7 @@ describe("simple KAPLAYGROUND browser tools", () => {
         );
         assert.match(
             update.inputSchema.properties.focusPath.description,
-            /show in the editor/i,
+            /select in the editor.*without activating Code/i,
         );
     });
 
@@ -376,7 +380,7 @@ describe("simple KAPLAYGROUND browser tools", () => {
 
     it("derives sprite-frame dimensions from loader slices", () => {
         const grid = spriteFrameGridFromLoader(
-            'loadSprite("runner", "runner.png", { sliceX: 4, sliceY: 2 });',
+            "loadSprite(\"runner\", \"runner.png\", { sliceX: 4, sliceY: 2 });",
         );
         assert.deepEqual(grid, { columns: 4, rows: 2 });
         assert.deepEqual(
@@ -447,6 +451,38 @@ describe("new-player Codex prompts", () => {
                 assert.ok(prompt.length < 400);
             }
         }
+    });
+
+    it("pairs every sample with a short feature lesson and its existing prompts", () => {
+        assert.deepEqual(
+            Object.keys(EXAMPLE_LESSONS).sort(),
+            Object.keys(EXAMPLE_COACH_PROMPTS).sort(),
+        );
+        for (const [key, lesson] of Object.entries(EXAMPLE_LESSONS)) {
+            assert.ok(lesson.length > 50 && lesson.length < 300, key);
+            assert.doesNotMatch(lesson, FRIENDLY_PROMPT_FORBIDDEN, key);
+            const guide = createCodexPlayGuide({
+                key,
+                title: key,
+                lesson,
+                prompts: EXAMPLE_COACH_PROMPTS[key],
+            });
+            assert.equal(guide.steps[0].description, lesson);
+            assert.equal(guide.steps[1].description, lesson);
+            assert.equal(
+                guide.steps[1].prompt,
+                EXAMPLE_COACH_PROMPTS[key].explain,
+            );
+            assert.equal(
+                guide.steps[2].prompt,
+                EXAMPLE_COACH_PROMPTS[key].remix,
+            );
+        }
+        assert.match(
+            getExampleLesson("spriteAnim"),
+            /frame sequences.*walk cycle/,
+        );
+        assert.equal(getExampleLesson("unknown-custom-game"), undefined);
     });
 
     it("uses the prompt set supplied for a built-in example", () => {
@@ -588,15 +624,17 @@ describe("bounded agent-visible data", () => {
         ]);
         const { monaco, worker, checkedUris } = diagnosticsFixture(files);
         monaco.editor.getModelMarkers = () => [];
-        worker.getSemanticDiagnostics = async (uri) => uri.endsWith("score.ts")
-            ? [{
-                category: 1,
-                code: 2322,
-                start: 6,
-                length: 5,
-                messageText: "Type 'string' is not assignable to type 'number'.",
-            }]
-            : [];
+        worker.getSemanticDiagnostics = async (uri) =>
+            uri.endsWith("score.ts")
+                ? [{
+                    category: 1,
+                    code: 2322,
+                    start: 6,
+                    length: 5,
+                    messageText:
+                        "Type 'string' is not assignable to type 'number'.",
+                }]
+                : [];
         const result = await collectMonacoDiagnostics(monaco, files, "main.js");
         assert.equal(result.sourceCurrent, true);
         assert.deepEqual(checkedUris.sort(), [
@@ -621,11 +659,15 @@ describe("bounded agent-visible data", () => {
 
         let release;
         let started;
-        const checking = new Promise((resolve) => { started = resolve; });
+        const checking = new Promise((resolve) => {
+            started = resolve;
+        });
         worker.getScriptText = async () => "kaplay();";
         worker.getSemanticDiagnostics = () => {
             started();
-            return new Promise((resolve) => { release = resolve; });
+            return new Promise((resolve) => {
+                release = resolve;
+            });
         };
         const pending = collectMonacoDiagnostics(monaco, files, "main.js");
         await checking;
@@ -657,11 +699,15 @@ function diagnosticsFixture(files) {
             uri: uriFor(path),
             getValue: () => model.value,
             getVersionId: () => model.version,
-            getLanguageId: () => path.endsWith(".ts") ? "typescript" : "javascript",
+            getLanguageId: () =>
+                path.endsWith(".ts") ? "typescript" : "javascript",
             isDisposed: () => false,
             getPositionAt(offset) {
                 const lines = model.value.slice(0, offset).split("\n");
-                return { lineNumber: lines.length, column: lines.at(-1).length + 1 };
+                return {
+                    lineNumber: lines.length,
+                    column: lines.at(-1).length + 1,
+                };
             },
         };
         return [path, model];
@@ -673,7 +719,8 @@ function diagnosticsFixture(files) {
             return [];
         },
         getSemanticDiagnostics: async () => [],
-        getScriptText: async (uri) => models.get(uri.slice("file:///".length))?.value,
+        getScriptText: async (uri) =>
+            models.get(uri.slice("file:///".length))?.value,
     };
     const getWorker = async () => async () => worker;
     return {
@@ -683,7 +730,8 @@ function diagnosticsFixture(files) {
         monaco: {
             Uri: { file: uriFor },
             editor: {
-                getModel: (uri) => models.get(uri.toString().slice("file:///".length)),
+                getModel: (uri) =>
+                    models.get(uri.toString().slice("file:///".length)),
             },
             languages: {
                 typescript: {

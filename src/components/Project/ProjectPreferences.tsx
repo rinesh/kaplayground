@@ -14,7 +14,6 @@ import {
     BuildModeModern,
 } from "./BuildModes/BuildModesInstructions";
 import { ProjectFavicon } from "./ProjectFavicon";
-import { ProjectKaplayVersion } from "./ProjectKaplayVersion";
 
 const buildOptions = {
     esbuild: "Modern (ESBuild)",
@@ -31,7 +30,6 @@ const ProjectPreferences = () => {
     const setProject = useProject((s) => s.setProject);
     const getProject = useProject((s) => s.getProject);
     const saveProject = useProject((s) => s.saveProject);
-    const saveNewProject = useProject((s) => s.saveNewProject);
     const updateAndRun = useEditor((s) => s.updateAndRun);
 
     const [editedKey, setEditedKey] = useState<string | null>(null);
@@ -71,13 +69,6 @@ const ProjectPreferences = () => {
 
     const [name, setName] = useState<string>(editedProject.name || "");
     useEffect(() => setName(editedProject.name || ""), [editedProject.name]);
-
-    const [kaplayVersion, setKaplayVersion] = useState<string>(
-        editedProject.kaplayVersion || "",
-    );
-    useEffect(() => setKaplayVersion(editedProject.kaplayVersion || ""), [
-        editedProject.kaplayVersion,
-    ]);
 
     const [buildMode, setBuildMode] = useState<ProjectBuildMode>(
         editedProject.buildMode ?? "legacy",
@@ -147,7 +138,6 @@ const ProjectPreferences = () => {
                     setOpenedProject(pj);
                     setName(pj.name ?? "");
                     setBuildMode(pj.buildMode ?? "legacy");
-                    setKaplayVersion(pj.kaplayVersion);
                 }
             } else {
                 setOpenedProject({
@@ -158,7 +148,6 @@ const ProjectPreferences = () => {
                     mode: projectMode,
                 });
                 setName(projectName ?? "");
-                setKaplayVersion(projectKaplayVersion);
                 setBuildMode(projectBuildMode ?? "legacy");
             }
 
@@ -178,7 +167,7 @@ const ProjectPreferences = () => {
         projectMode,
     ]);
 
-    const handleSave = () => {
+    const handleSave = async () => {
         let shouldRerun = false;
         const projectData: Partial<Project> = {};
         const favicon = new FormData(formRef.current!).get("favicon");
@@ -186,10 +175,6 @@ const ProjectPreferences = () => {
         if (name !== editedProject.name) projectData.name = name;
         if (buildMode !== editedProject.buildMode) {
             projectData.buildMode = buildMode as ProjectBuildMode;
-            shouldRerun = true;
-        }
-        if (kaplayVersion !== editedProject.kaplayVersion) {
-            projectData.kaplayVersion = kaplayVersion;
             shouldRerun = true;
         }
         if (
@@ -202,7 +187,7 @@ const ProjectPreferences = () => {
         }
 
         if (editedKey && editedKey !== projectKey) {
-            saveProject(editedKey, {
+            await saveProject(editedKey, {
                 ...(editedProject as Project),
                 ...projectData,
             });
@@ -210,7 +195,7 @@ const ProjectPreferences = () => {
             setProject(projectData);
             if (shouldRerun) updateAndRun();
 
-            if (!projectKey) saveNewProject();
+            await useProject.getState().persistActiveProject();
         }
     };
 
@@ -220,7 +205,6 @@ const ProjectPreferences = () => {
         setErrors({});
         setName(editedProject.name ?? "");
         setBuildMode(editedProject.buildMode ?? "legacy");
-        setKaplayVersion(editedProject.kaplayVersion!);
 
         setTimeout(() => {
             (formRef.current!).querySelectorAll("[name]").forEach(el => {
@@ -297,26 +281,6 @@ const ProjectPreferences = () => {
                                         data-tooltip-place="bottom-end"
                                     />
                                 </label>
-
-                                <div className="label gap-2 px-2 flex-wrap">
-                                    <label className="flex flex-col gap-1 grow pl-1">
-                                        <span className="label-text font-medium cursor-pointer [.label:has([data-tooltip-content])_&]:text-error transition-colors">
-                                            KAPLAY Version
-                                        </span>
-                                    </label>
-
-                                    <ProjectKaplayVersion
-                                        value={kaplayVersion}
-                                        onSelect={setKaplayVersion}
-                                        portalContainer={document
-                                            .getElementById(
-                                                "project-preferences",
-                                            )}
-                                        className="grow 2sm:grow-0 h-8 py-0 px-3 max-w-full text-sm border border-base-content/15"
-                                        contentClass="bg-base-50 border border-base-content/5 shadow-2xl"
-                                        align="center"
-                                    />
-                                </div>
                             </div>
                         </div>
 

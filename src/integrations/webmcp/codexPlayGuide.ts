@@ -9,6 +9,7 @@ export type CodexPlaySubject = {
     source?: string;
     isStarter?: boolean;
     prompts?: ExampleCoachPrompts;
+    lesson?: string;
 };
 
 export type CodexPlayGuide = {
@@ -43,6 +44,10 @@ export function createCodexPlayGuide(
 
     const presentation = classifyPresentation(subject.source ?? "");
     const playStep = createPlayStep(title, presentation);
+    if (subject.lesson) {
+        playStep.eyebrow = "LEARN BY PLAYING";
+        playStep.description = subject.lesson;
+    }
     const prompts = subject.prompts
         ?? createFallbackCoachPrompts(title, presentation);
 
@@ -55,9 +60,9 @@ export function createCodexPlayGuide(
             {
                 id: "explain",
                 eyebrow: "ASK CODEX",
-                title: "Find out what you can try",
-                description:
-                    "Start with what is already on screen, then make one small change you can see or play.",
+                title: "Understand it, then change it",
+                description: subject.lesson
+                    ?? "Ask Codex about this sample's behavior, then use the next ideas to remix it or build on it.",
                 prompt: prompts.explain,
             },
             {
@@ -73,7 +78,7 @@ export function createCodexPlayGuide(
                 eyebrow: "BUILD A GAME",
                 title: "Turn this idea into a tiny game",
                 description:
-                    "Use the example as the main mechanic for a short game with a clear finish.",
+                    "Use the starting point as the main mechanic for a short game with a clear finish.",
                 prompt: prompts.build,
             },
             {
@@ -81,7 +86,7 @@ export function createCodexPlayGuide(
                 eyebrow: "YOUR TURN",
                 title: "Describe the version you want",
                 description:
-                    "Replace the bracketed parts with your own choices and keep the example's central idea.",
+                    "Replace the bracketed parts with your own choices and keep the starting point's central idea.",
                 prompt: prompts.invent,
             },
         ],

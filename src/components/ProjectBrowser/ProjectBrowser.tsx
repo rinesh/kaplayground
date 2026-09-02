@@ -1,659 +1,544 @@
+import { assets } from "@kaplayjs/crew";
 import * as Tabs from "@radix-ui/react-tabs";
-import { demos, demoVersions } from "../../data/demos";
-import type { Example, ExamplesDataRecord } from "../../data/demos";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast, ToastContainer } from "react-toastify";
+import { demos, type Example, type ExamplesDataRecord } from "../../data/demos";
+import {
+    compareStartingPoints,
+    inStartingPointCollection,
+    isPlayableStartingPoint,
+    matchesStartingPoint,
+    type StartingPointCollection,
+} from "../../data/startingPoints";
+import { useProject } from "../../features/Projects/stores/useProject";
+import { confirmNavigate } from "../../util/confirmNavigate";
 import { ProjectEntry } from "./ProjectEntry";
 import "./ProjectBrowser.css";
-import { assets } from "@kaplayjs/crew";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Slide, toast, ToastContainer } from "react-toastify";
-import { Tooltip } from "react-tooltip";
-import examplesJson from "../../../kaplay/examples/examples.json";
-import type { ProjectMode } from "../../features/Projects/models/ProjectMode";
-import { useProject } from "../../features/Projects/stores/useProject";
-import { useConfig } from "../../hooks/useConfig";
-import { cn } from "../../util/cn";
-import { TabsList } from "../UI/TabsList";
-import { TabTrigger } from "../UI/TabTrigger";
-import { GroupBy, groupBy } from "./GroupBy";
-import { ProjectCreate } from "./ProjectCreate";
-import { ProjectNotFound } from "./ProjectNotFound";
-import {
-    SortBy,
-    sortEntries,
-    sortMapExamples,
-    sortMapProjects,
-} from "./SortBy";
-import { TagsFilter } from "./TagsFilter";
-import { VersionFilter } from "./VersionFilter";
 
 export type ExamplesData = {
     categories?: ExamplesDataRecord;
     tags?: ExamplesDataRecord;
     difficulties?: { displayName?: string }[];
 };
-
-const examplesData = examplesJson as ExamplesData;
 const OPEN_DEMO_BROWSER_EVENT = "kaplayground-open-demo-browser";
-
-export const openDemoBrowser = () => {
+const OPEN_PROJECT_BROWSER_EVENT = "kaplayground-open-project-browser";
+export const openDemoBrowser = () =>
     window.dispatchEvent(new Event(OPEN_DEMO_BROWSER_EVENT));
-};
+export const openProjectBrowser = () =>
+    window.dispatchEvent(new Event(OPEN_PROJECT_BROWSER_EVENT));
+
+const collections = [
+    { value: "all", label: "All" },
+    { value: "games", label: "Games" },
+    { value: "features", label: "Features" },
+] as const;
 
 export const ProjectBrowser = () => {
-    const projectName = useProject((s) => s.project.name);
-    const projectKey = useProject((s) => s.projectKey);
-    const projectVersion = useProject((s) => s.project.kaplayVersion);
-    const projectMode = useProject((s) => s.project.mode);
-    const wasEdited = useProject((s) => s.projectWasEdited);
-    const demoKey = useProject((s) => s.demoKey);
-
-    const [tab, setTab] = useState("Projects");
-    const savedProjects = useProject((s) => s.savedProjects);
-    const getProjectMinVersions = useProject((s) => s.getProjectMinVersions);
-    const preferredVersion = useConfig((s) => s.config.preferredVersion);
-    const [filter, setFilter] = useState("");
-    const [filterTags, setFilterTags] = useState<string[]>([]);
-    const [examplesFilterVersion, setExamplesFilterVersion] = useState<
-        string | undefined
-    >(
-        undefined,
-    );
-    const [projectsFilterVersion, setProjectsFilterVersion] = useState("All");
-    const [projectsSort, setProjectsSort] = useState("latest");
-    const [examplesSort, setExamplesSort] = useState("topic");
-    const [projectsGroup, setProjectsGroup] = useState("group");
-    const [examplesGroup, setExamplesGroup] = useState("category");
-    const dialogRef = useRef<HTMLDialogElement>(null);
-
-    const currentSort = useCallback(
-        () => tab == "Projects" ? projectsSort : examplesSort,
-        [tab, projectsSort, examplesSort],
-    );
-    const setCurrentSort = (value: string) => {
-        if (tab == "Projects") {
-            setProjectsSort(value);
-        } else {
-            setExamplesSort(value);
-        }
-    };
-    const sortFn = (a: Example, b: Example): number =>
-        sortEntries(currentSort(), tab, a, b);
-
+    const savedIds = useProject(state => state.savedProjects);
+    const projectName = useProject(state => state.project.name);
     const [projects, setProjects] = useState<Example[]>([]);
-    useEffect(() => {
-        (async () => {
-            setProjects(
-                await Promise.all(
-                    savedProjects.map((project) =>
-                        useProject.getState().getProjectMetadata(project)
-                    ),
-                ),
-            );
-        })();
-    }, [savedProjects, wasEdited, projectName]);
-
-    const currentGroup = useCallback(
-        () => tab == "Projects" ? projectsGroup : examplesGroup,
-        [tab, projectsGroup, examplesGroup],
+    const [isOpen, setIsOpen] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [creating, setCreating] = useState(false);
+    const [loadError, setLoadError] = useState("");
+    const [tab, setTab] = useState("projects");
+    const [projectQuery, setProjectQuery] = useState("");
+    const [starterQuery, setStarterQuery] = useState("");
+    const [topic, setTopic] = useState("");
+    const [topicsExpanded, setTopicsExpanded] = useState(false);
+    const [collection, setCollection] = useState<StartingPointCollection>(
+        "all",
     );
-    const setCurrentGroup = (value: string) => {
-        if (tab == "Projects") {
-            setProjectsGroup(value);
-        } else {
-            setExamplesGroup(value);
-        }
-    };
-
-    const filteredProjects = useMemo(
-        () =>
-            groupBy(
-                projects.filter((project) =>
-                    project.name.toLowerCase().includes(filter.toLowerCase())
-                    && (!filterTags.length
-                        || project.tags.some(({ name }) =>
-                            filterTags.includes(name)
-                        ))
-                ).sort(sortFn),
-                projectsGroup,
-            ),
-        [projects, filter, filterTags, currentSort, projectsGroup],
-    );
-    const filteredExamples = useMemo(
-        () =>
-            groupBy(
-                demos.filter((example) =>
-                    example.formattedName
-                        .toLowerCase()
-                        .includes(filter.toLowerCase())
-                    && (!filterTags.length
-                        || example.tags.some(({ name }) =>
-                            filterTags.includes(name)
-                        ))
-                ).sort(sortFn),
-                examplesGroup,
-            ),
-        [filter, filterTags, currentSort, examplesGroup],
-    );
-
-    const currentFilterVersion = useCallback(
-        () => tab == "Projects" ? projectsFilterVersion : examplesFilterVersion,
-        [tab, projectsFilterVersion, examplesFilterVersion],
-    );
-    const setCurrentFilterVersion = (value: string) => {
-        if (tab == "Projects") {
-            setProjectsFilterVersion(value);
-        } else {
-            setExamplesFilterVersion(value);
-        }
-    };
-
-    const [projectVersions, setProjectVersions] = useState<
-        Record<string, number>
-    >({});
-    useEffect(() => {
-        (async () => setProjectVersions(await getProjectMinVersions()))();
-    }, [projects, projectVersion]);
-    const versions = useMemo(
-        () => tab == "Projects" ? projectVersions : demoVersions,
-        [tab, projectVersions],
-    );
-
-    const getDefaultDemoFilterVersion = () => {
-        const versionKeys = Object.keys(demoVersions);
-        return versionKeys.includes(preferredVersion)
-            ? preferredVersion
-            : (examplesFilterVersion ?? versionKeys[0]);
-    };
-    useEffect(() => {
-        if (!examplesFilterVersion) {
-            setExamplesFilterVersion(getDefaultDemoFilterVersion());
-        }
-    }, [demoVersions, examplesFilterVersion]);
+    const [projectSort, setProjectSort] = useState("latest");
+    const [starterSort, setStarterSort] = useState("featured");
+    const dialogRef = useRef<HTMLDialogElement>(null);
+    const query = tab === "projects" ? projectQuery : starterQuery;
+    const setQuery = tab === "projects" ? setProjectQuery : setStarterQuery;
 
     useEffect(() => {
-        if (examplesFilterVersion) {
-            setExamplesFilterVersion(getDefaultDemoFilterVersion());
-        }
-    }, [preferredVersion]);
-
-    const tags = useCallback((): string[] => {
-        const set = new Set<string>();
-        ((tab == "Projects" ? projects : demos) as Example[]).sort(
-            sortFn,
-        ).forEach(
-            entry => {
-                if (typeof entry !== "string") {
-                    entry?.tags?.forEach(({ name }) => set.add(name));
+        if (!isOpen || tab !== "projects") return;
+        let current = true;
+        setLoading(true);
+        void Promise.all(
+            savedIds.map(id => useProject.getState().getProjectMetadata(id)),
+        )
+            .then(entries => {
+                if (current) {
+                    setProjects(entries);
+                    setLoadError("");
                 }
-            },
-        );
-
-        return [...set];
-    }, [tab, projects]);
-    const toggleTag = (tag: string) =>
-        setFilterTags(prev =>
-            prev.includes(tag)
-                ? prev.filter(t => t !== tag)
-                : [...prev, tag]
-        );
-
-    const entriesCount = (entries: object): number =>
-        Object.values(entries).reduce((sum, items) => sum + items.length, 0);
-
-    const createButtons = Object.entries({
-        pj: "With tree structure",
-        ex: "Single file script",
-    }).map(([mode, tooltip]) => (
-        <ProjectCreate
-            key={mode}
-            mode={mode as ProjectMode}
-            tooltipContent={tooltip}
-        />
-    ));
+            })
+            .catch(() => {
+                if (current) {
+                    setLoadError(
+                        "Couldn't read saved games. Close this window and try again.",
+                    );
+                }
+            })
+            .finally(() => {
+                if (current) setLoading(false);
+            });
+        return () => {
+            current = false;
+        };
+    }, [savedIds, projectName, isOpen, tab]);
 
     useEffect(() => {
-        setTab(
-            projectMode == "ex" && !projectKey && demoKey
-                ? "Examples"
-                : "Projects",
-        );
-    }, [projectMode, projectKey, demoKey]);
+        const dialog = dialogRef.current!;
+        const observer = new MutationObserver(() => setIsOpen(dialog.open));
+        observer.observe(dialog, {
+            attributes: true,
+            attributeFilter: ["open"],
+        });
+        return () => observer.disconnect();
+    }, []);
 
     useEffect(() => {
-        const searchParams = new URLSearchParams(location.search);
-
-        const ex = ["examples", "ex", "demos"];
-        const pj = ["projects", "pj"];
-        const browseType = searchParams.get("browse")?.toLowerCase() ?? "";
-        const tab = ex.includes(browseType)
-            ? "Examples"
-            : pj.includes(browseType)
-            ? "Projects"
-            : null;
-
-        if (searchParams.has("browse")) {
-            if (tab) setTab(tab);
+        const show = (destination: string) => {
+            setTab(destination);
             dialogRef.current?.showModal();
-            const url = new URL(window.location.href);
+        };
+        const starters = () => show("starters");
+        const saved = () => show("projects");
+        window.addEventListener(OPEN_DEMO_BROWSER_EVENT, starters);
+        window.addEventListener(OPEN_PROJECT_BROWSER_EVENT, saved);
+        const url = new URL(window.location.href);
+        if (url.searchParams.has("browse")) {
+            show(
+                ["examples", "ex", "demos"].includes(
+                        url.searchParams.get("browse")?.toLowerCase() ?? "",
+                    )
+                    ? "starters"
+                    : "projects",
+            );
             url.searchParams.delete("browse");
             window.history.replaceState({}, "", url);
         }
-    }, []);
-
-    useEffect(() => {
-        const handleOpenDemoBrowser = () => {
-            setTab("Examples");
-            dialogRef.current?.showModal();
-        };
-
-        window.addEventListener(
-            OPEN_DEMO_BROWSER_EVENT,
-            handleOpenDemoBrowser,
-        );
         return () => {
-            window.removeEventListener(
-                OPEN_DEMO_BROWSER_EVENT,
-                handleOpenDemoBrowser,
-            );
+            window.removeEventListener(OPEN_DEMO_BROWSER_EVENT, starters);
+            window.removeEventListener(OPEN_PROJECT_BROWSER_EVENT, saved);
         };
     }, []);
+
+    const collectionEntries = useMemo(
+        () =>
+            demos.filter(entry => inStartingPointCollection(entry, collection)),
+        [collection],
+    );
+    const topics = useMemo(
+        () =>
+            [...new Map(
+                collectionEntries.flatMap(entry =>
+                    entry.tags.map(tag => [tag.name, tag] as const)
+                ),
+            ).values()].sort((a, b) =>
+                (a.displayName ?? a.name).localeCompare(b.displayName ?? b.name)
+            ),
+        [collectionEntries],
+    );
+    const visibleTopics = topicsExpanded ? topics : [
+        ...topics.filter(tag => tag.name === topic),
+        ...topics.filter(tag => tag.name !== topic),
+    ].slice(0, 4);
+    const startingPoints = useMemo(
+        () =>
+            collectionEntries
+                .filter(entry =>
+                    matchesStartingPoint(entry, starterQuery, topic)
+                )
+                .sort(
+                    starterSort === "title"
+                        ? (a, b) =>
+                            a.formattedName.localeCompare(b.formattedName)
+                        : compareStartingPoints,
+                ),
+        [collectionEntries, starterQuery, topic, starterSort],
+    );
+    const savedProjects = useMemo(
+        () =>
+            projects.filter(entry =>
+                savedIds.includes(entry.key)
+                && entry.formattedName.toLowerCase().includes(
+                    projectQuery.trim().toLowerCase(),
+                )
+            )
+                .sort(
+                    projectSort === "title"
+                        ? (a, b) =>
+                            a.formattedName.localeCompare(b.formattedName)
+                        : (a, b) => b.updatedAt.localeCompare(a.updatedAt),
+                ),
+        [projects, savedIds, projectQuery, projectSort],
+    );
+    const sections = [
+        {
+            key: "games",
+            title: "Games to play and remix",
+            description: "Start with a playable game, then make it your own.",
+            entries: startingPoints.filter(isPlayableStartingPoint),
+        },
+        {
+            key: "features",
+            title: "Learn a feature",
+            description:
+                "Focused samples with explanations and Codex prompts beneath the preview.",
+            entries: startingPoints.filter(entry =>
+                !isPlayableStartingPoint(entry)
+            ),
+        },
+    ];
+
+    const newProject = () => {
+        if (creating) return;
+        setCreating(true);
+        void confirmNavigate(async () => {
+            await useProject.getState().createNewProject("pj");
+            dialogRef.current?.close();
+        }).catch(error =>
+            toast.error(String(error), {
+                containerId: "projects-browser-toasts",
+            })
+        )
+            .finally(() => setCreating(false));
+    };
+    const toggleTopic = (name: string) => setTopic(topic === name ? "" : name);
 
     return (
         <dialog
-            id="examples-browser"
-            className="modal has-[[data-radix-menu-content][data-state='open']]:pointer-events-none bg-[#00000070]"
             ref={dialogRef}
-            onClose={() => {
-                toast.dismiss({ containerId: "projects-browser-toasts" });
-            }}
+            id="examples-browser"
+            aria-labelledby="project-browser-heading"
+            className="modal bg-[#00000070]"
+            onClose={() =>
+                toast.dismiss({ containerId: "projects-browser-toasts" })}
         >
-            <div className="modal-box overflow-hidden max-w-screen-md p-0 flex flex-col w-dvw h-dvh max-h-[calc(100dvh-4.4rem)]">
-                <header
-                    className="grow-0 space-y-4 bg-base-200 p-4 border border-b-0 border-px border-base-100 rounded-t-2xl"
-                    tabIndex={0}
-                >
+            <Tabs.Root
+                value={tab}
+                onValueChange={setTab}
+                className="modal-box flex h-[min(900px,92dvh)] w-[calc(100vw-1rem)] max-w-screen-md flex-col overflow-hidden rounded-2xl border border-base-content/10 p-0"
+            >
+                <header className="shrink-0 space-y-4 bg-base-200 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                            <h2 className="shrink-0 text-2xl sm:text-3xl text-white font-semibold">
-                                {tab === "Examples"
-                                    ? "Pick a starting point"
-                                    : "Your games"}
+                        <div className="min-w-0 flex-1">
+                            <h2
+                                id="project-browser-heading"
+                                className="text-2xl sm:text-3xl font-semibold text-white"
+                            >
+                                {tab === "projects"
+                                    ? "Your games"
+                                    : "Pick a starting point"}
                             </h2>
                             <p className="mt-1 text-sm text-base-content/70">
-                                {tab === "Examples"
-                                    ? "Open one, play it, then ask Codex to turn it into your game."
-                                    : "Open something you saved or start a new game."}
+                                {tab === "projects"
+                                    ? "Open something you saved or start a new game."
+                                    : "Play a game or explore a feature, with Codex tips to make it yours."}
                             </p>
                         </div>
-
-                        <div className="flex gap-3">
-                            <GroupBy
-                                value={currentGroup()}
-                                onChange={setCurrentGroup}
-                                options={tab == "Projects"
-                                    ? [
-                                        ["group", "Type"],
-                                        ["minVersion", "Version"],
-                                        "none",
-                                    ]
-                                    : [
-                                        "category",
-                                        "group",
-                                        "difficulty",
-                                        "minVersion",
-                                        "version",
-                                        "none",
-                                    ]}
-                            />
-                            <SortBy
-                                value={currentSort()}
-                                onChange={setCurrentSort}
-                                options={Object.keys(
-                                    tab == "Projects"
-                                        ? sortMapProjects
-                                        : sortMapExamples,
-                                )}
-                            />
+                        <div className="flex items-center gap-2">
+                            <label className="flex items-center gap-1.5 text-xs">
+                                Sort by
+                                <select
+                                    aria-label="Sort games"
+                                    className="select select-xs bg-base-100 border-base-content/15 pr-6"
+                                    value={tab === "projects"
+                                        ? projectSort
+                                        : starterSort}
+                                    onChange={event =>
+                                        (tab === "projects"
+                                            ? setProjectSort
+                                            : setStarterSort)(
+                                                event.target.value,
+                                            )}
+                                >
+                                    {tab === "projects"
+                                        ? <option value="latest">Latest</option>
+                                        : (
+                                            <option value="featured">
+                                                Featured
+                                            </option>
+                                        )}
+                                    <option value="title">Name</option>
+                                </select>
+                            </label>
+                            <form method="dialog">
+                                <button
+                                    className="btn btn-xs btn-ghost px-1.5"
+                                    aria-label="Close game browser"
+                                >
+                                    ×
+                                </button>
+                            </form>
                         </div>
                     </div>
-
-                    <form
-                        className="relative flex join z-0"
-                        onSubmit={e => e.preventDefault()}
-                    >
-                        <label
-                            className="input input-bordered max-sm:pl-3.5 max-sm:h-10 flex items-center gap-1 w-full join-item focus-within:z-[1]"
-                            aria-label="Search"
-                        >
+                    <div className="join flex w-full">
+                        <label className="input input-bordered join-item flex min-w-0 flex-1 items-center gap-1 max-sm:h-10 max-sm:pl-3">
                             <input
-                                type="text"
-                                className="peer grow w-full h-full"
-                                placeholder={tab === "Examples"
-                                    ? "Search starting points"
-                                    : "Search your games"}
-                                autoComplete="off"
-                                onChange={(e) => setFilter(e.target.value)}
+                                type="search"
+                                aria-label={tab === "projects"
+                                    ? "Search your games"
+                                    : "Search starting points"}
+                                placeholder={tab === "projects"
+                                    ? "Search your games"
+                                    : "Search starting points"}
+                                className="min-w-0 flex-1"
+                                value={query}
+                                onChange={event => setQuery(event.target.value)}
                             />
-
-                            <button
-                                type="reset"
-                                className="btn btn-xs btn-ghost -mr-2.5 sm:-mr-1.5 px-1 shrink-0 peer-placeholder-shown:invisible peer-placeholder-shown:scale-0 peer-placeholder-shown:opacity-0 transition-[visibility,transform,opacity]"
-                                aria-label="Clear"
-                                onClick={() => setFilter("")}
-                            >
-                                <svg
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    aria-hidden="true"
+                            {query && (
+                                <button
+                                    type="button"
+                                    className="btn btn-xs btn-ghost px-1"
+                                    aria-label="Clear search"
+                                    onClick={() => setQuery("")}
                                 >
-                                    <path d="M18 6 6 18"></path>
-                                    <path d="m6 6 12 12"></path>
-                                </svg>
-                            </button>
-                        </label>
-
-                        <VersionFilter
-                            value={currentFilterVersion()}
-                            options={versions}
-                            onChange={setCurrentFilterVersion}
-                            allOption={tab == "Projects"
-                                ? ({
-                                    "All": savedProjects.length,
-                                })
-                                : false}
-                            strictComparison={tab == "Projects"}
-                        />
-                    </form>
-
-                    <TagsFilter
-                        value={tags}
-                        tags={examplesData.tags}
-                        filterTags={filterTags}
-                        setFilterTags={setFilterTags}
-                        multipleTags={tab != "Projects"}
-                        tagsExpandingDeps={[tab]}
-                    />
-                </header>
-
-                <Tabs.Root
-                    value={tab}
-                    onValueChange={tab => setTab(tab)}
-                    className="flex flex-col flex-1 min-h-0"
-                >
-                    <TabsList className="sm:auto-cols-fr -mx-px w-auto mb-[2px]">
-                        <TabTrigger
-                            label="My games"
-                            value="Projects"
-                            icon={assets.api_book.outlined}
-                            count={entriesCount(filteredProjects)}
-                        />
-                        <TabTrigger
-                            label="Game starting points"
-                            value="Examples"
-                            icon={assets.apple.outlined}
-                            count={entriesCount(filteredExamples)}
-                        />
-                    </TabsList>
-
-                    <Tabs.Content
-                        value="Projects"
-                        className="flex-1 px-4 pb-5 pt-4 overflow-auto scrollbar-thin"
-                        tabIndex={-1}
-                        forceMount
-                        hidden={tab !== "Projects"}
-                    >
-                        {savedProjects.length > 0
-                            ? (
-                                <>
-                                    {Object.entries(filteredProjects).map((
-                                        [groupName, projects],
-                                        index,
-                                    ) => (
-                                        <div
-                                            key={index}
-                                            className={cn(
-                                                "collapse collapse-arrow px-1 first:pt-0.5 rounded-none has-[:focus]:rounded-lg group-collapse",
-                                                {
-                                                    "first:-mt-3":
-                                                        groupName != "all",
-                                                },
-                                            )}
-                                        >
-                                            <input
-                                                className="peer min-h-12"
-                                                type="checkbox"
-                                                defaultChecked
-                                                hidden={groupName == "all"}
-                                            />
-
-                                            {groupName != "all" && (
-                                                <div
-                                                    className={cn(
-                                                        "collapse-title flex items-center gap-1.5 font-medium capitalize px-0 py-3.5 min-h-12 border-t border-base-content/10 group-[-collapse:first-child]:border-t-0 after:!top-7 after:!right-2 peer-hover:text-white transition-colors",
-                                                        {
-                                                            "text-base-content/50":
-                                                                groupName
-                                                                    == "uncategorized",
-                                                        },
-                                                    )}
-                                                >
-                                                    <span className="badge badge-xs font-bold text-[inherit] text-[0.625rem] py-1 px-1 min-w-5 h-auto bg-base-content/15 border-0">
-                                                        {projects
-                                                            .length}
-                                                    </span>
-                                                    {examplesData
-                                                        .categories
-                                                        ?.[groupName]
-                                                        ?.displayName
-                                                        ?? groupName}
-                                                </div>
-                                            )}
-
-                                            <div
-                                                className={cn(
-                                                    "collapse-content -mx-0.5 !p-0 peer-checked:!pb-5",
-                                                    {
-                                                        "-mt-5 peer-checked:!pt-5":
-                                                            groupName
-                                                                != "all",
-                                                    },
-                                                )}
-                                            >
-                                                <div className="examples-list gap-2">
-                                                    {projects.map((project) => (
-                                                        <ProjectEntry
-                                                            project={project}
-                                                            isProject
-                                                            key={project.name}
-                                                            toggleTag={toggleTag}
-                                                            filterVersion={currentFilterVersion()}
-                                                            filterStrictComparison={true}
-                                                        />
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-
-                                    {tab === "Projects"
-                                        && Object.entries(filteredProjects)
-                                                .length == 0
-                                        && <ProjectNotFound className="mb-4" />}
-
-                                    <div className="[@media(min-height:680px)]:sticky -bottom-5 -mb-5 -mx-4 px-5 bg-base-100">
-                                        <div className="pt-5 pb-5 border-t border-base-content/10">
-                                            <div className="examples-list max-sm:flex gap-2 -mx-0.5">
-                                                {createButtons}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </>
-                            )
-                            : (
-                                <div className="flex flex-col items-center justify-center gap-3 w-full max-w-sm mx-auto min-h-full pb-[4vh]">
-                                    <div className="flex flex-col items-center justify-center gap-1">
-                                        <img
-                                            src={assets.save.outlined}
-                                            alt="Save icon"
-                                            className="h-[clamp(3rem,10vh,7rem)] object-contain pixelated grayscale opacity-20"
-                                        >
-                                        </img>
-
-                                        <h2 className="mt-3 font-bold text-2xl">
-                                            No projects, yet
-                                        </h2>
-                                        <h2>
-                                            Get started by creating a new one:
-                                        </h2>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-2 w-full mt-3">
-                                        {createButtons}
-                                    </div>
-
-                                    <div className="divider my-2 text-xs">
-                                        OR
-                                    </div>
-
-                                    <button
-                                        className="btn btn-ghost gap-2 items-center justify-center bg-base-300/50 w-full"
-                                        type="button"
-                                        onClick={() => setTab("Examples")}
-                                    >
-                                        <img
-                                            src={assets.apple.outlined}
-                                            className="inline h-5 w-5 object-scale-down"
-                                            aria-hidden="true"
-                                        />
-
-                                        Browse game starting points
-
-                                        {!!entriesCount(filteredExamples) && (
-                                            <span className="badge badge-xs font-medium py-1 px-1.5 min-w-5 h-auto bg-base-content/15 border-0">
-                                                {entriesCount(
-                                                    filteredExamples,
-                                                )}
-                                            </span>
-                                        )}
-                                    </button>
-                                </div>
+                                    ×
+                                </button>
                             )}
-                    </Tabs.Content>
-                    <Tabs.Content
-                        value="Examples"
-                        className="flex-1 px-4 pb-5 pt-4 overflow-auto scrollbar-thin"
-                        tabIndex={-1}
-                        forceMount
-                        hidden={tab !== "Examples"}
-                    >
-                        {Object.entries(filteredExamples).map((
-                            [groupName, examples],
-                            index,
-                        ) => (
-                            <div
-                                key={index}
-                                className={cn(
-                                    "collapse collapse-arrow px-1 first:pt-0.5 rounded-none has-[:focus]:rounded-lg group-collapse",
-                                    { "first:-mt-3": groupName != "all" },
-                                )}
+                        </label>
+                        {tab === "starters" && (
+                            <select
+                                aria-label="Starting point collection"
+                                className="select select-bordered join-item w-44 max-sm:h-10 max-sm:min-h-10 max-sm:w-36 bg-base-200 text-xs sm:text-sm"
+                                value={collection}
+                                onChange={event => {
+                                    setCollection(
+                                        event.target
+                                            .value as StartingPointCollection,
+                                    );
+                                    setTopic("");
+                                    setTopicsExpanded(false);
+                                }}
                             >
-                                <input
-                                    className="peer min-h-12"
-                                    type="checkbox"
-                                    defaultChecked
-                                    hidden={groupName == "all"}
-                                />
-
-                                {groupName != "all" && (
-                                    <div
-                                        className={cn(
-                                            "collapse-title flex items-center gap-1.5 font-medium pl-0 pr-6 py-3.5 min-h-12 border-t border-base-content/10 group-[-collapse:first-child]:border-t-0 after:!top-7 after:!right-2 peer-hover:text-white transition-colors",
-                                            {
-                                                "text-base-content/50":
-                                                    groupName
-                                                        == "uncategorized",
-                                            },
-                                        )}
+                                {collections.map(option => (
+                                    <option
+                                        key={option.value}
+                                        value={option.value}
                                     >
-                                        <span className="badge badge-xs font-bold text-[inherit] text-[0.625rem] py-1 px-1 min-w-5 h-auto bg-base-content/15 border-0">
-                                            {examples.length}
-                                        </span>
-
-                                        <div className="flex flex-wrap items-baseline gap-x-2">
-                                            <h3 className="capitalize">
-                                                {examplesData.categories
-                                                    ?.[groupName]
-                                                    ?.displayName
-                                                    ?? groupName}
-                                            </h3>
-
-                                            {currentGroup()
-                                                    == "category"
-                                                && examplesData
-                                                    .categories
-                                                    ?.[groupName]
-                                                    ?.description
-                                                && (
-                                                    <p className="self-baseline font-normal text-xs tracking-wide text-base-content/80">
-                                                        {examplesData
-                                                            .categories
-                                                            ?.[groupName]
-                                                            ?.description}
-                                                    </p>
-                                                )}
-                                        </div>
-                                    </div>
-                                )}
-
-                                <div
-                                    className={cn(
-                                        "collapse-content -mx-0.5 !p-0",
-                                        {
-                                            "-mt-5 peer-checked:!pt-5 group-[-collapse:not(:last-child)]:peer-checked:!pb-5":
-                                                groupName != "all",
-                                        },
-                                    )}
-                                >
-                                    <div className="examples-list gap-2">
-                                        {examples.map((example) => (
-                                            <ProjectEntry
-                                                project={example}
-                                                key={example.name}
-                                                toggleTag={toggleTag}
-                                                filterVersion={currentFilterVersion()}
-                                            />
-                                        ))}
-                                    </div>
-                                </div>
+                                        {option.label} ({demos.filter(entry =>
+                                            inStartingPointCollection(
+                                                entry,
+                                                option.value,
+                                            )
+                                        ).length})
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                    </div>
+                    {tab === "starters" && topics.length > 0 && (
+                        <div className="flex items-start justify-between gap-2">
+                            <div
+                                id="starting-point-topics"
+                                className="flex max-h-24 min-w-0 flex-wrap gap-1 overflow-y-auto"
+                            >
+                                {visibleTopics.map(tag => (
+                                    <button
+                                        type="button"
+                                        key={tag.name}
+                                        aria-pressed={topic === tag.name}
+                                        title={tag.description}
+                                        className={`btn btn-xs rounded-full border-base-content/10 bg-base-content/10 font-medium ${
+                                            topic === tag.name
+                                                ? "bg-primary text-primary-content"
+                                                : ""
+                                        }`}
+                                        onClick={() => toggleTopic(tag.name)}
+                                    >
+                                        {tag.displayName ?? tag.name}
+                                    </button>
+                                ))}
                             </div>
+                            <div className="flex shrink-0 gap-1">
+                                {topic && (
+                                    <button
+                                        type="button"
+                                        aria-label="Clear topic"
+                                        className="btn btn-xs btn-ghost rounded-full px-2"
+                                        onClick={() => setTopic("")}
+                                    >
+                                        ×
+                                    </button>
+                                )}
+                                {topics.length > 4 && (
+                                    <button
+                                        type="button"
+                                        className="btn btn-xs rounded-full border-base-content/10 bg-base-content/10 font-medium"
+                                        aria-controls="starting-point-topics"
+                                        aria-expanded={topicsExpanded}
+                                        onClick={() =>
+                                            setTopicsExpanded(!topicsExpanded)}
+                                    >
+                                        Topics {topicsExpanded ? "▴" : "▾"}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </header>
+                <Tabs.List
+                    aria-label="Game destinations"
+                    className="tabs tabs-lifted grid shrink-0 grid-cols-2 bg-base-200"
+                >
+                    {[
+                        {
+                            value: "projects",
+                            label: "My games",
+                            icon: assets.api_book.outlined,
+                            count: savedIds.length,
+                        },
+                        {
+                            value: "starters",
+                            label: "Game starting points",
+                            icon: assets.apple.outlined,
+                            count: demos.length,
+                        },
+                    ].map(destination => (
+                        <Tabs.Trigger
+                            key={destination.value}
+                            value={destination.value}
+                            className={`tab h-12 gap-1.5 px-2 text-xs sm:gap-2 sm:px-6 sm:text-sm ${
+                                tab === destination.value ? "tab-active" : ""
+                            }`}
+                        >
+                            <img
+                                src={destination.icon}
+                                alt=""
+                                className="h-5 w-5 object-contain max-sm:hidden"
+                                draggable={false}
+                            />
+                            <span className="whitespace-nowrap font-medium">
+                                {destination.label}
+                            </span>
+                            <span className="badge badge-xs min-w-5 border-0 bg-base-content/15 px-1 py-2 text-[10px]">
+                                {destination.count}
+                            </span>
+                        </Tabs.Trigger>
+                    ))}
+                </Tabs.List>
+                <Tabs.Content
+                    value="projects"
+                    forceMount
+                    className="min-h-0 flex-1 overflow-y-auto p-4 scrollbar-thin data-[state=inactive]:hidden"
+                >
+                    {loadError && (
+                        <p role="alert" className="mb-3 text-error">
+                            {loadError}
+                        </p>
+                    )}
+                    {loading && !projects.length && (
+                        <p role="status" className="py-8 text-center">
+                            Loading your games…
+                        </p>
+                    )}
+                    <div className="grid gap-2 sm:grid-cols-3">
+                        {savedProjects.map(project => (
+                            <ProjectEntry
+                                key={project.key}
+                                project={project}
+                                isProject
+                            />
                         ))}
-
-                        {tab === "Examples"
-                            && Object.entries(filteredExamples).length == 0
-                            && <ProjectNotFound />}
-                    </Tabs.Content>
-                </Tabs.Root>
-            </div>
-
+                    </div>
+                    {!loading && !loadError && !savedProjects.length && (
+                        <div className="py-10 text-center">
+                            <p>
+                                {projectQuery
+                                    ? "No saved games match that search."
+                                    : "Your games will appear here after your first edit or save."}
+                            </p>
+                            <button
+                                type="button"
+                                className="btn btn-sm btn-ghost mt-3"
+                                onClick={() => setTab("starters")}
+                            >
+                                Explore game starting points
+                            </button>
+                        </div>
+                    )}
+                </Tabs.Content>
+                <Tabs.Content
+                    value="starters"
+                    forceMount
+                    className="min-h-0 flex-1 overflow-y-auto p-4 scrollbar-thin data-[state=inactive]:hidden"
+                >
+                    {sections.filter(section => section.entries.length).map(
+                        section => (
+                            <section
+                                key={section.key}
+                                aria-labelledby={`starting-points-${section.key}`}
+                                className="mb-6 last:mb-0"
+                            >
+                                <div className="mb-3">
+                                    <h3
+                                        id={`starting-points-${section.key}`}
+                                        className="flex items-center gap-2 font-medium"
+                                    >
+                                        <span className="badge badge-xs min-w-5 border-0 bg-base-content/15 px-1 py-2 text-[10px]">
+                                            {section.entries.length}
+                                        </span>
+                                        {section.title}
+                                    </h3>
+                                    <p className="mt-1 text-xs text-base-content/65">
+                                        {section.description}
+                                    </p>
+                                </div>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    {section.entries.map(project => (
+                                        <ProjectEntry
+                                            key={project.key}
+                                            project={project}
+                                            toggleTag={toggleTopic}
+                                        />
+                                    ))}
+                                </div>
+                            </section>
+                        ),
+                    )}
+                    {startingPoints.length === 0 && (
+                        <div className="py-10 text-center">
+                            <p>No starting points match these filters.</p>
+                            <button
+                                type="button"
+                                className="btn btn-sm btn-ghost mt-3"
+                                onClick={() => {
+                                    setCollection("all");
+                                    setTopic("");
+                                    setStarterQuery("");
+                                }}
+                            >
+                                Show all starting points
+                            </button>
+                        </div>
+                    )}
+                </Tabs.Content>
+                <footer className="flex shrink-0 items-center gap-4 border-t border-base-content/10 bg-base-100 p-4">
+                    <button
+                        type="button"
+                        disabled={creating}
+                        className="flex w-48 shrink-0 flex-col items-center gap-1 rounded-lg border-[3px] border-dashed border-base-300 bg-base-200/30 px-4 py-2 text-sm font-medium text-white hover:border-base-content/20 hover:bg-base-content/10 focus-visible:outline-primary disabled:opacity-50 sm:min-h-20 sm:justify-center sm:text-base"
+                        onClick={newProject}
+                    >
+                        <img
+                            src={assets.plus.outlined}
+                            alt=""
+                            className="h-6 w-6 object-contain"
+                            draggable={false}
+                        />
+                        {creating ? "Opening…" : "New project"}
+                    </button>
+                    <p className="text-xs text-base-content/65 max-sm:hidden">
+                        Starting points open as drafts. Your first edit saves
+                        your own copy here.
+                    </p>
+                </footer>
+            </Tabs.Root>
             <form method="dialog" className="modal-backdrop">
-                <button>close</button>
+                <button aria-label="Close game browser backdrop">Close</button>
             </form>
-
-            <Tooltip id="projects-browser" />
-
-            <div className="absolute bottom-0 right-0">
-                <ToastContainer
-                    containerId="projects-browser-toasts"
-                    position="bottom-right"
-                    transition={Slide}
-                />
-            </div>
+            <ToastContainer
+                containerId="projects-browser-toasts"
+                position="bottom-right"
+            />
         </dialog>
     );
 };

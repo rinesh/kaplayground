@@ -4,47 +4,40 @@ import { useProject } from "../../../features/Projects/stores/useProject";
 import { compressCode } from "../../../util/compressCode";
 import { ToolbarButton } from "../ToolbarButton";
 
-export const ShareButton = () => {
-    const getMainFile = useProject((s) => s.getMainFile);
+export async function shareProjectLink() {
+    const state = useProject.getState();
+    if (state.project.files.size !== 1 || state.project.assets.size !== 0) {
+        throw new Error(
+            "Export this project to include all its files and assets.",
+        );
+    }
+    const url = new URL("/", window.location.origin);
+    if (state.demoKey && !state.hasUnsavedProjectChanges()) {
+        url.searchParams.set("example", state.demoKey);
+    } else {
+        url.searchParams.set(
+            "code",
+            compressCode(state.getMainFile()?.value ?? ""),
+        );
+        url.searchParams.set("version", state.project.kaplayVersion);
+    }
+    if (url.href.length > 2048) {
+        throw new Error(
+            "This game is too large for a link. Use Export project.",
+        );
+    }
+    await navigator.clipboard.writeText(url.href);
+    toast("Game link copied.");
+}
 
-    const handleShare = () => {
-        const demoKey = useProject.getState().demoKey;
-        const kaplayVersion = useProject.getState().project.kaplayVersion;
-
-        if (demoKey) {
-            const exampleParam = encodeURIComponent(demoKey);
-
-            const url = `${window.location.origin}/?example=${exampleParam}`;
-
-            navigator.clipboard.writeText(url).then(() => {
-                toast("Example shared, URL copied to clipboard!");
-            });
-
-            return;
-        }
-
-        const mainFile = getMainFile();
-        const compressedCode = compressCode(mainFile?.value!);
-        const codeParam = encodeURIComponent(compressedCode);
-        const exampleVersion = encodeURIComponent(kaplayVersion);
-        const url =
-            `${window.location.origin}/?code=${codeParam}&version=${exampleVersion}`;
-
-        if (url.length <= 2048) {
-            navigator.clipboard.writeText(url).then(() => {
-                toast("Project shared, URL copied to clipboard!");
-            });
-        } else {
-            alert("Code too long to encode in URL");
-        }
-    };
-
-    return (
-        <ToolbarButton
-            icon={assets.share.outlined}
-            text="Share"
-            onClick={handleShare}
-            tip="Share Project"
-        />
-    );
-};
+export const ShareButton = () => (
+    <ToolbarButton
+        icon={assets.share.outlined}
+        text="Share"
+        compact
+        aria-label="Copy game link"
+        onClick={() =>
+            void shareProjectLink().catch(error => toast.error(String(error)))}
+        tip="Share project"
+    />
+);

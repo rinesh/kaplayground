@@ -1,11 +1,10 @@
-import { assets } from "@kaplayjs/crew";
 import * as esbuild from "esbuild-wasm";
 import { useEffect, useState } from "react";
 import { useMediaQuery } from "react-responsive";
 import { Slide, ToastContainer } from "react-toastify";
 import { Tooltip } from "react-tooltip";
-import { connectDB } from "../../db/client/db";
 import { WEBMCP_EXAMPLE_NAME } from "../../data/demos";
+import { connectDB } from "../../db/client/db";
 import { loadProject } from "../../features/Projects/application/loadProject";
 import {
     beginPlaygroundInitialization,
@@ -24,12 +23,10 @@ import { AboutDialog } from "../About";
 import ConfigDialog from "../Config/ConfigDialog";
 import ProjectPreferences from "../Project/ProjectPreferences";
 import { ProjectBrowser } from "../ProjectBrowser";
-import ExampleList from "../Toolbar/ExampleList";
 import { ConfirmDialog } from "../UI/ConfirmDialog";
-import { WebMCPButton, WebMCPDialog } from "../WebMCP";
+import { WebMCPDialog } from "../WebMCP";
 import { LoadingPlayground } from "./LoadingPlayground";
 import { WelcomeDialog } from "./WelcomeDialog";
-import { WorkspaceExample } from "./WorkspaceExample";
 import { WorkspaceProject } from "./WorkspaceProject";
 
 const defaultTheme = localStorage.getItem("theme") as string;
@@ -174,52 +171,9 @@ const Playground = () => {
                         isProject={projectMode === "pj"}
                     />
                 )
-                : (projectMode === "pj" && isPortrait)
-                ? (
-                    <>
-                        <div className="h-full flex flex-col items-center justify-center bg-base-300 p-4 gap-4">
-                            <img src={assets.burpman.outlined} />
-
-                            <p className="max-w-md text-center font-semibold text-white">
-                                This game-making workspace works best on desktop.
-                            </p>
-
-                            <div
-                                className={"flex flex-col items-center gap-2 rounded-xl "
-                                    + "border border-base-content/10 bg-base-200 px-4 py-3"}
-                            >
-                                <p className="max-w-sm text-center text-sm text-base-content/65">
-                                    You can still ask Codex to change the game
-                                    from here. Open the ideas panel for a simple
-                                    prompt to try.
-                                </p>
-                                <div className="h-9">
-                                    <WebMCPButton />
-                                </div>
-                            </div>
-
-                            <ExampleList />
-                            <ProjectBrowser />
-                        </div>
-                    </>
-                )
                 : (
                     <>
-                        {projectMode === "pj"
-                            ? (
-                                <WorkspaceProject
-                                    editorIsLoading={loadingEditor}
-                                    isPortrait={isPortrait}
-                                    onMount={handleMount}
-                                />
-                            )
-                            : (
-                                <WorkspaceExample
-                                    editorIsLoading={loadingEditor}
-                                    isPortrait={isPortrait}
-                                    onMount={handleMount}
-                                />
-                            )}
+                        <WorkspaceProject onMount={handleMount} />
 
                         <ToastContainer
                             position="bottom-right"

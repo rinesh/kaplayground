@@ -1,134 +1,125 @@
-import {
-    type ChangeEvent,
-    type FC,
-    useCallback,
-    useEffect,
-    useState,
-} from "react";
-import { demos } from "../../data/demos";
+import { type ChangeEvent, useEffect, useMemo, useState } from "react";
+import { toast } from "react-toastify";
+import { demos, type Example } from "../../data/demos";
+import { compareStartingPoints } from "../../data/startingPoints";
 import { loadProject } from "../../features/Projects/application/loadProject";
 import { useProject } from "../../features/Projects/stores/useProject";
 import { confirmNavigate } from "../../util/confirmNavigate";
-import { sortEntries } from "../ProjectBrowser/SortBy";
+import {
+    openDemoBrowser,
+    openProjectBrowser,
+} from "../ProjectBrowser/ProjectBrowser";
 
-interface ListItem {
-    id: string;
-    name: string;
-}
+const startingPoints = [...demos].sort(compareStartingPoints);
 
-const ExampleList: FC = () => {
-    const savedProjects = useProject((s) => s.savedProjects);
-    const projectKey = useProject((s) => s.projectKey);
-    const demoKey = useProject((s) => s.demoKey);
-    const projectName = useProject((s) => s.project.name);
-    const projectMode = useProject((s) => s.project.mode);
-    const selectedValue = projectKey || demoKey || projectMode;
-    const getSavedProjects = useProject((s) => s.getSavedProjects);
-    const createNewProject = useProject((s) => s.createNewProject);
+const ExampleList = () => {
+    const savedIds = useProject(state => state.savedProjects);
+    const projectKey = useProject(state => state.projectKey);
+    const demoKey = useProject(state => state.demoKey);
+    const name = useProject(state => state.project.name);
+    const [projects, setProjects] = useState<Example[]>([]);
+    const selectedValue = projectKey
+        ? `project:${projectKey}`
+        : demoKey
+        ? `starter:${demoKey}`
+        : "draft";
 
-    const handleExampleChange = (ev: ChangeEvent<HTMLSelectElement>) => {
-        const demoId = ev.target.selectedOptions[0].getAttribute(
-            "data-demo-id",
+    useEffect(() => {
+        let current = true;
+        void Promise.all(
+            savedIds.map(id => useProject.getState().getProjectMetadata(id)),
+        )
+            .then(entries => {
+                if (current) setProjects(entries);
+            })
+            .catch(() => {
+                if (current) setProjects([]);
+            });
+        return () => {
+            current = false;
+        };
+    }, [savedIds, projectKey]);
+
+    const savedGames = useMemo(() =>
+        projects
+            .filter(project => savedIds.includes(project.key))
+            .sort((left, right) =>
+                right.updatedAt.localeCompare(left.updatedAt)
+            ), [projects, savedIds]);
+
+    const changeGame = (event: ChangeEvent<HTMLSelectElement>) => {
+        const value = event.currentTarget.value;
+        event.currentTarget.value = selectedValue;
+        if (value === selectedValue) return;
+        const project = savedGames.find(entry =>
+            `project:${entry.key}` === value
         );
-
-        confirmNavigate(() => {
-            if (demoId) {
-                createNewProject("ex", {}, demoId);
-            } else {
-                loadProject(ev.target.value);
+        const starter = startingPoints.find(entry =>
+            `starter:${entry.key}` === value
+        );
+        if (!project && !starter) return;
+        void confirmNavigate(async () => {
+            if (project) await loadProject(project.key);
+            else if (starter) {
+                await useProject.getState().createNewProject(
+                    "ex",
+                    {},
+                    starter.key,
+                );
             }
-        });
-    };
-
-    const [projectsList, setProjectsList] = useState<ListItem[]>([]);
-    const [examplesList, setExamplesList] = useState<ListItem[]>([]);
-
-    const getSortedProjects = async (mode: "pj" | "ex") => {
-        const projects = await getSavedProjects(mode);
-        return projects.sort((a, b) =>
-            sortEntries(
-                "latest",
-                mode == "pj" ? "Projects" : "Examples",
-                a,
-                b,
+        }).catch(error =>
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : "Couldn't open that game.",
             )
         );
     };
 
-    const isKeyInList = useCallback(() => {
-        if (!projectKey) return false;
-        if (projectsList.some((p) => p.id === projectKey)) return true;
-        if (examplesList.some((p) => p.id === projectKey)) return true;
-        if (demos.some((d) => d.key === projectKey)) return true;
-        return false;
-    }, [projectKey, projectsList, examplesList]);
-
-    useEffect(() => {
-        (async () => {
-            const pj = await getSortedProjects("pj");
-            const ex = await getSortedProjects("ex");
-            setProjectsList(pj);
-            setExamplesList(ex);
-        })();
-    }, [projectName, savedProjects]);
-
     return (
-        <div className="join border border-base-100 max-w-full">
+        <div className="join flex min-w-0 border border-base-100 min-[900px]:w-52 min-[1200px]:w-72">
             <select
-                className="join-item select select-xs min-w-0 w-full md:w-28 lg:w-48 xl:w-full max-w-xs [footer_&]:w-auto"
-                onChange={handleExampleChange}
+                aria-label="Choose a game or starting point"
+                className="join-item select select-xs min-w-0 w-full truncate pr-6"
                 value={selectedValue}
+                onChange={changeGame}
             >
-                {/* Prevents selection flash if current existing item is not in the list yet */}
-                {(projectKey && !isKeyInList()) && (
-                    <option key={projectKey} value={projectKey}>
-                        {projectName}
-                    </option>
+                {(!projectKey && !demoKey) && (
+                    <option value="draft">{name}</option>
                 )}
-
-                <option className="text-md" disabled value="pj">
-                    My Projects
-                </option>
-
-                {projectsList.map((project) => (
-                    <option key={project.id} value={project.id}>
-                        {project.name}
-                    </option>
-                ))}
-
-                <option className="text-md" disabled value="ex">
-                    My Examples
-                </option>
-
-                {examplesList.map((project) => (
-                    <option key={project.id} value={project.id}>
-                        {project.name}
-                    </option>
-                ))}
-
-                <option className="text-md" disabled>
-                    Game starting points
-                </option>
-
-                {demos.sort((a, b) => sortEntries("topic", "Examples", a, b))
-                    .map((demo) => (
+                {projectKey
+                    && !savedGames.some(project => project.key === projectKey)
+                    && <option value={selectedValue}>{name}</option>}
+                {savedGames.length > 0 && (
+                    <optgroup label="My games">
+                        {savedGames.map(project => (
+                            <option
+                                key={project.key}
+                                value={`project:${project.key}`}
+                            >
+                                {project.key === projectKey
+                                    ? name
+                                    : project.formattedName}
+                            </option>
+                        ))}
+                    </optgroup>
+                )}
+                <optgroup label="Game starting points">
+                    {startingPoints.map(starter => (
                         <option
-                            key={demo.name}
-                            value={demo.key}
-                            data-demo-id={demo.key}
+                            key={starter.key}
+                            value={`starter:${starter.key}`}
                         >
-                            {demo.formattedName}
+                            {starter.formattedName}
                         </option>
                     ))}
+                </optgroup>
             </select>
             <button
-                className="join-item | btn btn-xs"
-                onClick={() => {
-                    const dialog = document.querySelector<HTMLDialogElement>(
-                        "#examples-browser",
-                    );
-                    dialog?.showModal();
-                }}
+                type="button"
+                className="join-item btn btn-xs shrink-0 px-2"
+                onClick={() =>
+                    projectKey ? openProjectBrowser() : openDemoBrowser()}
             >
                 Browse all
             </button>

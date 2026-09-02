@@ -1,8 +1,8 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import React, { type FC } from "react";
+import { type FC } from "react";
 import type { Asset } from "../../features/Projects/models/Asset";
 import { useProject } from "../../features/Projects/stores/useProject";
-import { useEditor } from "../../hooks/useEditor";
+import { useWorkspace } from "../../hooks/useWorkspace";
 
 export type ResourceProps = {
     asset: Asset;
@@ -11,26 +11,9 @@ export type ResourceProps = {
 
 const AssetsItem: FC<ResourceProps> = ({ asset, visibleIcon }) => {
     const removeAsset = useProject((s) => s.removeAsset);
-    const updateFile = useProject((s) => s.updateFile);
-    const getAssetsFile = useProject((s) => s.getAssetsFile);
-    const update = useEditor((s) => s.update);
-
-    const handleResourceDrag = (e: React.DragEvent<HTMLLIElement>) => {
-        e.dataTransfer.setData("text", asset.importFunction);
-    };
 
     const handleResourceDelete = () => {
         removeAsset(asset.path);
-    };
-
-    const handleResourceLoad = () => {
-        const assetsFile = getAssetsFile();
-        if (!assetsFile) return;
-
-        const newAssetsFile = assetsFile.value + `\n${asset.importFunction}`;
-
-        updateFile("assets.js", newAssetsFile);
-        update();
     };
 
     return (
@@ -44,10 +27,19 @@ const AssetsItem: FC<ResourceProps> = ({ asset, visibleIcon }) => {
                 data-tooltip-content={asset.name}
                 data-tooltip-place="top"
                 data-tooltip-delay-show={300}
-                onDragStartCapture={handleResourceDrag}
             >
-                <li draggable>
-                    <div className="p-2 rounded-lg hover:bg-base-300 cursor-grab h-20 w-20">
+                <li draggable={false}>
+                    <button
+                        type="button"
+                        onClick={() =>
+                            useWorkspace.getState().selectAsset({
+                                source: "game",
+                                name: asset.name,
+                                path: asset.path,
+                                kind: asset.kind,
+                            })}
+                        className="p-2 rounded-lg hover:bg-base-300 h-20 w-20"
+                    >
                         <img
                             draggable={false}
                             src={visibleIcon ?? asset.url}
@@ -57,7 +49,7 @@ const AssetsItem: FC<ResourceProps> = ({ asset, visibleIcon }) => {
                         <p className="text-xs text-center text-gray-500 truncate">
                             {asset.name}
                         </p>
-                    </div>
+                    </button>
                 </li>
             </ContextMenu.Trigger>
 
@@ -68,12 +60,6 @@ const AssetsItem: FC<ResourceProps> = ({ asset, visibleIcon }) => {
                         onClick={handleResourceDelete}
                     >
                         Delete
-                    </ContextMenu.Item>
-                    <ContextMenu.Item
-                        className="btn btn-sm btn-ghost justify-start rounded-md"
-                        onClick={handleResourceLoad}
-                    >
-                        Load in assets.js
                     </ContextMenu.Item>
                 </ContextMenu.Content>
             </ContextMenu.Portal>

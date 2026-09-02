@@ -1,4 +1,3 @@
-import { toast } from "react-toastify";
 import type { StateCreator } from "zustand";
 import { demos, type Example } from "../../../../data/demos";
 import { db } from "../../../../db/client/db";
@@ -14,12 +13,38 @@ import type { Asset } from "../../models/Asset.ts";
 import type { File } from "../../models/File";
 import type { Project } from "../../models/Project";
 import type { ProjectMode } from "../../models/ProjectMode";
-import { createActiveProjectPersister } from "../activeProjectPersistence";
+import {
+    createActiveProjectPersister,
+    type ProjectSaveStatus,
+} from "../activeProjectPersistence";
 import { type ProjectStore } from "../useProject.ts";
 
 export type ProjectStorageState = "transient" | "autosaved";
 
 const pendingProjectPersistence = new Map<string, Promise<void>>();
+
+function sameProjectValue(left: unknown, right: unknown): boolean {
+    if (Object.is(left, right)) return true;
+    if (left instanceof Map && right instanceof Map) {
+        const rightEntries = [...right];
+        return left.size === right.size
+            && [...left].every(([key, value], index) => {
+                // Legacy builds use file insertion order, so reordering is an edit.
+                if (rightEntries[index][0] !== key) return false;
+                const other = rightEntries[index][1];
+                if (Object.is(value, other)) return true;
+                if (
+                    !value || !other || typeof value !== "object"
+                    || typeof other !== "object"
+                ) return false;
+                return Object.keys(value).length === Object.keys(other).length
+                    && Object.keys(value).every(key =>
+                        Object.is(value[key], other[key])
+                    );
+            });
+    }
+    return false;
+}
 function queueProjectWrite(id: string, project: Project): Promise<void> {
     const projectSnapshot = {
         ...project,
@@ -72,6 +97,12 @@ function queueProjectPersistenceOperation(
 }
 
 export interface ProjectSlice {
+    draftProjectId: string;
+    persistenceReady: boolean;
+    savedRevision: number;
+    saveStatus: ProjectSaveStatus;
+    saveError: string | null;
+    hasUnsavedProjectChanges(): boolean;
     /** Increments whenever the active project is replaced. */
     projectGeneration: number;
     /** Increments whenever the active project's contents change. */
@@ -137,12 +168,12 @@ export interface ProjectSlice {
      * @param id - Optional project id
      * @param project - Optional Project object
      */
-    saveProject: (id?: string | null, project?: Project) => void;
+    saveProject: (id?: string | null, project?: Project) => Promise<void>;
     /**
      * Save current project as a new project in idb
      * @returns Newly created project id
      */
-    saveNewProject(): string;
+    saveNewProject(): Promise<string>;
     /**
      * Persist the active project and resolve only after IndexedDB confirms it.
      * Creates and activates a durable project id when the project is transient.
@@ -255,7 +286,7 @@ export interface ProjectSlice {
      * @param id - Project id
      * @returns If removed project successfully
      */
-    removeProject(id: string): boolean;
+    removeProject(id: string): Promise<boolean>;
 }
 
 export const createProjectSlice: StateCreator<
@@ -264,6 +295,18 @@ export const createProjectSlice: StateCreator<
     [],
     ProjectSlice
 > = (set, get) => ({
+    draftProjectId: "",
+    persistenceReady: false,
+    savedRevision: 0,
+    saveStatus: "draft",
+    saveError: null,
+    hasUnsavedProjectChanges() {
+        return get().persistenceReady && (
+            get().projectRevision !== get().savedRevision
+            || get().saveStatus === "saving"
+            || get().saveStatus === "error"
+        );
+    },
     projectGeneration: 0,
     projectRevision: 0,
     project: {
@@ -291,6 +334,11 @@ export const createProjectSlice: StateCreator<
         }));
     },
     setProject: (project) => {
+        if (
+            Object.entries(project).every(([key, value]) =>
+                sameProjectValue(get().project[key as keyof Project], value)
+            )
+        ) return;
         set((state) => ({
             projectRevision: state.projectRevision + 1,
             project: {
@@ -300,7 +348,10 @@ export const createProjectSlice: StateCreator<
             },
         }));
 
-        get().saveProject();
+        if (get().persistenceReady) {
+            set({ projectWasEdited: true });
+            void get().saveProject().catch(() => {});
+        }
     },
     projectWasEdited: false,
     setProjectWasEdited(bool) {
@@ -335,18 +386,14 @@ export const createProjectSlice: StateCreator<
             key: key,
             name: project.name,
             formattedName: project.name,
-            type: project.mode == "pj" ? "Project" : "Example",
+            type: "Project",
             category: "KAPLAY",
             code: "",
-            group: project.mode == "pj" ? "Projects" : "Examples",
+            group: "Projects",
             minVersion: project.kaplayVersion.split(".").slice(0, 2).join("."),
             sortName: project.name,
             locked: true,
-            tags: [
-                ...project.mode == "pj"
-                    ? [{ name: "project", displayName: "Project" }]
-                    : [{ name: "example", displayName: "Example" }],
-            ],
+            tags: [],
             description: "",
             version: project.kaplayVersion,
             createdAt: project?.createdAt ?? "",
@@ -398,11 +445,10 @@ export const createProjectSlice: StateCreator<
         isShared,
         beforeCommit,
     ) {
+        const initialGeneration = get().projectGeneration;
+        const initialRevision = get().projectRevision;
         const files = new Map<string, File>();
         const assets = new Map<string, Asset>();
-        const lastVersion = get().project.kaplayVersion;
-        const prevMode = get().project.mode;
-        const isInitialLoad = !get().project.createdAt;
         let loadDefaultFiles = false;
         let demoProjectName: string | undefined;
 
@@ -439,21 +485,27 @@ export const createProjectSlice: StateCreator<
             loadDefaultFiles = !replace?.files;
         }
 
-        if (!isInitialLoad && lastVersion !== version) {
-            toast(
-                `KAPLAY version updated to ${version} for this ${
-                    mode === "ex" ? "example" : "project"
-                }. May take a few seconds to load.`,
-            );
-        }
-
         const name = demoProjectName
             ?? await get().generateName(mode, isShared);
 
+        if (
+            get().projectGeneration !== initialGeneration
+            || get().projectRevision !== initialRevision
+        ) {
+            throw new Error(
+                "The active project changed while the starting point was loading. Try again.",
+            );
+        }
         beforeCommit?.();
         set((state) => ({
             projectGeneration: state.projectGeneration + 1,
             projectRevision: state.projectRevision + 1,
+            persistenceReady: false,
+            uploadingAssets: new Map(),
+            draftProjectId: get().generateId(),
+            saveStatus: "draft",
+            saveError: null,
+            projectWasEdited: false,
             project: {
                 name: name,
                 version: "2.0.0", // fixed project version
@@ -484,13 +536,7 @@ export const createProjectSlice: StateCreator<
             createDefaultFiles();
         }
 
-        if (mode != prevMode || mode === "pj") {
-            useEditor.getState().resetEditorModel();
-        }
-        useEditor.getState().setCurrentFile("main.js");
-        if (!isInitialLoad && mode == prevMode) {
-            useEditor.getState().updateAndRun();
-        }
+        set({ persistenceReady: true, savedRevision: get().projectRevision });
     },
 
     async createFromShared(sharedCode, sharedVersion) {
@@ -521,50 +567,20 @@ export const createProjectSlice: StateCreator<
 
     // #region Project saving
 
-    saveProject(id = get().projectKey, project) {
-        if (!id) return;
-
-        debug(0, "[project] Saving changes...");
-
-        if (id !== get().projectKey && project) {
-            void queueProjectWrite(id, {
+    async saveProject(id = get().projectKey, project) {
+        if (id && id !== get().projectKey && project) {
+            await queueProjectWrite(id, {
                 ...project,
                 updatedAt: new Date().toISOString(),
             });
             set({ savedProjects: [...get().savedProjects] });
         } else {
-            void queueProjectWrite(id, get().project);
-            get().setProjectWasEdited(true);
+            await get().persistActiveProject();
         }
     },
 
     saveNewProject() {
-        debug(0, "[project] Saving new project...");
-
-        const id = get().generateId(get().project.createdAt);
-        void queueProjectWrite(id, get().project);
-
-        get().setProjectKey(id);
-        get().setDemoKey(null);
-        window.history.replaceState(
-            {},
-            "",
-            `${window.location.origin}/`,
-        );
-
-        // Update other stores
-        useConfig.getState().setConfig({
-            lastOpenedProject: id,
-        });
-
-        useEditor.getState().updateEditorLastSavedValue();
-        useEditor.getState().updateHasUnsavedChanges();
-
-        set(() => ({
-            savedProjects: [...get().savedProjects, id],
-        }));
-
-        return id;
+        return get().persistActiveProject();
     },
 
     persistActiveProject: createActiveProjectPersister({
@@ -594,30 +610,45 @@ export const createProjectSlice: StateCreator<
                 ]),
             ),
         }),
-        generateId: (project) => get().generateId(project.createdAt),
+        getDraftId: () => get().draftProjectId,
         writeProject: queueProjectWrite,
-        deleteProject: queueProjectDelete,
-        commitTransientProject: (id) => {
-            get().setProjectKey(id);
-            get().setDemoKey(null);
-            window.history.replaceState(
-                {},
-                "",
-                `${window.location.origin}/`,
-            );
-
-            useConfig.getState().setConfig({
-                lastOpenedProject: id,
+        onSaving: () => set({ saveStatus: "saving", saveError: null }),
+        onError: (error, identity) => {
+            if (
+                get().projectGeneration !== identity.generation
+                || get().projectRevision !== identity.revision
+            ) return;
+            set({
+                saveStatus: "error",
+                saveError: error instanceof Error
+                    ? error.message
+                    : String(error),
             });
-
-            useEditor.getState().updateEditorLastSavedValue();
-            useEditor.getState().updateHasUnsavedChanges();
-
-            set(() => ({
+        },
+        onSaved: (id, identity) => {
+            if (get().projectGeneration !== identity.generation) return;
+            const promoted = get().projectKey === null;
+            set({
+                projectKey: id,
+                demoKey: null,
+                savedRevision: identity.revision,
+                saveStatus: get().projectRevision === identity.revision
+                    ? "saved"
+                    : "saving",
+                saveError: null,
                 savedProjects: get().savedProjects.includes(id)
                     ? get().savedProjects
                     : [...get().savedProjects, id],
-            }));
+            });
+            if (promoted) {
+                const url = new URL(window.location.href);
+                url.searchParams.delete("example");
+                url.searchParams.delete("code");
+                url.searchParams.delete("version");
+                window.history.replaceState({}, "", url);
+                useConfig.getState().setConfig({ lastOpenedProject: id });
+            }
+            useEditor.getState().updateHasUnsavedChanges();
         },
     }),
 
@@ -635,11 +666,10 @@ export const createProjectSlice: StateCreator<
         );
     },
 
-    async generateName(mode, isShared = false) {
-        const modePrefix = mode == "ex" ? "Example" : "Project";
+    async generateName(_mode, isShared = false) {
+        const modePrefix = "Project";
         const isSharedSufix = isShared ? " (Shared)" : "";
-        const projects = await db.transaction("projects").store.index("mode")
-            .getAll(mode);
+        const projects = await db.getAll("projects");
 
         const name = (num: number) => `${modePrefix} #${num}`;
         const nameIsTaken = (num: number) =>
@@ -739,18 +769,40 @@ export const createProjectSlice: StateCreator<
     },
     // #endregion
 
-    removeProject(id) {
+    async removeProject(id) {
         if (!get().savedProjects.includes(id)) return false;
 
-        void queueProjectDelete(id);
+        if (get().projectKey === id) {
+            const generation = get().projectGeneration;
+            await get().persistActiveProject();
+            if (
+                get().projectGeneration !== generation
+                || get().projectKey !== id
+            ) {
+                throw new Error(
+                    "The active project changed before it could be deleted.",
+                );
+            }
+            // Keep an editable draft, but invalidate old queued writes before
+            // deleting the saved record so autosave cannot resurrect its id.
+            set(state => ({
+                projectGeneration: state.projectGeneration + 1,
+                projectRevision: state.projectRevision + 1,
+                savedRevision: state.projectRevision + 1,
+                projectKey: null,
+                demoKey: null,
+                draftProjectId: get().generateId(),
+                saveStatus: "draft",
+                saveError: null,
+                projectWasEdited: false,
+            }));
+        }
+
+        await queueProjectDelete(id);
 
         set(() => ({
             savedProjects: get().savedProjects.filter(pid => pid != id),
         }));
-
-        if (get().projectKey === id) {
-            set(() => ({ projectKey: null, demoKey: null }));
-        }
 
         if (useConfig.getState().config?.lastOpenedProject === id) {
             useConfig.getState().setConfig({ lastOpenedProject: null });

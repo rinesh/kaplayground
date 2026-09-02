@@ -5,6 +5,7 @@ import normalizeKey from "../../util/normalizeKey";
 type Props = {
     icon: string | "down";
     iconFirst?: boolean;
+    compact?: boolean;
     text?: string;
     tip?: string | { text: string; keys?: string[] }[];
     keys?: string[];
@@ -21,7 +22,10 @@ export const generateKbdFromKeys = (keys: string[]) => {
 };
 
 export const ToolbarButton = forwardRef<Ref, Props>(
-    ({ icon, iconFirst, text, tip, keys, className, ...props }, ref) => {
+    (
+        { icon, iconFirst, compact, text, tip, keys, className, ...props },
+        ref,
+    ) => {
         return (
             <button
                 className={cn(
@@ -38,9 +42,7 @@ export const ToolbarButton = forwardRef<Ref, Props>(
                 {...props}
             >
                 {text && (
-                    <span
-                        className={cn({ "hidden xl:block": icon !== "down" })}
-                    >
+                    <span className={compact ? "sr-only" : "block"}>
                         {text}
                     </span>
                 )}
@@ -49,7 +51,7 @@ export const ToolbarButton = forwardRef<Ref, Props>(
                     ? (
                         <img
                             src={icon}
-                            alt={text}
+                            alt=""
                             className={cn("h-5 w-5 object-contain", {
                                 "order-first": iconFirst,
                             })}
