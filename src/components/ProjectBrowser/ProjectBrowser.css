@@ -2,3 +2,69 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
 }
+
+#examples-browser .project-browser-header {
+    flex-shrink: 0;
+    overflow: hidden;
+    /* Match the original tag drawer's 300ms cubic ease-out. */
+    transition: height 300ms cubic-bezier(0.333333, 1, 0.666667, 1);
+}
+
+#examples-browser .project-browser-panel[data-state="active"] {
+    animation: project-browser-content-in 160ms ease-out;
+}
+
+#examples-browser .project-browser-section-content {
+    display: grid;
+    grid-template-rows: 1fr;
+    opacity: 1;
+    transition: grid-template-rows 200ms ease, opacity 160ms ease-out;
+}
+
+#examples-browser .project-browser-section-content[data-expanded="false"] {
+    grid-template-rows: 0fr;
+    opacity: 0;
+    pointer-events: none;
+}
+
+#examples-browser .project-browser-chevron {
+    transition: transform 200ms ease-out;
+}
+
+#examples-browser [aria-expanded="true"] .project-browser-chevron {
+    transform: rotate(180deg);
+}
+
+#examples-browser [role="tab"],
+#examples-browser article,
+#examples-browser .project-browser-section-toggle {
+    transition:
+        background-color 200ms ease-out,
+        border-color 200ms ease-out,
+        color 200ms ease-out;
+}
+
+#examples-browser article:focus-visible {
+    outline-offset: -2px;
+}
+
+@keyframes project-browser-content-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #examples-browser,
+    #examples-browser .modal-box,
+    #examples-browser .project-browser-header,
+    #examples-browser .project-browser-panel[data-state="active"],
+    #examples-browser .project-browser-section-content,
+    #examples-browser .project-browser-chevron,
+    #examples-browser .project-browser-section-toggle,
+    #examples-browser [role="tab"],
+    #examples-browser article {
+        animation: none;
+        transition: none;
+        scroll-behavior: auto;
+    }
+}

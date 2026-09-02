@@ -211,6 +211,70 @@
             assert(gamesSection.querySelector("article h3").textContent === "Play & Remix with Codex", "The Codex game must lead the starting points.");
             assert(gamesSection.querySelectorAll("article").length === demos.filter(isPlayableStartingPoint).length, "Playable games were removed or mixed with feature demos.");
             assert(gameBrowser.querySelectorAll("article").length === demos.length, "Every built-in sample must remain discoverable by default.");
+
+            const browserPaint = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            const settleBrowserMotion = async () => {
+                await browserPaint();
+                await Promise.allSettled(gameBrowser.getAnimations({ subtree: true }).map(animation => animation.finished));
+                await browserPaint();
+            };
+            // Pause the actual CSS transition halfway through so a slow CI
+            // frame cannot turn this geometry check into a timing lottery.
+            const checkBrowserHeightMotion = async (element, activate, property = "height") => {
+                const before = element.getBoundingClientRect().height;
+                let onTransition;
+                const started = new Promise(resolve => {
+                    onTransition = event => {
+                        if (event.target !== element || event.propertyName !== property) return;
+                        const animation = element.getAnimations().find(animation => animation.transitionProperty === property);
+                        animation?.pause();
+                        resolve(animation);
+                    };
+                    element.addEventListener("transitionrun", onTransition);
+                });
+                activate();
+                const animation = await withTimeout(started, `${element.className} ${property} transition from ${before}px`, 5_000)
+                    .finally(() => element.removeEventListener("transitionrun", onTransition));
+                assert(animation, "The browser changed height without a transition.");
+                animation.currentTime = Number(animation.effect.getTiming().duration) / 2;
+                await browserPaint();
+                const middle = element.getBoundingClientRect().height;
+                animation.finish();
+                await settleBrowserMotion();
+                const after = element.getBoundingClientRect().height;
+                assert(middle > Math.min(before, after) + 0.5 && middle < Math.max(before, after) - 0.5, `The browser jumped between heights: ${JSON.stringify({ before, middle, after })}`);
+                return { before, middle, after };
+            };
+            await settleBrowserMotion();
+            const browserHeader = gameBrowser.querySelector("header").parentElement;
+            assert(Math.abs(browserHeader.offsetHeight - browserHeader.querySelector("header").offsetHeight) < 1, "Opening the scaled dialog clipped its header.");
+            const destinationTab = text => [...gameBrowser.querySelectorAll('[role="tab"]')].find(tab => tab.textContent.trim().startsWith(text));
+            const activateDestination = text => destinationTab(text).dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+            const browserMotion = {
+                savedTab: await checkBrowserHeightMotion(browserHeader, () => activateDestination("My games")),
+                starterTab: await checkBrowserHeightMotion(browserHeader, () => activateDestination("Game starting points")),
+            };
+            const topicsButton = gameBrowser.querySelector('button[aria-controls="starting-point-topics"]');
+            browserMotion.topics = await checkBrowserHeightMotion(browserHeader, () => topicsButton.click());
+            topicsButton.click();
+            await browserPaint();
+            topicsButton.click();
+            await settleBrowserMotion();
+            assert(topicsButton.getAttribute("aria-expanded") === "true" && Math.abs(browserHeader.getBoundingClientRect().height - browserMotion.topics.after) < 1, "Rapid topic toggles left the header at an obsolete height.");
+            topicsButton.click();
+            await settleBrowserMotion();
+            const gamesToggle = gamesSection.querySelector('button[aria-controls="starting-points-games-items"]');
+            const gamesContent = document.getElementById(gamesToggle.getAttribute("aria-controls"));
+            browserMotion.section = await checkBrowserHeightMotion(gamesContent, () => gamesToggle.click(), "grid-template-rows");
+            assert(gamesToggle.getAttribute("aria-expanded") === "false" && gamesContent.inert && gamesContent.getAttribute("aria-hidden") === "true", "Collapsed games remain available to keyboard or assistive technology.");
+            const hiddenCard = gamesContent.querySelector("article");
+            hiddenCard.focus();
+            assert(document.activeElement !== hiddenCard, "A collapsed game can still receive focus.");
+            gamesToggle.click();
+            await settleBrowserMotion();
+            assert(!gamesContent.inert && Math.abs(gamesContent.getBoundingClientRect().height - browserMotion.section.before) < 1, "Expanding a section did not restore its cards.");
+            assert(gameBrowser.querySelectorAll("article").length === demos.length, "Motion changes removed starting points.");
+
             const collection = gameBrowser.querySelector('[aria-label="Starting point collection"]');
             assert(collection.value === "all", "The browser must retain games and feature samples by default.");
             collection.value = "features";
@@ -1191,6 +1255,7 @@ startUnavailableInspection();
                 restoredBrowserConfirmed: true,
                 quickSwitchConfirmed: true,
                 toolbarShortcutsConfirmed: true,
+                browserMotion,
                 homeNavigationConfirmed: true,
                 quietSaveStatusConfirmed: true,
                 autosaveFeedbackConfirmed: true,

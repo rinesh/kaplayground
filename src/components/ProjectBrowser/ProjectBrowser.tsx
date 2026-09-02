@@ -1,6 +1,13 @@
 import { assets } from "@kaplayjs/crew";
 import * as Tabs from "@radix-ui/react-tabs";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+    type PropsWithChildren,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import { toast, ToastContainer } from "react-toastify";
 import { demos, type Example, type ExamplesDataRecord } from "../../data/demos";
 import {
@@ -46,6 +53,9 @@ export const ProjectBrowser = () => {
     const [starterQuery, setStarterQuery] = useState("");
     const [topic, setTopic] = useState("");
     const [topicsExpanded, setTopicsExpanded] = useState(false);
+    const [collapsedSections, setCollapsedSections] = useState<
+        Record<string, boolean>
+    >({});
     const [collection, setCollection] = useState<StartingPointCollection>(
         "all",
     );
@@ -217,7 +227,7 @@ export const ProjectBrowser = () => {
                 onValueChange={setTab}
                 className="modal-box flex h-[min(900px,92dvh)] w-[calc(100vw-1rem)] max-w-screen-md flex-col overflow-hidden rounded-2xl border border-base-content/10 p-0"
             >
-                <header className="shrink-0 space-y-4 bg-base-200 p-4">
+                <ProjectBrowserHeader>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                             <h2
@@ -368,13 +378,14 @@ export const ProjectBrowser = () => {
                                         onClick={() =>
                                             setTopicsExpanded(!topicsExpanded)}
                                     >
-                                        Topics {topicsExpanded ? "▴" : "▾"}
+                                        Topics
+                                        <BrowserChevron />
                                     </button>
                                 )}
                             </div>
                         </div>
                     )}
-                </header>
+                </ProjectBrowserHeader>
                 <Tabs.List
                     aria-label="Game destinations"
                     className="tabs tabs-lifted grid shrink-0 grid-cols-2 bg-base-200"
@@ -418,7 +429,7 @@ export const ProjectBrowser = () => {
                 <Tabs.Content
                     value="projects"
                     forceMount
-                    className="min-h-0 flex-1 overflow-y-auto p-4 scrollbar-thin data-[state=inactive]:hidden"
+                    className="project-browser-panel min-h-0 flex-1 overflow-y-auto p-4 scrollbar-thin data-[state=inactive]:hidden"
                 >
                     {loadError && (
                         <p role="alert" className="mb-3 text-error">
@@ -459,7 +470,7 @@ export const ProjectBrowser = () => {
                 <Tabs.Content
                     value="starters"
                     forceMount
-                    className="min-h-0 flex-1 overflow-y-auto p-4 scrollbar-thin data-[state=inactive]:hidden"
+                    className="project-browser-panel min-h-0 flex-1 overflow-y-auto p-4 scrollbar-thin data-[state=inactive]:hidden"
                 >
                     {sections.filter(section => section.entries.length).map(
                         section => (
@@ -471,25 +482,64 @@ export const ProjectBrowser = () => {
                                 <div className="mb-3">
                                     <h3
                                         id={`starting-points-${section.key}`}
-                                        className="flex items-center gap-2 font-medium"
+                                        className="font-medium"
                                     >
-                                        <span className="badge badge-xs min-w-5 border-0 bg-base-content/15 px-1 py-2 text-[10px]">
-                                            {section.entries.length}
-                                        </span>
-                                        {section.title}
+                                        <button
+                                            type="button"
+                                            className="project-browser-section-toggle flex w-full items-center gap-2 text-left hover:text-white focus-visible:outline-primary"
+                                            aria-expanded={!collapsedSections[
+                                                section.key
+                                            ]}
+                                            aria-controls={`starting-points-${section.key}-items`}
+                                            onClick={() =>
+                                                setCollapsedSections(
+                                                    previous => ({
+                                                        ...previous,
+                                                        [section.key]:
+                                                            !previous[
+                                                                section.key
+                                                            ],
+                                                    }),
+                                                )}
+                                        >
+                                            <span className="badge badge-xs min-w-5 border-0 bg-base-content/15 px-1 py-2 text-[10px]">
+                                                {section.entries.length}
+                                            </span>
+                                            {section.title}
+                                            <span className="ml-auto">
+                                                <BrowserChevron />
+                                            </span>
+                                        </button>
                                     </h3>
                                     <p className="mt-1 text-xs text-base-content/65">
                                         {section.description}
                                     </p>
                                 </div>
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                    {section.entries.map(project => (
-                                        <ProjectEntry
-                                            key={project.key}
-                                            project={project}
-                                            toggleTag={toggleTopic}
-                                        />
-                                    ))}
+                                <div
+                                    id={`starting-points-${section.key}-items`}
+                                    className="project-browser-section-content"
+                                    data-expanded={!collapsedSections[
+                                        section.key
+                                    ]}
+                                    aria-hidden={collapsedSections[section.key]
+                                        || undefined}
+                                    {...{
+                                        inert: collapsedSections[section.key]
+                                            ? ""
+                                            : undefined,
+                                    }}
+                                >
+                                    <div className="min-h-0 overflow-hidden">
+                                        <div className="grid gap-3 sm:grid-cols-2">
+                                            {section.entries.map(project => (
+                                                <ProjectEntry
+                                                    key={project.key}
+                                                    project={project}
+                                                    toggleTag={toggleTopic}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
                             </section>
                         ),
@@ -542,3 +592,45 @@ export const ProjectBrowser = () => {
         </dialog>
     );
 };
+
+function ProjectBrowserHeader({ children }: PropsWithChildren) {
+    const contentRef = useRef<HTMLElement>(null);
+    const [height, setHeight] = useState<number>();
+
+    useLayoutEffect(() => {
+        const content = contentRef.current!;
+        const measure = () => {
+            // The dialog scales as it opens; measure layout, not that transform.
+            const nextHeight = content.offsetHeight;
+            // Keep the last measured size while the dialog is closed.
+            if (nextHeight > 0) setHeight(nextHeight);
+        };
+        measure();
+        const observer = new ResizeObserver(measure);
+        observer.observe(content);
+        return () => observer.disconnect();
+    }, []);
+
+    return (
+        <div className="project-browser-header" style={{ height }}>
+            <header ref={contentRef} className="space-y-4 bg-base-200 p-4">
+                {children}
+            </header>
+        </div>
+    );
+}
+
+function BrowserChevron() {
+    return (
+        <svg
+            aria-hidden="true"
+            className="project-browser-chevron h-4 w-4 shrink-0"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+        >
+            <path d="m6 9 6 6 6-6" />
+        </svg>
+    );
+}

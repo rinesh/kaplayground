@@ -208,6 +208,12 @@ async function main() {
         );
         client = await CdpClient.connect(target.webSocketDebuggerUrl);
         await client.send("Page.enable");
+        await client.send("Emulation.setEmulatedMedia", {
+            features: [{
+                name: "prefers-reduced-motion",
+                value: "no-preference",
+            }],
+        });
         await client.send("Runtime.enable");
         await installFixtureInterception(client, fixtures);
         const navigation = await client.send("Page.navigate", { url: appUrl });
@@ -712,6 +718,58 @@ async function main() {
         result.freshPageDefaultsConfirmed = true;
         result.keyboardResizeConfirmed = true;
         result.browserResponsiveConfirmed = true;
+
+        await client.send("Emulation.setEmulatedMedia", {
+            features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+        });
+        const reducedMotion = await client.send("Runtime.evaluate", {
+            expression: `(async () => {
+                const paint = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+                Array.from(document.querySelectorAll('[role="toolbar"] button')).find(button => button.textContent.trim() === 'Browse all').click();
+                await paint();
+                const dialog = document.querySelector('#examples-browser');
+                const checks = [];
+                for (const label of ['My games', 'Game starting points']) {
+                    const tab = Array.from(dialog.querySelectorAll('[role="tab"]')).find(tab => tab.textContent.trim().startsWith(label));
+                    tab.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+                    await paint();
+                    const header = dialog.querySelector('header');
+                    const panel = dialog.querySelector('[role="tabpanel"][data-state="active"]');
+                    checks.push({ label, selected: tab.getAttribute('aria-selected') === 'true', height: header.parentElement.getBoundingClientRect().height, contentHeight: header.getBoundingClientRect().height, animations: header.parentElement.getAnimations().length + panel.getAnimations().length });
+                }
+                const toggle = dialog.querySelector('[aria-controls="starting-points-games-items"]');
+                toggle.click();
+                await paint();
+                const content = document.getElementById(toggle.getAttribute('aria-controls'));
+                const collapsed = { height: content.getBoundingClientRect().height, inert: content.inert, animations: content.getAnimations().length };
+                toggle.click();
+                await paint();
+                const expandedHeight = content.getBoundingClientRect().height;
+                dialog.querySelector('[aria-label="Close game browser"]').click();
+                return { reduced: matchMedia('(prefers-reduced-motion: reduce)').matches, checks, collapsed, expandedHeight };
+            })()`,
+            awaitPromise: true,
+            returnByValue: true,
+        });
+        const reduced = reducedMotion.result?.value;
+        assert(
+            reduced?.reduced && reduced.checks.every(check =>
+                check.selected && check.animations === 0
+                && Math.abs(check.height - check.contentHeight) < 1
+            ) && reduced.collapsed.height === 0 && reduced.collapsed.inert
+                && reduced.collapsed.animations === 0
+                && reduced.expandedHeight > 0,
+            `Reduced motion must settle without sliding: ${
+                JSON.stringify(reduced)
+            }`,
+        );
+        result.browserReducedMotionConfirmed = true;
+        await client.send("Emulation.setEmulatedMedia", {
+            features: [{
+                name: "prefers-reduced-motion",
+                value: "no-preference",
+            }],
+        });
 
         console.log("WebMCP browser integration passed:");
         console.log(JSON.stringify(result, null, 2));
