@@ -49,7 +49,7 @@ export const KAPLAYGROUND_WEBMCP_TOOL_SURFACE = [
         name: "kaplayground_run_game",
         title: "Run and check the KAPLAYGROUND game",
         description:
-            "Restart the exact requested game revision and check it, or inspect the current run after the user has played without restarting it. Returns editor errors, run-specific console errors, and a bounded scene snapshot.",
+            "Restart the exact requested game revision and check it, or inspect the current run after browser input without resetting gameplay. Returns readiness, current-source diagnostics, run-specific console errors, focus evidence, and a bounded scene snapshot.",
         inputSchema: runGameSchema(),
         annotations: { untrustedContentHint: true },
     },
@@ -57,7 +57,7 @@ export const KAPLAYGROUND_WEBMCP_TOOL_SURFACE = [
         name: "kaplayground_find_assets",
         title: "Find KAPLAYGROUND game assets",
         description:
-            "Find matching assets already in the game and reusable items from KAPLAYGROUND's built-in library. Returns metadata and exact loader code, never binary files or hidden URLs.",
+            "Find matching assets already in the game and reusable items from KAPLAYGROUND's built-in library. Returns metadata, image and sprite-frame dimensions when readable, and exact loader code, never binary files or hidden URLs.",
         inputSchema: findAssetsSchema(),
         annotations: readAnnotations(),
     },
@@ -65,8 +65,8 @@ export const KAPLAYGROUND_WEBMCP_TOOL_SURFACE = [
         name: "kaplayground_save_game",
         title: "Save the KAPLAYGROUND game",
         description:
-            "Save the current game after checking that it still matches the requested revision. Temporary work becomes a saved project; existing saved projects are flushed to storage.",
-        inputSchema: revisionSchema(),
+            "Optionally name and save the current game after checking that it still matches the requested revision. Temporary work becomes a saved project; existing saved projects are flushed to storage.",
+        inputSchema: saveGameSchema(),
     },
     {
         name: "kaplayground_find_examples",
@@ -296,6 +296,12 @@ function runGameSchema(): object {
                 description:
                     "Maximum shallow scene object snapshots to return.",
             },
+            focus: {
+                type: "boolean",
+                default: false,
+                description:
+                    "Ask the preview canvas to receive keyboard focus before inspection and report whether focus was confirmed.",
+            },
         },
         required: ["expectedRevision"],
         additionalProperties: false,
@@ -396,10 +402,19 @@ function openExampleSchema(): object {
     };
 }
 
-function revisionSchema(): object {
+function saveGameSchema(): object {
     return {
         type: "object",
-        properties: { expectedRevision: revisionProperty() },
+        properties: {
+            expectedRevision: revisionProperty(),
+            name: {
+                type: "string",
+                minLength: 1,
+                maxLength: 120,
+                description:
+                    "Optional validated project name to persist with this save.",
+            },
+        },
         required: ["expectedRevision"],
         additionalProperties: false,
     };

@@ -22,7 +22,12 @@ import {
     registerGameToolDefinitions,
     requiresExampleDiscardConfirmation,
 } from "../src/integrations/webmcp/gameTools.ts";
+import {
+    calculateSpriteFrameDimensions,
+    spriteFrameGridFromLoader,
+} from "../src/integrations/webmcp/imageDimensions.ts";
 import { collectMonacoDiagnostics } from "../src/integrations/webmcp/monacoDiagnostics.ts";
+import { virtualResolveDirectory } from "../src/features/Projects/application/virtualPaths.ts";
 
 const FRIENDLY_PROMPT_FORBIDDEN =
     /@Browser|WebMCP|kaplayground_|contract|revision|\btool\b/i;
@@ -110,6 +115,12 @@ describe("simple KAPLAYGROUND browser tools", () => {
             "restart-and-check",
             "check-current",
         ]);
+        assert.equal(run.inputSchema.properties.focus.type, "boolean");
+
+        const save = KAPLAYGROUND_WEBMCP_TOOL_SURFACE.find(({ name }) =>
+            name === "kaplayground_save_game"
+        );
+        assert.equal(save.inputSchema.properties.name.maxLength, 120);
 
         const update = KAPLAYGROUND_WEBMCP_TOOL_SURFACE.find(({ name }) =>
             name === "kaplayground_update_game"
@@ -351,6 +362,32 @@ describe("simple KAPLAYGROUND browser tools", () => {
         );
     });
 
+    it("resolves imports from each virtual importing directory", () => {
+        assert.equal(virtualResolveDirectory("/main.js"), "/");
+        assert.equal(
+            virtualResolveDirectory("/scenes/game.js"),
+            "/scenes",
+        );
+        assert.equal(
+            virtualResolveDirectory("objects/player.ts"),
+            "/objects",
+        );
+    });
+
+    it("derives sprite-frame dimensions from loader slices", () => {
+        const grid = spriteFrameGridFromLoader(
+            'loadSprite("runner", "runner.png", { sliceX: 4, sliceY: 2 });',
+        );
+        assert.deepEqual(grid, { columns: 4, rows: 2 });
+        assert.deepEqual(
+            calculateSpriteFrameDimensions(
+                { width: 128, height: 64 },
+                grid,
+            ),
+            { width: 32, height: 32 },
+        );
+    });
+
     it("treats the discard argument as a request for page confirmation", () => {
         assert.equal(
             requiresExampleDiscardConfirmation(false, false),
@@ -511,19 +548,45 @@ describe("bounded agent-visible data", () => {
         });
     });
 
-    it("distinguishes unavailable diagnostics from a clean editor", () => {
-        assert.deepEqual(collectMonacoDiagnostics(undefined, new Map()), {
-            available: false,
-            diagnostics: [],
-        });
+    it("requires diagnostics to match the current source model", () => {
+        const files = new Map([
+            ["main.js", { value: "kaplay();\n" }],
+        ]);
+        assert.deepEqual(
+            collectMonacoDiagnostics(undefined, files, "main.js"),
+            {
+                available: false,
+                sourcePath: "main.js",
+                sourceCurrent: false,
+                diagnostics: [],
+            },
+        );
 
+        let modelValue = "kaplay();\n";
         const monaco = {
             MarkerSeverity: { Error: 8, Warning: 4, Info: 2, Hint: 1 },
-            editor: { getModelMarkers: () => [] },
+            Uri: { file: path => ({ path }) },
+            editor: {
+                getModelMarkers: () => [],
+                getModel: uri => uri.path === "main.js"
+                    ? { getValue: () => modelValue }
+                    : null,
+            },
         };
-        assert.deepEqual(collectMonacoDiagnostics(monaco, new Map()), {
-            available: true,
-            diagnostics: [],
-        });
+        assert.deepEqual(
+            collectMonacoDiagnostics(monaco, files, "main.js"),
+            {
+                available: true,
+                sourcePath: "main.js",
+                sourceCurrent: true,
+                diagnostics: [],
+            },
+        );
+
+        modelValue = "stale source";
+        assert.equal(
+            collectMonacoDiagnostics(monaco, files, "main.js").sourceCurrent,
+            false,
+        );
     });
 });

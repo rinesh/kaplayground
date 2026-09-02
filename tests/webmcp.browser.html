@@ -83,23 +83,20 @@
             );
         }
 
-        async function findMainFile(firstInspection) {
-            let inspection = firstInspection;
-            while (true) {
-                const file = inspection.files.find(({ path }) => path === "main.js");
-                if (file) return file;
-                if (inspection.nextFileOffset === null) {
-                    throw new Error("main.js was not listed by inspect_game.");
-                }
-                inspection = await invoke("kaplayground_inspect_game", {
-                    fileOffset: inspection.nextFileOffset,
-                    fileLimit: 100,
-                });
-                assert(
-                    inspection.revision === firstInspection.revision,
-                    "The project changed while paging file metadata.",
-                );
-            }
+        function fileAction(inspection, path) {
+            return inspection.files.some(file => file.path === path)
+                ? "replace"
+                : "create";
+        }
+
+        function sceneObject(result, tag) {
+            return result.scene?.objects?.find(object => object.tags?.includes(tag));
+        }
+
+        function consoleContains(result, text) {
+            return result.console?.entries?.some(entry =>
+                JSON.stringify(entry.values).includes(text)
+            );
         }
 
         function finish(result) {
@@ -121,66 +118,326 @@
                 60_000,
             );
 
+            const { useProject } = await import(
+                "/src/features/Projects/stores/useProject.ts"
+            );
+            const assetPath = "sprites/webmcp-fixture.svg";
+            const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="#fff"/></svg>';
+            const assets = new Map(useProject.getState().project.assets);
+            assets.set(assetPath, {
+                name: "webmcp-fixture.svg",
+                kind: "sprite",
+                path: assetPath,
+                url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+                importFunction:
+                    'loadSprite("webmcp-fixture", "assets/sprites/webmcp-fixture.svg", { sliceX: 2, sliceY: 1 });',
+            });
+            useProject.getState().setProject({ assets });
+
             const inspected = await invoke("kaplayground_inspect_game", {
                 fileLimit: 100,
             });
             assert(typeof inspected.revision === "string", "inspect_game omitted a revision.");
-            await findMainFile(inspected);
+            assert("activeRunId" in inspected, "inspect_game omitted the active run id.");
+            assert("readiness" in inspected, "inspect_game omitted readiness.");
 
             const read = await invoke("kaplayground_read_files", {
                 expectedRevision: inspected.revision,
                 paths: ["main.js"],
             });
             assert(read.files.length === 1, "read_files did not return main.js.");
-            assert(
-                typeof read.files[0].content === "string",
-                "read_files did not return source content.",
-            );
 
-            const marker = `\n// WebMCP browser test ${Date.now()}\n`;
+            const healthyMain = `
+import { startFixture } from "./scenes/game.js";
+
+startFixture();
+`;
+            const healthyScene = `
+import { PLAYER_SPEED } from "./movement.js";
+
+export function startFixture() {
+    kaplay({
+        width: 320,
+        height: 240,
+        background: [24, 28, 36],
+    });
+
+    const player = add([
+        rect(24, 32),
+        pos(40, 120),
+        area(),
+        anchor("center"),
+        color(96, 165, 250),
+        "webmcp-player",
+    ]);
+
+    onKeyDown("right", () => player.move(PLAYER_SPEED, 0));
+}
+`;
+            const movementSource = "export const PLAYER_SPEED = 180;\n";
             const updated = await invoke("kaplayground_update_game", {
                 expectedRevision: inspected.revision,
-                changes: [{
-                    action: "replace",
-                    path: "main.js",
-                    content: read.files[0].content + marker,
-                }],
+                changes: [
+                    {
+                        action: "replace",
+                        path: "main.js",
+                        content: healthyMain,
+                    },
+                    {
+                        action: fileAction(inspected, "scenes/game.js"),
+                        path: "scenes/game.js",
+                        content: healthyScene,
+                    },
+                    {
+                        action: fileAction(inspected, "scenes/movement.js"),
+                        path: "scenes/movement.js",
+                        content: movementSource,
+                    },
+                ],
                 focusPath: "main.js",
             });
             assert(updated.committed === true, "update_game was not committed.");
+
+            const dimensions = await invoke("kaplayground_find_assets", {
+                query: "webmcp-fixture",
+                kind: "sprite",
+                source: "game",
+                limit: 10,
+            });
+            const dimensionAsset = dimensions.assets.find(asset =>
+                asset.path === assetPath
+            );
+            assert(dimensionAsset, "find_assets omitted the fixture sprite.");
             assert(
-                updated.revision !== inspected.revision,
-                "update_game did not advance the revision.",
+                dimensionAsset.imageDimensions?.width === 40
+                    && dimensionAsset.imageDimensions?.height === 20,
+                "find_assets returned incorrect image dimensions.",
+            );
+            assert(
+                dimensionAsset.spriteFrameDimensions?.width === 20
+                    && dimensionAsset.spriteFrameDimensions?.height === 20,
+                "find_assets returned incorrect sprite-frame dimensions.",
             );
 
             const run = await invoke("kaplayground_run_game", {
                 expectedRevision: updated.revision,
                 mode: "restart-and-check",
+                inspectTag: "webmcp-player",
+                focus: true,
                 consoleLimit: 20,
                 objectLimit: 10,
             });
-            assert(run.status !== "failed", `run_game failed: ${run.summary}`);
+            assert(run.status === "passed", `Healthy run was ${run.status}: ${run.summary}`);
             assert(typeof run.runId === "string", "run_game did not return a run id.");
+            assert(run.readiness?.status === "ready", "Healthy run was not ready.");
+            assert(run.readiness?.assetsLoaded === true, "Asset readiness was not confirmed.");
+            assert(run.readiness?.firstFrame === true, "First-frame readiness was not confirmed.");
+            assert(run.focus?.canvasFocused === true, "Canvas focus was not confirmed.");
+            assert(run.diagnostics?.sourceCurrent === true, "Diagnostics were not current.");
+            assert(run.scene?.objectsAvailable === true, "Healthy scene objects were unavailable.");
+
+            const initialPlayer = sceneObject(run, "webmcp-player");
+            assert(initialPlayer, "The fixture player was not inspected.");
+            assert(initialPlayer.anchor === "center", "The player anchor was not reported.");
+            assert(
+                initialPlayer.renderedBounds?.height > 31
+                    && initialPlayer.renderedBounds?.height < 33,
+                "Rendered bounds were not reported.",
+            );
+            assert(
+                initialPlayer.collisionBounds?.world?.height > 31
+                    && initialPlayer.collisionBounds?.world?.height < 33,
+                "Collision bounds were not reported.",
+            );
+
+            let movementResolve;
+            const movementInput = new Promise(resolve => {
+                movementResolve = resolve;
+            });
+            globalThis.__webmcpMovementInputComplete = () => movementResolve();
+            document.documentElement.dataset.webmcpPhase = "movement-ready";
+            await withTimeout(movementInput, "browser movement input", 30_000);
+            await delay(120);
 
             const checked = await invoke("kaplayground_run_game", {
                 expectedRevision: updated.revision,
                 mode: "check-current",
+                inspectTag: "webmcp-player",
                 consoleLimit: 20,
                 objectLimit: 10,
             });
             assert(
-                checked.status !== "failed",
-                `check-current failed: ${checked.summary}`,
+                checked.status === "passed",
+                `Healthy check-current was ${checked.status}: ${checked.summary}`,
+            );
+            assert(checked.runId === run.runId, "check-current inspected a different run.");
+            const movedPlayer = sceneObject(checked, "webmcp-player");
+            assert(
+                movedPlayer?.position?.x > initialPlayer.position.x + 5,
+                "Supported browser input did not move the focused player.",
+            );
+
+            const savedName = `WebMCP fixture ${Date.now()}`;
+            const saved = await invoke("kaplayground_save_game", {
+                expectedRevision: updated.revision,
+                name: savedName,
+            });
+            assert(saved.name === savedName, "save_game did not persist the requested name.");
+            assert(typeof saved.projectId === "string", "save_game omitted the project id.");
+            assert(saved.revision !== updated.revision, "Renaming did not advance the revision.");
+
+            const persisted = await useProject.getState().getProject(saved.projectId);
+            assert(persisted?.name === savedName, "The saved project name was not stored.");
+            assert(
+                persisted?.files.get("main.js")?.value === healthyMain,
+                "The saved fixture source was not stored.",
+            );
+            await useProject.getState().createNewProject(
+                persisted.mode,
+                persisted,
+                undefined,
+                false,
+            );
+            useProject.getState().setProjectKey(saved.projectId);
+            const reopened = await invoke("kaplayground_inspect_game", {
+                fileLimit: 100,
+            });
+            assert(reopened.name === savedName, "The saved project did not reopen by name.");
+            assert(reopened.projectId === saved.projectId, "The saved project id did not reopen.");
+            const reopenedSource = await invoke("kaplayground_read_files", {
+                expectedRevision: reopened.revision,
+                paths: ["main.js"],
+            });
+            assert(
+                reopenedSource.files[0].content === healthyMain,
+                "The reopened project source changed.",
+            );
+            // Keep subsequent failure fixtures transient so example opening still
+            // requires the existing in-page discard confirmation.
+            useProject.getState().setProjectKey(null);
+
+            const pendingSource = `
+function startPendingAssets() {
+    kaplay({ width: 320, height: 240 });
+    loadSprite(
+        "webmcp-pending",
+        "https://webmcp-pending-asset.invalid/never.png",
+    );
+    add([rect(16, 16), pos(20, 20), "pending-object"]);
+}
+startPendingAssets();
+`;
+            const pendingUpdate = await invoke("kaplayground_update_game", {
+                expectedRevision: reopened.revision,
+                changes: [{
+                    action: "replace",
+                    path: "main.js",
+                    content: pendingSource,
+                }],
+                focusPath: "main.js",
+            });
+            const pendingRun = await invoke("kaplayground_run_game", {
+                expectedRevision: pendingUpdate.revision,
+                mode: "restart-and-check",
+                inspectTag: "pending-object",
+                objectLimit: 10,
+            });
+            assert(
+                pendingRun.status === "incomplete",
+                `Pending assets should be incomplete, got ${pendingRun.status}.`,
             );
             assert(
-                checked.runId === run.runId,
-                "check-current inspected a different run.",
+                pendingRun.readiness?.status === "timed-out",
+                "Pending assets did not report a loading timeout.",
+            );
+
+            const inspectionErrorSource = `
+function startInspectionError() {
+    const k = kaplay({ global: false, width: 320, height: 240 });
+    k.add([
+        k.pos(20, 20),
+        "inspection-error",
+        {
+            id: "inspectionProbe",
+            renderArea() {
+                console.error("webmcp inspection-time error");
+                return { pos: { x: -6, y: -6 }, width: 12, height: 12 };
+            },
+        },
+    ]);
+}
+startInspectionError();
+`;
+            const inspectionErrorUpdate = await invoke(
+                "kaplayground_update_game",
+                {
+                    expectedRevision: pendingUpdate.revision,
+                    changes: [{
+                        action: "replace",
+                        path: "main.js",
+                        content: inspectionErrorSource,
+                    }],
+                    focusPath: "main.js",
+                },
+            );
+            const inspectionErrorRun = await invoke("kaplayground_run_game", {
+                expectedRevision: inspectionErrorUpdate.revision,
+                mode: "restart-and-check",
+                inspectTag: "inspection-error",
+                objectLimit: 10,
+            });
+            assert(
+                inspectionErrorRun.status === "failed",
+                `Inspection-time console errors should fail, got ${inspectionErrorRun.status}.`,
+            );
+            assert(
+                consoleContains(inspectionErrorRun, "webmcp inspection-time error"),
+                "The inspection-time console error was sampled too early.",
+            );
+
+            const unavailableSource = `
+function startUnavailableInspection() {
+    const k = kaplay({ global: false, width: 320, height: 240 });
+    k.add([
+        k.rect(16, 16),
+        k.pos(20, 20),
+        "unavailable-object",
+    ]);
+    globalThis._k_ctx = { debug: k.debug };
+    globalThis._k_debug = k.debug;
+}
+startUnavailableInspection();
+`;
+            const unavailableUpdate = await invoke("kaplayground_update_game", {
+                expectedRevision: inspectionErrorUpdate.revision,
+                changes: [{
+                    action: "replace",
+                    path: "main.js",
+                    content: unavailableSource,
+                }],
+                focusPath: "main.js",
+            });
+            const unavailableRun = await invoke("kaplayground_run_game", {
+                expectedRevision: unavailableUpdate.revision,
+                mode: "restart-and-check",
+                inspectTag: "unavailable-object",
+                objectLimit: 10,
+            });
+            assert(
+                unavailableRun.status === "incomplete",
+                `Unavailable object inspection should be incomplete, got ${unavailableRun.status}.`,
+            );
+            assert(
+                unavailableRun.scene?.objectsAvailable === false,
+                "Unavailable object inspection was not identified.",
             );
 
             const beforeOpen = await invoke("kaplayground_inspect_game", {});
+            assert(beforeOpen.activeRunId === unavailableRun.runId, "inspect_game omitted the active run.");
+            assert(beforeOpen.readiness?.status === "ready", "inspect_game omitted active readiness.");
             assert(
                 beforeOpen.hasUnsavedChanges === true,
-                "The update should leave the transient game with unsaved changes.",
+                "The regression updates should leave unsaved changes.",
             );
 
             const found = await invoke("kaplayground_find_examples", {
@@ -191,7 +448,7 @@
             assert(example, "find_examples returned no usable example.");
 
             const declining = invoke("kaplayground_open_example", {
-                expectedRevision: updated.revision,
+                expectedRevision: unavailableUpdate.revision,
                 key: example.key,
                 discardUnsavedChanges: true,
             });
@@ -206,7 +463,7 @@
             const declined = await declining;
             assert(declined.committed === false, "Declining still committed a replacement.");
             assert(
-                declined.revision === updated.revision,
+                declined.revision === unavailableUpdate.revision,
                 "Declining changed the project revision.",
             );
             await waitFor(
@@ -215,56 +472,49 @@
             );
 
             const opening = invoke("kaplayground_open_example", {
-                expectedRevision: updated.revision,
+                expectedRevision: unavailableUpdate.revision,
                 key: example.key,
                 discardUnsavedChanges: true,
             });
-            const confirmDialog = await waitFor(
+            const openDialog = await waitFor(
                 () => document.querySelector("#confirm-dialog[open]"),
-                "the discard confirmation dialog to reopen",
+                "the second discard confirmation dialog",
             );
-            const confirmButton = [...confirmDialog.querySelectorAll("button")]
+            const confirmButton = [...openDialog.querySelectorAll("button")]
                 .find(button => button.textContent?.trim() === "Discard and open");
             assert(confirmButton, "The discard confirmation button was not rendered.");
             confirmButton.click();
-
             const opened = await opening;
-            assert(opened.committed === true, "open_example was not committed.");
-            assert(opened.opened === example.key, "open_example opened the wrong example.");
+            assert(opened.committed === true, "Confirmed example opening did not commit.");
+            assert(opened.opened === example.key, "open_example returned the wrong key.");
             assert(
-                opened.revision !== updated.revision,
-                "open_example did not advance the revision.",
-            );
-
-            const afterOpen = await invoke("kaplayground_inspect_game", {});
-            assert(
-                afterOpen.revision === opened.revision,
-                "inspect_game did not observe the opened example revision.",
+                opened.revision !== unavailableUpdate.revision,
+                "Opening an example did not replace the revision.",
             );
 
             finish({
                 passed: true,
-                registeredNames,
-                initialRevision: inspected.revision,
-                updatedRevision: updated.revision,
-                updateCommitted: updated.committed,
+                registered: registeredNames,
                 runStatus: run.status,
-                runId: run.runId,
                 currentCheckStatus: checked.status,
-                currentRunId: checked.runId,
-                declineCommitted: declined.committed,
-                declineRevision: declined.revision,
-                confirmationShown: true,
-                openCommitted: opened.committed,
-                openedKey: opened.opened,
-                finalRevision: afterOpen.revision,
+                readinessStatus: run.readiness.status,
+                focusConfirmed: run.focus.canvasFocused,
+                movementConfirmed: movedPlayer.position.x > initialPlayer.position.x,
+                dimensionsConfirmed: true,
+                saveReopenConfirmed: reopened.projectId === saved.projectId,
+                pendingAssetsStatus: pendingRun.status,
+                inspectionErrorStatus: inspectionErrorRun.status,
+                unavailableInspectionStatus: unavailableRun.status,
+                declinedCommitted: declined.committed,
+                opened: opened.opened,
             });
         } catch (error) {
             finish({
                 passed: false,
-                registeredNames,
-                error: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : null,
+                error: error instanceof Error
+                    ? `${error.name}: ${error.message}\n${error.stack ?? ""}`
+                    : String(error),
+                registered: registeredNames,
             });
         }
         </script>

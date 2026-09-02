@@ -15,6 +15,7 @@ import {
     type PreviewInspection,
     type PreviewInspectionOptions,
     type PreviewPauseResult,
+    type PreviewReadiness,
     PreviewRunError,
     type PreviewRunResult,
     type SandboxInspectionResultMessage,
@@ -27,7 +28,7 @@ import { useConfig } from "./useConfig";
 const PREVIEW_READY_TIMEOUT_MS = 10_000;
 const PREVIEW_RUN_TIMEOUT_MS = 30_000;
 const PREVIEW_CONTROL_TIMEOUT_MS = 10_000;
-const PREVIEW_PROTOCOL_VERSION = 1;
+const PREVIEW_PROTOCOL_VERSION = 2;
 const LAYOUT_POLL_INTERVAL_MS = 100;
 const previewRunCoordinator = createPreviewRunCoordinator();
 let previewSessionController = new AbortController();
@@ -91,6 +92,7 @@ export interface EditorStore {
     runtime: EditorRuntime;
     stopped: boolean;
     previewRunId: string | null;
+    previewReadiness: PreviewReadiness | null;
     paused: boolean | null;
     update: (value?: string) => void;
     run: () => Promise<PreviewRunResult>;
@@ -141,6 +143,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
     },
     stopped: (new URL(window.location.href)).searchParams.has("stopped"),
     previewRunId: null,
+    previewReadiness: null,
     paused: null,
     setRuntime: (runtime) => {
         set((state) => ({
@@ -282,6 +285,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
         set({
             stopped: false,
             previewRunId: runId,
+            previewReadiness: null,
             paused: null,
         });
 
@@ -351,7 +355,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
                     && data.type === "RUN_RESULT"
                     && data.runId === runId,
                 signal,
-                PREVIEW_READY_TIMEOUT_MS,
+                PREVIEW_RUN_TIMEOUT_MS,
                 "[game] sandbox did not acknowledge the preview run in time",
             );
 
@@ -364,11 +368,12 @@ export const useEditor = create<EditorStore>((set, get) => ({
 
             set({
                 previewRunId: runId,
+                previewReadiness: result.readiness,
                 paused: typeof result.paused === "boolean"
                     ? result.paused
                     : null,
             });
-            return { runId, status: "loaded" };
+            return { runId, status: "loaded", readiness: result.readiness };
         };
 
         const runPromise = previewRunCoordinator.run(
@@ -404,6 +409,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
                         set({
                             stopped: true,
                             previewRunId: null,
+                            previewReadiness: null,
                             paused: null,
                         });
                     }
@@ -526,9 +532,12 @@ export const useEditor = create<EditorStore>((set, get) => ({
                 );
             }
 
-            if (typeof result.inspection.paused === "boolean") {
-                set({ paused: result.inspection.paused });
-            }
+            set({
+                previewReadiness: result.inspection.readiness,
+                ...(typeof result.inspection.paused === "boolean"
+                    ? { paused: result.inspection.paused }
+                    : {}),
+            });
             return result.inspection;
         } finally {
             operation.dispose();
@@ -549,7 +558,12 @@ export const useEditor = create<EditorStore>((set, get) => ({
     stop() {
         previewRunCoordinator.cancel();
         cancelPreviewSession("The preview was stopped.");
-        set({ stopped: true, previewRunId: null, paused: null });
+        set({
+            stopped: true,
+            previewRunId: null,
+            previewReadiness: null,
+            paused: null,
+        });
     },
     updateImageDecorations() {
         debug(0, "[monaco] Updating glyph decorations");
