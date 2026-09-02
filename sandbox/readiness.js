@@ -24,6 +24,7 @@ export function createPreviewReadinessTracker({
 
     let activeContext = null;
     let drawTrackedContext = null;
+    let stopObservingDraw = null;
     let loadTrackedContext = null;
     let readiness = createReadiness();
     let readinessPromise = Promise.resolve(snapshot());
@@ -66,6 +67,7 @@ export function createPreviewReadinessTracker({
 
         if (activeContext !== context) {
             clearLoadProgressTimer();
+            clearDrawObserver();
             drawTrackedContext = null;
             loadTrackedContext = null;
         }
@@ -125,12 +127,25 @@ export function createPreviewReadinessTracker({
         if (drawTrackedContext === context) return;
         drawTrackedContext = context;
 
-        safeInvoke(() => context.onDraw?.(() => {
+        const onDraw = () => {
             if (!isCurrentContext(context, runId)) return;
             readiness.firstFrame = true;
+            clearDrawObserver();
             updateCanvasEvidence(context);
             maybeComplete();
-        }));
+        };
+
+        // go() cancels default onDraw subscriptions before the first game frame.
+        stopObservingDraw = safeInvoke(() => {
+            if (typeof context.app?.onDraw === "function") {
+                const subscription = context.app.onDraw(onDraw);
+                return () => subscription.cancel();
+            }
+
+            // KAPLAY 3001 has no app scope; a stay object survives scene changes.
+            const observer = context.add([context.stay(), { draw: onDraw }]);
+            return () => observer.destroy();
+        }) ?? null;
     }
 
     function trackLoading(context, runId) {
@@ -206,6 +221,13 @@ export function createPreviewReadinessTracker({
             readinessTimer = null;
         }
         clearLoadProgressTimer();
+        clearDrawObserver();
+    }
+
+    function clearDrawObserver() {
+        const stop = stopObservingDraw;
+        stopObservingDraw = null;
+        safeInvoke(() => stop?.());
     }
 
     function clearLoadProgressTimer() {

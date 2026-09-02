@@ -25,6 +25,41 @@ class FakeTarget {
 }
 
 describe("WebMCP document lifecycle", () => {
+    it("keeps tools registered when beforeunload is canceled", () => {
+        const windowTarget = new EventTarget();
+        const documentTarget = new EventTarget();
+        const context = {};
+        let registrations = 0;
+        let registered = false;
+        const cleanup = installKaplaygroundWebMCPLifecycle(
+            () => {
+                registrations += 1;
+                registered = true;
+                return () => {
+                    registered = false;
+                };
+            },
+            { windowTarget, documentTarget, getModelContext: () => context },
+        );
+
+        try {
+            windowTarget.addEventListener("beforeunload", event => {
+                event.preventDefault();
+            });
+            const navigationContinues = windowTarget.dispatchEvent(
+                new Event("beforeunload", { cancelable: true }),
+            );
+            assert.equal(navigationContinues, false);
+            assert.equal(registered, true, "canceling navigation must retain tools");
+            assert.equal(registrations, 1, "canceling navigation must not replace tools");
+
+            windowTarget.dispatchEvent(new Event("pagehide"));
+            assert.equal(registered, false, "leaving the page must still clean up");
+        } finally {
+            cleanup();
+        }
+    });
+
     it("aborts old registrations and registers once after page restoration", () => {
         const windowTarget = new FakeTarget();
         const documentTarget = new FakeTarget();

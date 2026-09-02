@@ -141,7 +141,8 @@ async function main() {
             ],
             {
                 cwd: join(root, "sandbox"),
-                env: { VITE_WEBMCP_READINESS_TIMEOUT_MS: "750" },
+                // This budget also includes importing and starting the engine.
+                env: { VITE_WEBMCP_READINESS_TIMEOUT_MS: "2500" },
             },
             "sandbox",
         );
@@ -251,6 +252,8 @@ async function main() {
         assert.equal(result.runStatus, "passed");
         assert.equal(result.currentCheckStatus, "passed");
         assert.equal(result.readinessStatus, "ready");
+        assert.equal(result.sceneTransitionConfirmed, true);
+        assert.equal(result.canceledUnloadConfirmed, true);
         assert.equal(result.focusConfirmed, true);
         assert.equal(result.movementConfirmed, true);
         assert.equal(result.dimensionsConfirmed, true);

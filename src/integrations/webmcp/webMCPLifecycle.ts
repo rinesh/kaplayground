@@ -60,9 +60,9 @@ export function installKaplaygroundWebMCPLifecycle(
         });
     };
 
+    // beforeunload can be canceled; keep tools until the document actually leaves.
     const pageHide: EventListener = () => stopRegistration();
     const pageShow: EventListener = () => scheduleSynchronization();
-    const beforeUnload: EventListener = () => stopRegistration();
     const focus: EventListener = () => synchronize();
     const visibilityChange: EventListener = () => {
         if (documentTarget.hidden !== true) synchronize();
@@ -70,7 +70,6 @@ export function installKaplaygroundWebMCPLifecycle(
 
     addListener(windowTarget, "pagehide", pageHide);
     addListener(windowTarget, "pageshow", pageShow);
-    addListener(windowTarget, "beforeunload", beforeUnload);
     addListener(windowTarget, "focus", focus);
     addListener(documentTarget, "visibilitychange", visibilityChange);
     synchronize();
@@ -81,7 +80,6 @@ export function installKaplaygroundWebMCPLifecycle(
         stopRegistration();
         removeListener(windowTarget, "pagehide", pageHide);
         removeListener(windowTarget, "pageshow", pageShow);
-        removeListener(windowTarget, "beforeunload", beforeUnload);
         removeListener(windowTarget, "focus", focus);
         removeListener(documentTarget, "visibilitychange", visibilityChange);
     };
