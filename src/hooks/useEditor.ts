@@ -11,6 +11,11 @@ import { parseAssetPath } from "../util/assetsParsing";
 import { debug } from "../util/logs";
 import { MATCH_ASSET_URL_REGEX } from "../util/regex";
 import {
+    emptyPreviewAssets,
+    type PreviewAssets,
+    receivePreviewAssets,
+} from "./previewAssets";
+import {
     MAX_PREVIEW_INSPECTION_OBJECTS,
     type PreviewInspection,
     type PreviewInspectionOptions,
@@ -93,6 +98,8 @@ export interface EditorStore {
     stopped: boolean;
     previewRunId: string | null;
     previewReadiness: PreviewReadiness | null;
+    previewAssets: PreviewAssets;
+    previewProjectGeneration: number | null;
     paused: boolean | null;
     update: (value?: string) => void;
     run: () => Promise<PreviewRunResult>;
@@ -144,6 +151,8 @@ export const useEditor = create<EditorStore>((set, get) => ({
     stopped: (new URL(window.location.href)).searchParams.has("stopped"),
     previewRunId: null,
     previewReadiness: null,
+    previewAssets: emptyPreviewAssets(),
+    previewProjectGeneration: null,
     paused: null,
     setRuntime: (runtime) => {
         set((state) => ({
@@ -283,10 +292,13 @@ export const useEditor = create<EditorStore>((set, get) => ({
 
         const runId = createRequestId("run");
         const sessionSignal = beginPreviewSession();
+        clearPreviewAssetSelection();
         set({
             stopped: false,
             previewRunId: runId,
             previewReadiness: null,
+            previewAssets: emptyPreviewAssets(),
+            previewProjectGeneration: useProject.getState().projectGeneration,
             paused: null,
         });
 
@@ -335,7 +347,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
 
             signal.throwIfAborted();
             console.log("[game] iframe loaded");
-            const code = await wrapGame();
+            const code = await wrapGame(runId);
             signal.throwIfAborted();
 
             if (gameIframe.contentWindow !== iframeContentWindow) {
@@ -343,6 +355,20 @@ export const useEditor = create<EditorStore>((set, get) => ({
                     "[game] iframe changed before code could be posted",
                 );
             }
+
+            const onAssets = (event: MessageEvent) => {
+                if (get().previewRunId !== runId) return;
+                const next = receivePreviewAssets(get().previewAssets, event, {
+                    origin: SANDBOX_ORIGIN,
+                    source: iframeContentWindow,
+                    runId,
+                });
+                if (next) set({ previewAssets: next });
+            };
+            window.addEventListener("message", onAssets);
+            sessionSignal.addEventListener("abort", () => {
+                window.removeEventListener("message", onAssets);
+            }, { once: true });
 
             const result = await requestSandbox(
                 iframeContentWindow,
@@ -411,6 +437,8 @@ export const useEditor = create<EditorStore>((set, get) => ({
                             stopped: true,
                             previewRunId: null,
                             previewReadiness: null,
+                            previewAssets: emptyPreviewAssets(),
+                            previewProjectGeneration: null,
                             paused: null,
                         });
                     }
@@ -559,10 +587,13 @@ export const useEditor = create<EditorStore>((set, get) => ({
     stop() {
         previewRunCoordinator.cancel();
         cancelPreviewSession("The preview was stopped.");
+        clearPreviewAssetSelection();
         set({
             stopped: true,
             previewRunId: null,
             previewReadiness: null,
+            previewAssets: emptyPreviewAssets(),
+            previewProjectGeneration: null,
             paused: null,
         });
     },
@@ -705,6 +736,12 @@ export const useEditor = create<EditorStore>((set, get) => ({
         iframe.dispatchEvent(new CustomEvent("focusiframe"));
     },
 }));
+
+function clearPreviewAssetSelection() {
+    if (useWorkspace.getState().selectedAsset?.source === "runtime") {
+        useWorkspace.getState().selectAsset(null);
+    }
+}
 
 function waitForLayoutTick(signal: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {

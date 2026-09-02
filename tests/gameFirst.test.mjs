@@ -262,6 +262,16 @@ describe("promptable asset and starting point identifiers", () => {
             assetPrompt({ source: "game", ...asset }),
             /My apple.png \(sprites\/My apple.png\)/,
         );
+        const loaded = assetPrompt({
+            source: "runtime",
+            name: "player alias",
+            kind: "sprite",
+        });
+        assert.match(
+            loaded,
+            /sprite named "player alias" that's already loaded/,
+        );
+        assert.doesNotMatch(loaded, /undefined|built-in|WebMCP|loadSprite/);
     });
     it("ranks the Codex starter first and the existing Games category next", () => {
         const base = {

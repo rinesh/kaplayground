@@ -57,7 +57,7 @@ export const KAPLAYGROUND_WEBMCP_TOOL_SURFACE = [
         name: "kaplayground_find_assets",
         title: "Find KAPLAYGROUND game assets",
         description:
-            "Find matching assets already in the game and reusable items from KAPLAYGROUND's built-in library. Returns metadata, image and sprite-frame dimensions when readable, and exact loader code, never binary files or hidden URLs.",
+            "Find assets loaded by the running game, project uploads, and reusable items from the built-in library. Game results with loaded: true use their actual runtime names and can be reused without loading them again. Returns bounded metadata, dimensions when readable, and exact library loader code, never binary files or hidden URLs.",
         inputSchema: findAssetsSchema(),
         annotations: readAnnotations(),
     },

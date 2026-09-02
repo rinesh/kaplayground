@@ -1,10 +1,16 @@
 import { create } from "zustand";
 import type { AssetKind } from "../features/Projects/models/AssetKind";
 
-export type SelectedAsset = {
-    name: string;
-    kind: AssetKind;
-} & ({ source: "library"; key: string } | { source: "game"; path: string });
+export type SelectedAsset =
+    & {
+        name: string;
+        kind: AssetKind;
+    }
+    & (
+        | { source: "library"; key: string }
+        | { source: "game"; path: string }
+        | { source: "runtime" }
+    );
 
 interface WorkspaceState {
     activeTab: "assets" | "code";

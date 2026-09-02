@@ -297,6 +297,23 @@ function createTools(
                         sizeBytes: utf8Size(file.value),
                     })),
                     assetCount: projectStore.project.assets.size,
+                    loadedAssets: {
+                        available:
+                            editor.previewProjectGeneration
+                                === projectStore.projectGeneration
+                            && editor.previewAssets.available,
+                        truncated:
+                            editor.previewProjectGeneration
+                                === projectStore.projectGeneration
+                            && editor.previewAssets.truncated,
+                        assets:
+                            editor.previewProjectGeneration
+                                    === projectStore.projectGeneration
+                                ? editor.previewAssets.assets.map((
+                                    { name, kind },
+                                ) => ({ name, kind }))
+                                : [],
+                    },
                 };
             },
         },
@@ -754,6 +771,12 @@ function createTools(
 
                 const before = useProject.getState();
                 const revision = gameRevision(before);
+                const preview = useEditor.getState();
+                const loadedAssets =
+                    preview.previewProjectGeneration
+                            === before.projectGeneration
+                        ? preview.previewAssets.assets
+                        : [];
                 const descriptors: Array<{
                     asset: Record<string, unknown> & { kind: string };
                     imageSource: string | null;
@@ -769,6 +792,11 @@ function createTools(
                                 name: asset.name.slice(0, 256),
                                 path: asset.path.slice(0, 512),
                                 kind: asset.kind,
+                                loaded: loadedAssets.some(loaded =>
+                                    loaded.name === asset.name
+                                    && loaded.kind === asset.kind
+                                    && loaded.url === asset.url
+                                ),
                                 importFunction: asset.importFunction.slice(
                                     0,
                                     2_048,
@@ -784,6 +812,26 @@ function createTools(
                                     asset.importFunction,
                                 )
                                 : null,
+                        });
+                    }
+                    for (const asset of loadedAssets) {
+                        if (!matchesGameAsset(asset, query, kind)) continue;
+                        if (
+                            descriptors.some(({ asset: entry }) =>
+                                entry.loaded === true
+                                && entry.name === asset.name
+                                && entry.kind === asset.kind
+                            )
+                        ) continue;
+                        descriptors.push({
+                            asset: {
+                                source: "game",
+                                name: asset.name,
+                                kind: asset.kind,
+                                loaded: true,
+                            },
+                            imageSource: null,
+                            frameGrid: null,
                         });
                     }
                 }
@@ -857,6 +905,15 @@ function createTools(
                     query: query || null,
                     kind: kind ?? null,
                     source,
+                    activeRunId: preview.previewRunId,
+                    loadedAssetsAvailable:
+                        preview.previewProjectGeneration
+                            === before.projectGeneration
+                        && preview.previewAssets.available,
+                    loadedAssetsTruncated:
+                        preview.previewProjectGeneration
+                            === before.projectGeneration
+                        && preview.previewAssets.truncated,
                     total: descriptors.length,
                     offset,
                     limit,
@@ -1191,7 +1248,9 @@ function boundedSelectedAsset() {
     };
     return selected.source === "library"
         ? { ...identity, key: selected.key.slice(0, 256) }
-        : { ...identity, path: selected.path.slice(0, 512) };
+        : selected.source === "game"
+        ? { ...identity, path: selected.path.slice(0, 512) }
+        : identity;
 }
 
 function assetSource(

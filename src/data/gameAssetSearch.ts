@@ -1,14 +1,15 @@
 import type { Asset } from "../features/Projects/models/Asset";
 
 export function matchesGameAsset(
-    asset: Asset,
+    asset: Pick<Asset, "name" | "kind"> & { path?: string },
     query: string,
     kind?: string,
 ): boolean {
     return (!kind || asset.kind === kind)
-        && `${asset.name} ${asset.path} ${asset.kind}`.toLowerCase().includes(
-            query.trim().toLowerCase(),
-        );
+        && `${asset.name} ${asset.path ?? ""} ${asset.kind}`.toLowerCase()
+            .includes(
+                query.trim().toLowerCase(),
+            );
 }
 
 export function assetPrompt(
@@ -20,7 +21,11 @@ export function assetPrompt(
         path?: string;
     },
 ): string {
-    const identity = asset.source === "library"
+    const identity = asset.source === "runtime"
+        ? `the ${asset.kind} named ${
+            JSON.stringify(asset.name)
+        } that's already loaded in my game`
+        : asset.source === "library"
         ? `the built-in ${asset.key} ${
             asset.kind === "sprite" ? "character or picture" : asset.kind
         }`

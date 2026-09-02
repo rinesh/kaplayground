@@ -10,6 +10,8 @@ import {
 import { assetPrompt, matchesGameAsset } from "../../data/gameAssetSearch";
 import type { Asset } from "../../features/Projects/models/Asset";
 import { useProject } from "../../features/Projects/stores/useProject";
+import type { PreviewAsset } from "../../hooks/previewAssets";
+import { useEditor } from "../../hooks/useEditor";
 import { type SelectedAsset, useWorkspace } from "../../hooks/useWorkspace";
 import { cn } from "../../util/cn";
 import { Assets } from "./Assets";
@@ -21,33 +23,54 @@ const libraryAssets = new Map(
 
 export const AssetBrowser = () => {
     const [query, setQuery] = useState("");
-    const [source, setSource] = useState<"all" | "game" | "library">("all");
+    const [source, setSource] = useState<"library" | "game">("library");
     const [kind, setKind] = useState<AssetBrewKind>();
     const [managing, setManaging] = useState(false);
     const projectAssets = useProject(state => state.project.assets);
+    const generation = useProject(state => state.projectGeneration);
+    const previewAssets = useEditor(state => state.previewAssets);
+    const previewGeneration = useEditor(state =>
+        state.previewProjectGeneration
+    );
+    const running = useEditor(state => state.previewRunId !== null);
+    const loading = useEditor(state =>
+        state.previewRunId !== null && state.previewReadiness === null
+    );
+    const currentPreview = generation === previewGeneration;
     const selection = useWorkspace(state => state.selectedAsset);
     const selectAsset = useWorkspace(state => state.selectAsset);
-    const entries = useMemo<BrowserAsset[]>(() => [
-        ...(source === "library" ? [] : [...projectAssets.values()].filter(
-            asset => matchesGameAsset(asset, query, kind),
-        ).map(gameAsset)),
-        ...(source === "game" ? [] : searchAssetBrewEntries(
-            assetBrewCatalog,
-            { query, kind },
-        ).map(asset => libraryAssets.get(asset.key)!)),
-    ], [query, source, kind, projectAssets]);
-    const hasFilters = query.length > 0 || source !== "all"
-        || kind !== undefined;
+    const entries = useMemo<BrowserAsset[]>(() =>
+        source === "library"
+            ? searchAssetBrewEntries(assetBrewCatalog, { query, kind }).map(
+                asset => libraryAssets.get(asset.key)!,
+            )
+            : (currentPreview ? previewAssets.assets : []).filter(
+                asset => matchesGameAsset(asset, query, kind),
+            ).map(runtimeAsset), [
+        query,
+        source,
+        kind,
+        currentPreview,
+        previewAssets,
+    ]);
+    const hasFilters = query.length > 0 || kind !== undefined;
     const resetFilters = () => {
         setQuery("");
-        setSource("all");
         setKind(undefined);
     };
     const selectedProjectAsset = selection?.source === "game"
         ? projectAssets.get(selection.path)
         : null;
+    const selectedRuntimeAsset =
+        selection?.source === "runtime" && currentPreview
+            ? previewAssets.assets.find(asset =>
+                asset.name === selection.name && asset.kind === selection.kind
+            )
+            : null;
     const selected = selection?.source === "library"
         ? libraryAssets.get(selection.key)
+        : selectedRuntimeAsset
+        ? runtimeAsset(selectedRuntimeAsset)
         : selectedProjectAsset
         ? gameAsset(selectedProjectAsset)
         : null;
@@ -86,7 +109,9 @@ export const AssetBrowser = () => {
                         <input
                             type="search"
                             aria-label="Search assets"
-                            placeholder="Search names, tags, or descriptions…"
+                            placeholder={source === "library"
+                                ? "Search names, tags, or descriptions…"
+                                : "Search this game's assets…"}
                             value={query}
                             className="input input-sm w-full bg-base-200"
                             onChange={event => setQuery(event.target.value)}
@@ -94,12 +119,11 @@ export const AssetBrowser = () => {
                         <div
                             role="group"
                             aria-label="Asset source"
-                            className="grid grid-cols-3 gap-1 rounded-lg bg-base-200 p-1"
+                            className="grid grid-cols-2 gap-1 rounded-lg bg-base-200 p-1"
                         >
                             {([
-                                ["all", "All"],
-                                ["game", "In game"],
                                 ["library", "Library"],
+                                ["game", "In game"],
                             ] as const).map(([value, label]) => (
                                 <button
                                     key={value}
@@ -151,6 +175,8 @@ export const AssetBrowser = () => {
                                 {entries.length} {entries.length === 1
                                     ? "asset"
                                     : "assets"}
+                                {source === "game" && currentPreview
+                                    && previewAssets.truncated && " shown"}
                             </span>
                             {hasFilters && (
                                 <button
@@ -211,9 +237,14 @@ export const AssetBrowser = () => {
                                     <span className="w-full break-words text-center text-xs">
                                         {assetName(entry.identity)}
                                     </span>
-                                    {entry.identity.source === "game" && (
+                                    {entry.identity.source === "runtime" && (
                                         <span className="text-[10px] text-base-content/60">
-                                            In this project
+                                            {entry.identity.kind === "sprite"
+                                                ? "Art"
+                                                : entry.identity.kind
+                                                        === "sound"
+                                                ? "Sound"
+                                                : "Font"}
                                         </span>
                                     )}
                                 </button>
@@ -223,14 +254,25 @@ export const AssetBrowser = () => {
                             <div className="space-y-2 px-2 py-6 text-center">
                                 <p className="text-sm text-base-content/80">
                                     {source === "game"
-                                            && projectAssets.size === 0
-                                        ? "No assets in this project yet."
+                                            && (!currentPreview
+                                                || previewAssets.assets.length
+                                                    === 0)
+                                        ? loading
+                                            ? "Loading game assets…"
+                                            : !running || !currentPreview
+                                                    || !previewAssets.available
+                                            ? "Run the game to see its assets."
+                                            : previewAssets.truncated
+                                            ? "Some game assets couldn't be listed."
+                                            : "This game hasn't loaded any assets."
                                         : "No assets match these filters."}
                                 </p>
                                 <p className="text-xs text-base-content/65">
                                     {source === "game"
-                                            && projectAssets.size === 0
-                                        ? "Upload art, sounds, or fonts in My assets."
+                                            && (!currentPreview
+                                                || previewAssets.assets.length
+                                                    === 0)
+                                        ? "Art, sounds, and fonts appear here when the game loads them."
                                         : "Try another search or reset the filters."}
                                 </p>
                             </div>
@@ -259,6 +301,8 @@ export const AssetBrowser = () => {
                                 <p className="break-words text-xs text-base-content/65">
                                     {selection.source === "library"
                                         ? "Built-in library"
+                                        : selection.source === "runtime"
+                                        ? "Loaded in this game"
                                         : selection.path}
                                 </p>
                             </div>
@@ -312,6 +356,8 @@ export const AssetBrowser = () => {
 function assetId(asset: SelectedAsset): string {
     return asset.source === "library"
         ? `library:${asset.key}`
+        : asset.source === "runtime"
+        ? `runtime:${asset.kind}:${asset.name}`
         : `game:${asset.path}`;
 }
 function assetName(asset: SelectedAsset): string {
@@ -329,6 +375,16 @@ function gameAsset(asset: Asset): BrowserAsset {
             ? asset.url
             : assets[asset.kind === "sound" ? "sounds" : "fonts"].sprite,
         sound: asset.kind === "sound" ? asset.url : undefined,
+    };
+}
+function runtimeAsset(asset: PreviewAsset): BrowserAsset {
+    return {
+        identity: { source: "runtime", name: asset.name, kind: asset.kind },
+        image: asset.kind === "sprite"
+            ? asset.url
+                ?? assets[asset.loader === "loadBean" ? "bean" : "art"].sprite
+            : assets[asset.kind === "sound" ? "sounds" : "fonts"].sprite,
+        sound: asset.kind === "sound" ? asset.url ?? undefined : undefined,
     };
 }
 function libraryAsset(asset: AssetBrewCatalogEntry): BrowserAsset {

@@ -245,6 +245,29 @@
             assert(copied[0] === "bean" && copied[1]?.includes("built-in bean"), "Copy actions did not use promptable identifiers.");
             const library = await invoke("kaplayground_find_assets", { query: "bean", kind: "sprite", source: "library", limit: 50 });
             assert(library.assets.some(asset => asset.key === useWorkspace.getState().selectedAsset?.key), "Visible asset identifiers differ from find_assets.");
+            const assetView = label => [...document.querySelectorAll('[aria-label="Asset source"] button')].find(button => button.textContent.trim() === label);
+            assert(assetView("Library") && assetView("In game") && !assetView("All"), "Assets should have Library and In game views without All.");
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(search, "");
+            search.dispatchEvent(new Event("input", { bubbles: true }));
+            assetView("In game").click();
+            await waitFor(() => document.querySelector('button[aria-label="Select pop"]'), "the starting game's loaded sound");
+            assert(document.querySelector('button[aria-label="Select apple"]'), "In game omitted an asset loaded from a public path.");
+            assert(document.querySelector('button[aria-label="Select bean"]'), "In game omitted loadBean().");
+            assert(!document.querySelector('button[aria-label="Select ghosty"]'), "In game included an unused library sprite.");
+            const loadedPop = await invoke("kaplayground_find_assets", { query: "pop", source: "game" });
+            assert(loadedPop.assets.some(asset => asset.name === "pop" && asset.kind === "sound" && asset.loaded === true), "find_assets must include the running game's exact asset names.");
+            assert(!JSON.stringify(loadedPop).includes("data:audio") && !loadedPop.assets.some(asset => "url" in asset), "Loaded-asset tool results exposed private media.");
+            document.querySelector('button[aria-label="Select pop"]').click();
+            const selectedRuntime = await invoke("kaplayground_inspect_game", {});
+            assert(selectedRuntime.selectedAsset?.source === "runtime" && selectedRuntime.selectedAsset.name === "pop", "A loaded asset must retain its runtime identity when selected.");
+            assert(selectedRuntime.loadedAssets.available && selectedRuntime.loadedAssets.assets.some(asset => asset.name === "apple"), "inspect_game must expose bounded loaded asset names.");
+            document.querySelector('button[aria-label="Clear asset selection"]').click();
+            assetView("Library").click();
+            await waitFor(() => assetView("Library").getAttribute("aria-pressed") === "true", "returning to the library");
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(search, "bean");
+            search.dispatchEvent(new Event("input", { bubbles: true }));
+            await delay(50);
+            assert(useEditor.getState().previewRunId === initial.activeRunId, "Browsing loaded assets restarted the preview.");
             const panelTabs = [...document.querySelectorAll('[aria-label="Workspace panels"] [role="tab"]')];
             const activate = async label => {
                 const button = panelTabs.find(button => button.textContent.trim() === label);
@@ -315,6 +338,11 @@ export function startFixture() {
         height: 240,
         background: [24, 28, 36],
     });
+
+    const assetName = "runtime-" + "apple";
+    loadSprite(assetName, "/sprites/apple.png");
+    loadSound("runtime-pop", "/sounds/score.mp3");
+    if (false) loadSprite("never-loaded", "/sprites/apple.png");
 
     scene("webmcp-ready-scene", () => {
         const player = add([
@@ -408,6 +436,11 @@ export function startFixture() {
             assert(run.diagnostics?.sourceCurrent === true, "Diagnostics were not current.");
             assert(run.scene?.objectsAvailable === true, "Healthy scene objects were unavailable.");
             assert(run.scene?.scene === "webmcp-ready-scene", "The initial scene transition did not complete.");
+            const loadedNames = useEditor.getState().previewAssets.assets.map(asset => asset.name);
+            assert(loadedNames.includes("runtime-apple") && loadedNames.includes("runtime-pop"), "Runtime asset aliases were lost.");
+            assert(!loadedNames.includes("bean") && !loadedNames.includes("pop") && !loadedNames.includes("never-loaded") && !loadedNames.includes("webmcp-fixture"), "The asset list retained an older run or included unused code or uploads.");
+            const runtimeAssets = await invoke("kaplayground_find_assets", { source: "game", query: "runtime-" });
+            assert(runtimeAssets.assets.length === 2 && runtimeAssets.assets.every(asset => asset.loaded === true && !("url" in asset)), "Loaded assets must be searchable without exposing media URLs.");
 
             const initialPlayer = sceneObject(run, "webmcp-player");
             assert(initialPlayer, "The fixture player was not inspected.");
