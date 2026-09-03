@@ -21,7 +21,7 @@ export const WebMCPInvocationList = ({ className }: Props) => {
                 </p>
                 <p className="mt-1 max-w-xs text-xs leading-relaxed text-base-content/45">
                     When Codex starts changing the game, friendly progress
-                    updates will appear here.
+                    updates and verification evidence will appear here.
                 </p>
             </div>
         );
@@ -41,8 +41,13 @@ export const WebMCPInvocationList = ({ className }: Props) => {
                             className={cn("size-2 shrink-0 rounded-full", {
                                 "bg-warning animate-pulse":
                                     entry.status === "running",
-                                "bg-success": entry.status === "succeeded",
-                                "bg-error": entry.status === "failed",
+                                "bg-success": entry.status === "succeeded"
+                                    && entry.result?.complete === true,
+                                "bg-warning": entry.status === "succeeded"
+                                    && entry.result?.complete === false
+                                    && entry.result?.ok !== false,
+                                "bg-error": entry.status === "failed"
+                                    || entry.result?.ok === false,
                             })}
                             aria-hidden="true"
                         />
@@ -55,6 +60,12 @@ export const WebMCPInvocationList = ({ className }: Props) => {
                                 && ` · ${entry.durationMs} ms`}
                         </time>
                     </div>
+                    {entry.result && (
+                        <VerificationReceipt
+                            toolName={entry.toolName}
+                            result={entry.result}
+                        />
+                    )}
                     <details className="mt-2 text-[11px] text-base-content/45">
                         <summary className="cursor-pointer">
                             Technical details
@@ -70,9 +81,24 @@ export const WebMCPInvocationList = ({ className }: Props) => {
                         >
                             {JSON.stringify(entry.input, null, 2)}
                         </pre>
+                        {entry.result && (
+                            <pre
+                                className={cn(
+                                    "mt-1 max-h-52 overflow-auto rounded bg-base-300 p-2",
+                                    "whitespace-pre-wrap break-words",
+                                )}
+                            >
+                                {JSON.stringify(entry.result, null, 2)}
+                            </pre>
+                        )}
                     </details>
                     {entry.error && (
                         <p className="mt-2 text-xs text-error break-words">
+                            {entry.errorCode && (
+                                <code className="mr-1 rounded bg-error/10 px-1 py-0.5">
+                                    {entry.errorCode}
+                                </code>
+                            )}
                             {entry.error}
                         </p>
                     )}
@@ -80,6 +106,96 @@ export const WebMCPInvocationList = ({ className }: Props) => {
             ))}
         </ol>
     );
+};
+
+type ReceiptProps = {
+    toolName: string;
+    result: Record<string, unknown>;
+};
+
+const VerificationReceipt = ({ toolName, result }: ReceiptProps) => {
+    if (toolName === "kaplayground_run_game") {
+        const diagnostics = record(result.diagnostics);
+        const consoleResult = record(result.console);
+        const gameplay = record(result.gameplay);
+        const scene = record(result.scene);
+        const status = typeof result.status === "string"
+            ? result.status
+            : "checked";
+        return (
+            <div className="mt-2 rounded-lg border border-base-content/10 bg-base-300/50 p-2 text-[11px] leading-relaxed">
+                <p className="font-semibold">
+                    Verification: {status}
+                </p>
+                <p className="text-base-content/55">
+                    {countLabel(diagnostics?.errorCount, "code error")}
+                    {" · "}
+                    {countLabel(consoleResult?.errorCount, "console error")}
+                    {gameplay && (
+                        <>
+                            {" · "}
+                            {countLabel(
+                                gameplay.inputActionCount,
+                                "control action",
+                            )}
+                            {" · "}
+                            {countLabel(
+                                gameplay.checkpointCount,
+                                "checkpoint",
+                            )}
+                            {" · "}
+                            {countLabel(
+                                gameplay.assertionCount,
+                                "assertion",
+                            )}
+                        </>
+                    )}
+                    {scene && typeof scene.layoutWarningCount === "number" && (
+                        <>
+                            {" · "}
+                            {countLabel(
+                                scene.layoutWarningCount,
+                                "layout warning",
+                            )}
+                        </>
+                    )}
+                </p>
+                {Array.isArray(gameplay?.checkpoints) && (
+                    <ul className="mt-1 space-y-0.5">
+                        {gameplay.checkpoints.map((value, index) => {
+                            const checkpoint = record(value);
+                            return (
+                                <li key={`${String(checkpoint?.name)}-${index}`}>
+                                    {checkpoint?.passed === true ? "✓" : "×"}{" "}
+                                    {String(checkpoint?.name ?? "Checkpoint")}
+                                </li>
+                            );
+                        })}
+                    </ul>
+                )}
+                {Array.isArray(result.notChecked) && result.notChecked.length > 0 && (
+                    <p className="mt-1 text-base-content/45">
+                        Not automatically judged: {result.notChecked.join(", ")}
+                    </p>
+                )}
+            </div>
+        );
+    }
+
+    if (toolName === "kaplayground_save_game") {
+        return (
+            <div className="mt-2 rounded-lg border border-base-content/10 bg-base-300/50 p-2 text-[11px] leading-relaxed">
+                <p className="font-semibold">Persistence receipt</p>
+                <p className="text-base-content/55">
+                    {result.writeAcknowledged === true ? "✓ write acknowledged" : "— write not confirmed"}
+                    {" · "}
+                    {result.readbackVerified === true ? "✓ read-back matched" : "— read-back not confirmed"}
+                </p>
+            </div>
+        );
+    }
+
+    return null;
 };
 
 const friendlyActions: Record<string, string> = {
@@ -103,4 +219,15 @@ function formatTime(timestamp: number): string {
         minute: "2-digit",
         second: "2-digit",
     });
+}
+
+function countLabel(value: unknown, singular: string): string {
+    const count = typeof value === "number" ? value : 0;
+    return `${count} ${singular}${count === 1 ? "" : "s"}`;
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : null;
 }

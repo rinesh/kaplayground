@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { sites } from "@openai/sites-vite-plugin";
 import react from "@vitejs/plugin-react";
@@ -7,9 +9,22 @@ import "./scripts/examples.ts";
 import "./scripts/versions.ts";
 import "./scripts/changelog.ts";
 
+const packageJson = JSON.parse(
+    readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+) as { version?: string };
+const buildIdentity = {
+    applicationCommit: gitRevision(["rev-parse", "HEAD"]),
+    engineCommit: gitRevision(["-C", "kaplay", "rev-parse", "HEAD"]),
+    applicationVersion: packageJson.version ?? "unknown",
+    builtAt: new Date().toISOString(),
+};
+
 // https://vitejs.dev/config/
 export default defineConfig({
     clearScreen: false,
+    define: {
+        __KAPLAYGROUND_BUILD_IDENTITY__: JSON.stringify(buildIdentity),
+    },
     plugins: [
         cloudflare({
             viteEnvironment: { name: "server" },
@@ -53,3 +68,15 @@ export default defineConfig({
         outDir: "dist",
     },
 });
+
+function gitRevision(args: string[]): string {
+    try {
+        return execFileSync("git", args, {
+            cwd: new URL(".", import.meta.url),
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "ignore"],
+        }).trim() || "unknown";
+    } catch {
+        return "unknown";
+    }
+}

@@ -1,3 +1,13 @@
+import type { PreviewExerciseAction } from "../../shared/previewProtocol.ts";
+export {
+    MAX_PREVIEW_EXERCISE_ACTIONS,
+    PREVIEW_PROTOCOL_VERSION,
+} from "../../shared/previewProtocol.ts";
+export type {
+    PreviewExerciseAction,
+    PreviewCheckpointExpectation,
+} from "../../shared/previewProtocol.ts";
+
 export const MAX_PREVIEW_INSPECTION_OBJECTS = 50;
 
 export type PreviewReadinessStatus =
@@ -73,6 +83,16 @@ export interface PreviewObjectSnapshot {
     collisionBounds?: PreviewCollisionBounds;
 }
 
+export interface PreviewLayoutWarning {
+    code: "CANVAS_EMPTY" | "OBJECT_OUTSIDE_VIEWPORT" | "OBJECT_CLIPPED";
+    message: string;
+    objectId?: string | number | null;
+    tags?: string[];
+    estimatedBounds?: PreviewBounds;
+    viewport?: { width: number; height: number };
+    basis?: "object-local-estimate";
+}
+
 export interface PreviewInspection {
     runId: string | null;
     available: boolean;
@@ -89,6 +109,34 @@ export interface PreviewInspection {
     objectCount: number | null;
     objects: PreviewObjectSnapshot[];
     objectsTruncated: boolean;
+    layoutWarnings: PreviewLayoutWarning[];
+    layoutWarningsTruncated: boolean;
+}
+
+export interface PreviewCheckpointCheck {
+    name: string;
+    passed: boolean;
+    expected: unknown;
+    actual: unknown;
+}
+
+export interface PreviewExerciseCheckpointResult {
+    name: string;
+    passed: boolean;
+    checks: PreviewCheckpointCheck[];
+    inspection: PreviewInspection;
+}
+
+export interface PreviewExerciseResult {
+    runId: string;
+    inputProvenance: "sandbox-simulated";
+    actionCount: number;
+    inputActionCount: number;
+    checkpointCount: number;
+    assertionCount: number;
+    passed: boolean;
+    checkpoints: PreviewExerciseCheckpointResult[];
+    finalInspection: PreviewInspection;
 }
 
 export interface SandboxRunResultMessage {
@@ -114,6 +162,19 @@ export interface SandboxInspectionResultMessage {
     runId: string | null;
     inspection?: PreviewInspection;
     error?: string;
+}
+
+export interface SandboxExerciseResultMessage {
+    type: "RUNTIME_EXERCISE_RESULT";
+    requestId: string;
+    runId: string | null;
+    exercise?: PreviewExerciseResult;
+    error?: string;
+}
+
+export interface PreviewExerciseRequest {
+    runId: string;
+    actions: PreviewExerciseAction[];
 }
 
 export class PreviewRunError extends Error {

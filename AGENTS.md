@@ -7,8 +7,10 @@ KAPLAYGROUND is usable through page-owned WebMCP tools without installing a skil
 Keep the integration small and application-specific:
 
 - `src/integrations/webmcp/kaplaygroundWebMCP.ts` owns registration and connects the tools to the project, editor, preview, diagnostics, console, examples, assets, persistence, and visible activity state.
-- `src/integrations/webmcp/gameTools.ts` contains the small pure surface definition, the single game revision helper, path limits, and atomic multi-file update validation.
-- `src/integrations/webmcp/activitySummary.ts` removes source contents before invocation details enter visible application state.
+- `src/integrations/webmcp/gameTools.ts` contains the small pure surface definition, project revision helper, path limits, and atomic multi-file update validation.
+- `src/integrations/webmcp/gameIdentity.ts` derives executable content revisions, runtime fingerprints, and canonical save hashes.
+- `shared/previewProtocol.ts` is the single app/sandbox protocol contract and defines bounded simulated input and checkpoint schemas.
+- `src/integrations/webmcp/activitySummary.ts` removes source contents and allowlists result receipts before invocation details enter visible application state.
 - `tests/webmcp.test.mjs` covers the tool list, revision behavior, atomic updates, safe paths, prompt language, activity redaction, console bounds, and diagnostics availability.
 
 The page exposes these eight tools:
@@ -22,17 +24,17 @@ The page exposes these eight tools:
 7. `kaplayground_find_examples`
 8. `kaplayground_open_example`
 
-Do not add version negotiation, a second registration layer, a separate workflow bootstrap, or a duplicate manifest before a released client actually needs compatibility guarantees.
+Keep exactly this eight-tool surface. The versioned result envelope documents the current contract but is not a negotiation layer; do not add a second registration layer, workflow bootstrap, or duplicate manifest.
 
 ## Integration rules
 
-`inspect_game` is the normal first operation. It returns one revision token representing both the active project and its current contents. Every mutation, run, save, or example replacement must reject a stale revision.
+`inspect_game` is the normal first operation. It returns a project revision, executable content revision, and runtime fingerprint. Saves and replacements use the project revision; reads, updates, and runs should prefer the content revision. Metadata-only changes must not invalidate an identical verified runtime, while source, asset, engine, build-mode, or project replacement changes must invalidate it.
 
 `read_files` reads several exact paths in one call. Keep reads bounded and reject aliases, traversal, backslashes, missing files, and oversized source.
 
 `update_game` validates every change before committing one complete replacement file map. A failed create, replace, remove, path, duplicate, or size check must leave the project untouched. Creating or removing files remains limited to direct JavaScript or TypeScript files inside `scenes/`, `objects/`, and `utils/`. Root files may be replaced when they already exist but not created or removed through the agent tools. Updating never runs the preview.
 
-`run_game` must verify that the requested revision remains current before and after the run. Keep preview acknowledgement, diagnostics, console output, and scene inspection distinct in the response. Report `failed` for detected code or console errors, `incomplete` when checks are unavailable or bounded, and `passed` only for checks actually completed. Do not claim that controls were played or that visuals were judged without browser-level evidence.
+`run_game` must verify executable identity before and after the run. Keep acknowledgement, diagnostics, console output, gameplay checkpoints, and scene inspection distinct. Report `failed` for code, console, or failed checkpoint evidence; `incomplete` when evidence is unavailable or controls lack an assertion; and `passed` only for completed checks. Bounded tool-driven controls must be labeled `sandbox-simulated`; never describe them as trusted native browser input. Objective clipping warnings are allowed, but visual quality remains a browser/user judgment.
 
 Asset results may include bounded metadata and exact built-in loader code, but never hidden asset URLs or binary contents. Opening an example replaces the active project and may discard unsaved work only after explicit user approval.
 

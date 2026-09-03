@@ -1,5 +1,8 @@
 /// <reference types="webmcp-types" preserve="true" />
 
+import { previewExerciseActionsSchema } from "../../../shared/previewProtocol.ts";
+import { KaplaygroundToolError } from "./toolResults.ts";
+
 export const MAX_GAME_CHANGES = 20;
 export const MAX_GAME_FILE_BYTES = 512 * 1024;
 export const MAX_GAME_UPDATE_BYTES = 2 * 1024 * 1024;
@@ -26,7 +29,7 @@ export const KAPLAYGROUND_WEBMCP_TOOL_SURFACE = [
         name: "kaplayground_inspect_game",
         title: "Inspect the open KAPLAYGROUND game",
         description:
-            "Use this before changing the game. Returns the current game, one bounded page of file metadata, editor state, and the revision required by update, run, save, and starting-point opening tools. Also reports saveStatus, editorVisible, selectedAsset, and the engine version used internally.",
+            "Use this before changing the game. Returns bounded file metadata, the project revision used by metadata mutations, an executable content revision for reads, updates, and runs, and a runtime fingerprint tied to the application build, engine reference, and sandbox protocol.",
         inputSchema: inspectGameSchema(),
         annotations: readAnnotations(),
     },
@@ -34,7 +37,7 @@ export const KAPLAYGROUND_WEBMCP_TOOL_SURFACE = [
         name: "kaplayground_read_files",
         title: "Read KAPLAYGROUND game files",
         description:
-            "Read up to ten exact files, within one aggregate 512 KiB response budget. Use the revision from inspect_game and read every file needed for the requested change before updating.",
+            "Read up to ten exact files within one aggregate 512 KiB response budget. Use either the project revision or, preferably, the executable content revision returned by inspect_game.",
         inputSchema: readFilesSchema(),
         annotations: readAnnotations(),
     },
@@ -42,14 +45,14 @@ export const KAPLAYGROUND_WEBMCP_TOOL_SURFACE = [
         name: "kaplayground_update_game",
         title: "Update the KAPLAYGROUND game",
         description:
-            "Apply all related file replacements, creations, and removals together. The update succeeds completely or changes nothing. It does not run the game; call run_game afterward with the returned revision.",
+            "Apply related file replacements, creations, and removals atomically. Use either the project revision or executable content revision. It does not run the game; call run_game afterward with the returned content revision.",
         inputSchema: updateGameSchema(),
     },
     {
         name: "kaplayground_run_game",
         title: "Run and check the KAPLAYGROUND game",
         description:
-            "Restart the exact requested game revision and check it, or inspect the current run after browser input without resetting gameplay. Returns readiness, current-source diagnostics, run-specific console errors, focus evidence, and a bounded scene snapshot.",
+            "Restart or inspect the requested executable content. Optionally send a bounded sandbox-simulated input sequence with named checkpoints. Returns readiness, diagnostics, run-specific console errors, gameplay evidence, focus, objective layout warnings, and a bounded scene snapshot; visual quality remains unjudged.",
         inputSchema: runGameSchema(),
         annotations: { untrustedContentHint: true },
     },
@@ -158,6 +161,7 @@ function readFilesSchema(): object {
         type: "object",
         properties: {
             expectedRevision: revisionProperty(),
+            expectedContentRevision: contentRevisionProperty(),
             paths: {
                 type: "array",
                 minItems: 1,
@@ -173,7 +177,8 @@ function readFilesSchema(): object {
                 },
             },
         },
-        required: ["expectedRevision", "paths"],
+        required: ["paths"],
+        anyOf: executableIdentityRequirement(),
         additionalProperties: false,
     };
 }
@@ -194,6 +199,7 @@ function updateGameSchema(): object {
         type: "object",
         properties: {
             expectedRevision: revisionProperty(),
+            expectedContentRevision: contentRevisionProperty(),
             changes: {
                 type: "array",
                 minItems: 1,
@@ -239,7 +245,8 @@ function updateGameSchema(): object {
                     "Optional file to select in the editor after the update commits, without activating Code. It must exist after the update.",
             },
         },
-        required: ["expectedRevision", "changes"],
+        required: ["changes"],
+        anyOf: executableIdentityRequirement(),
         additionalProperties: false,
     };
 }
@@ -267,19 +274,21 @@ function runGameSchema(): object {
         type: "object",
         properties: {
             expectedRevision: revisionProperty(),
+            expectedContentRevision: contentRevisionProperty(),
+            expectedRuntimeFingerprint: runtimeFingerprintProperty(),
             mode: {
                 type: "string",
                 enum: ["restart-and-check", "check-current"],
                 default: "restart-and-check",
                 description:
-                    "Restart the requested revision, or inspect the current run without resetting user gameplay.",
+                    "Restart the requested executable content, or inspect the current run without resetting user gameplay.",
             },
             inspectTag: {
                 type: "string",
                 minLength: 1,
                 maxLength: 128,
                 description:
-                    "Optional KAPLAY tag used to filter scene objects.",
+                    "Optional KAPLAY tag used to filter the final scene snapshot.",
             },
             consoleLimit: {
                 type: "integer",
@@ -302,8 +311,9 @@ function runGameSchema(): object {
                 description:
                     "Ask the preview canvas to receive keyboard focus before inspection and report whether focus was confirmed.",
             },
+            actions: previewExerciseActionsSchema(),
         },
-        required: ["expectedRevision"],
+        anyOf: executableIdentityRequirement(),
         additionalProperties: false,
     };
 }
@@ -427,8 +437,38 @@ function revisionProperty(): object {
         minLength: 3,
         maxLength: 64,
         pattern: "^[0-9]+:[0-9]+$",
-        description: "Revision returned by inspect_game or update_game.",
+        description:
+            "Project revision returned by inspect_game. Metadata changes such as a rename invalidate it.",
     };
+}
+
+function contentRevisionProperty(): object {
+    return {
+        type: "string",
+        minLength: 20,
+        maxLength: 64,
+        pattern: "^[0-9]+:c:[0-9a-f]{16}$",
+        description:
+            "Executable content revision returned by inspect_game or update_game. Prefer this for read, update, and run operations when metadata-only changes should not invalidate the request.",
+    };
+}
+
+function runtimeFingerprintProperty(): object {
+    return {
+        type: "string",
+        minLength: 18,
+        maxLength: 64,
+        pattern: "^r:[0-9a-f]{16}$",
+        description:
+            "Optional deterministic fingerprint of the executable content, application commit, engine reference, and sandbox protocol. The engine identity separately reports mutable master-module limitations.",
+    };
+}
+
+function executableIdentityRequirement(): object[] {
+    return [
+        { required: ["expectedRevision"] },
+        { required: ["expectedContentRevision"] },
+    ];
 }
 
 function readAnnotations(): WebMCP.ToolAnnotations {
@@ -487,11 +527,19 @@ export function assertGameRevision(
     expectedRevision: string,
 ): void {
     const actualRevision = gameRevision(state);
-    if (actualRevision !== expectedRevision) {
-        throw new Error(
-            `The game changed since it was inspected. Expected revision ${expectedRevision}, found ${actualRevision}. Inspect the game again before continuing.`,
-        );
-    }
+    if (actualRevision === expectedRevision) return;
+    throw new KaplaygroundToolError(
+        "STALE_PROJECT_REVISION",
+        `The game changed since it was inspected. Expected project revision ${expectedRevision}, found ${actualRevision}. Inspect the game again before continuing.`,
+        {
+            retryable: true,
+            details: {
+                expectedRevision,
+                actualRevision,
+                suggestedAction: "kaplayground_inspect_game",
+            },
+        },
+    );
 }
 
 export function gameReadSize(files: readonly GameReadFile[]): number {
@@ -541,8 +589,13 @@ export function classifyGameRun(
     diagnosticErrorCount: number,
     consoleErrorCount: number,
     incompleteReasons: readonly string[],
+    gameplayFailureCount = 0,
 ): GameRunStatus {
-    if (diagnosticErrorCount > 0 || consoleErrorCount > 0) return "failed";
+    if (
+        diagnosticErrorCount > 0
+        || consoleErrorCount > 0
+        || gameplayFailureCount > 0
+    ) return "failed";
     return incompleteReasons.length > 0 ? "incomplete" : "passed";
 }
 

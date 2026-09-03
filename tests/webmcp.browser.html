@@ -550,14 +550,46 @@ export function startFixture() {
             );
 
             const run = await invoke("kaplayground_run_game", {
-                expectedRevision: updated.revision,
+                expectedContentRevision: updated.contentRevision,
                 mode: "restart-and-check",
                 inspectTag: "webmcp-player",
                 focus: true,
                 consoleLimit: 20,
                 objectLimit: 10,
+                actions: [
+                    {
+                        type: "checkpoint",
+                        name: "before-input",
+                        tag: "webmcp-player",
+                        limit: 1,
+                    },
+                    {
+                        type: "hold",
+                        key: "ArrowRight",
+                        durationMs: 120,
+                    },
+                    {
+                        type: "checkpoint",
+                        name: "after-input",
+                        tag: "webmcp-player",
+                        limit: 1,
+                        expect: {
+                            scene: "webmcp-ready-scene",
+                            canvasFocused: true,
+                            layoutWarningsEmpty: true,
+                            firstObjectMovedFrom: {
+                                checkpoint: "before-input",
+                                minDistance: 5,
+                                axis: "x",
+                            },
+                        },
+                    },
+                ],
             });
             assert(run.status === "passed", `Healthy run was ${run.status}: ${JSON.stringify(run)}`);
+            assert(run.contractVersion === 1 && run.ok === true && run.complete === true, "run_game omitted its versioned result envelope.");
+            assert(run.gameplay?.inputProvenance === "sandbox-simulated", "Gameplay evidence did not identify simulated input.");
+            assert(run.gameplay?.passed === true && run.gameplay.checkpointCount === 2 && run.gameplay.assertionCount === 4, "The bounded gameplay checkpoints did not produce four passing assertions.");
             assert(typeof run.runId === "string", "run_game did not return a run id.");
             assert(run.readiness?.status === "ready", "Healthy run was not ready.");
             assert(run.readiness?.assetsLoaded === true, "Asset readiness was not confirmed.");
@@ -637,6 +669,16 @@ export function startFixture() {
             assert(saved.name === savedName, "save_game did not persist the requested name.");
             assert(typeof saved.projectId === "string", "save_game omitted the project id.");
             assert(saved.revision !== updated.revision, "Renaming did not advance the revision.");
+            assert(saved.contentRevision === run.contentRevision, "Renaming changed executable content identity.");
+            assert(saved.writeAcknowledged === true && saved.readbackVerified === true, "save_game did not verify browser-storage read-back.");
+            const renamedRun = await invoke("kaplayground_run_game", {
+                expectedContentRevision: saved.contentRevision,
+                expectedRuntimeFingerprint: run.runtimeFingerprint,
+                mode: "check-current",
+                inspectTag: "webmcp-player",
+                objectLimit: 10,
+            });
+            assert(renamedRun.status === "passed" && renamedRun.runId === run.runId, "A metadata-only rename invalidated the matching runtime.");
 
             const persisted = await useProject.getState().getProject(saved.projectId);
             assert(persisted?.name === savedName, "The saved project name was not stored.");
@@ -1412,6 +1454,10 @@ startUnavailableInspection();
                 canceledUnloadConfirmed: canceledInspection.revision === updated.revision,
                 focusConfirmed: run.focus.canvasFocused,
                 movementConfirmed: movedPlayer.position.x > initialPlayer.position.x,
+                gameplayExerciseConfirmed: run.gameplay?.passed === true,
+                renamePreservedRuntimeConfirmed: renamedRun.runId === run.runId,
+                saveReadbackConfirmed: saved.readbackVerified === true,
+                contractVersionConfirmed: run.contractVersion === 1,
                 dimensionsConfirmed: true,
                 saveReopenConfirmed: reopened.projectId === saved.projectId,
                 readOnlyAssetsConfirmed: true,

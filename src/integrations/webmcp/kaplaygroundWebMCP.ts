@@ -1,6 +1,11 @@
 /// <reference types="webmcp-types" preserve="true" />
 
 import {
+    parsePreviewExerciseActions,
+    PREVIEW_PROTOCOL_VERSION,
+} from "../../../shared/previewProtocol.ts";
+
+import {
     assetBrewCatalog,
     type AssetBrewKind,
     searchAssetBrewEntries,
@@ -13,6 +18,7 @@ import {
 } from "../../data/startingPoints";
 import { waitForPlaygroundReady } from "../../features/Projects/application/playgroundReadiness";
 import { validateProjectName } from "../../features/Projects/application/validateProjectName";
+import { getVersion } from "../../util/compiler";
 import type { File } from "../../features/Projects/models/File";
 import { useProject } from "../../features/Projects/stores/useProject";
 import { useEditor } from "../../hooks/useEditor";
@@ -41,6 +47,22 @@ import {
     registerGameToolDefinitions,
     requiresExampleDiscardConfirmation,
 } from "./gameTools.ts";
+import {
+    KAPLAYGROUND_BUILD_IDENTITY,
+    engineRuntimeIdentity,
+} from "./buildIdentity";
+import {
+    assertGameContentRevision,
+    gameContentRevision,
+    gameProjectFingerprint,
+    gameRuntimeFingerprint,
+} from "./gameIdentity";
+import {
+    KaplaygroundToolError,
+    normalizeToolError,
+    toolErrorCode,
+    withToolResultEnvelope,
+} from "./toolResults";
 import {
     calculateSpriteFrameDimensions,
     readImageDimensions,
@@ -74,6 +96,8 @@ export interface KaplaygroundWebMCPInvocation {
     status: KaplaygroundWebMCPInvocationStatus;
     durationMs?: number;
     error?: string;
+    errorCode?: string;
+    result?: Record<string, unknown>;
 }
 
 export interface KaplaygroundConsoleEntry {
@@ -182,21 +206,31 @@ export function registerKaplaygroundWebMCP(): () => void {
 
                 try {
                     throwIfAborted(signal);
-                    const result = await tool.execute(invocation.input, signal);
+                    const rawResult = await tool.execute(
+                        invocation.input,
+                        signal,
+                    );
+                    const result = withToolResultEnvelope(
+                        tool.name,
+                        rawResult,
+                    );
                     useWebMCPActivity.getState().recordInvocation({
                         ...invocation,
                         status: "succeeded",
                         durationMs: Date.now() - startedAt,
+                        result,
                     });
                     return result;
                 } catch (error) {
+                    const normalized = normalizeToolError(error, tool.name);
                     useWebMCPActivity.getState().recordInvocation({
                         ...invocation,
                         status: "failed",
                         durationMs: Date.now() - startedAt,
-                        error: errorMessage(error),
+                        error: errorMessage(normalized),
+                        errorCode: toolErrorCode(normalized),
                     });
-                    throw error;
+                    throw normalized;
                 }
             },
         }));
@@ -230,7 +264,6 @@ function createTools(
     hasUnsavedChanges: () => boolean,
 ): ToolDefinition[] {
     const projectMutations = createSerialTaskQueue();
-    const previewRevisions = new Map<string, string>();
 
     return [
         {
@@ -253,6 +286,7 @@ function createTools(
                 );
                 const projectStore = useProject.getState();
                 const editor = useEditor.getState();
+                const identity = currentGameIdentity(projectStore);
                 const files = [...projectStore.project.files.values()]
                     .sort((left, right) => left.path.localeCompare(right.path));
                 const filePage = files.slice(
@@ -264,7 +298,12 @@ function createTools(
                         ? fileOffset + filePage.length
                         : null;
                 return {
-                    revision: gameRevision(projectStore),
+                    revision: identity.revision,
+                    contentRevision: identity.contentRevision,
+                    runtimeFingerprint: identity.runtimeFingerprint,
+                    buildIdentity: KAPLAYGROUND_BUILD_IDENTITY,
+                    engine: identity.engine,
+                    previewProtocolVersion: PREVIEW_PROTOCOL_VERSION,
                     name: projectStore.project.name,
                     projectId: projectStore.projectKey,
                     storage: projectStore.getProjectStorageState(),
@@ -284,6 +323,10 @@ function createTools(
                         ? "running"
                         : "unknown",
                     activeRunId: editor.previewRunId,
+                    activeRunIdentity: {
+                        contentRevision: editor.previewContentRevision,
+                        runtimeFingerprint: editor.previewRuntimeFingerprint,
+                    },
                     readiness: editor.previewReadiness,
                     hasUnsavedChanges: hasUnsavedChanges(),
                     fileCount: files.length,
@@ -321,10 +364,7 @@ function createTools(
         {
             ...kaplaygroundToolSurface("kaplayground_read_files"),
             execute: async (input, signal) => {
-                const expectedRevision = requiredString(
-                    input.expectedRevision,
-                    "expectedRevision",
-                );
+                const expected = expectedExecutableIdentity(input, false);
                 const paths = stringArray(
                     input.paths,
                     "paths",
@@ -336,7 +376,7 @@ function createTools(
                 }
 
                 const before = useProject.getState();
-                assertGameRevision(before, expectedRevision);
+                assertExpectedExecutableIdentity(before, expected);
                 const selectedFiles = paths.map((path) => {
                     const file = before.project.files.get(path);
                     if (!file) throw new Error(`Game file not found: ${path}`);
@@ -354,8 +394,16 @@ function createTools(
                     };
                 });
                 throwIfAborted(signal);
-                assertGameRevision(useProject.getState(), expectedRevision);
-                return { revision: expectedRevision, totalBytes, files };
+                const after = useProject.getState();
+                assertExpectedExecutableIdentity(after, expected);
+                const identity = currentGameIdentity(after);
+                return {
+                    revision: identity.revision,
+                    contentRevision: identity.contentRevision,
+                    runtimeFingerprint: identity.runtimeFingerprint,
+                    totalBytes,
+                    files,
+                };
             },
         },
         {
@@ -363,10 +411,7 @@ function createTools(
             execute: async (input, signal) => {
                 return await projectMutations.run(async () => {
                     throwIfAborted(signal);
-                    const expectedRevision = requiredString(
-                        input.expectedRevision,
-                        "expectedRevision",
-                    );
+                    const expected = expectedExecutableIdentity(input, false);
                     const changes = parseGameChanges(input.changes);
                     const focusPath = input.focusPath === undefined
                         ? undefined
@@ -374,7 +419,8 @@ function createTools(
                             requiredString(input.focusPath, "focusPath"),
                         );
                     const current = useProject.getState();
-                    assertGameRevision(current, expectedRevision);
+                    assertExpectedExecutableIdentity(current, expected);
+                    const previousIdentity = currentGameIdentity(current);
                     const prepared = prepareGameUpdate(
                         current.project.files,
                         changes,
@@ -386,7 +432,10 @@ function createTools(
                     }
 
                     throwIfAborted(signal);
-                    assertGameRevision(useProject.getState(), expectedRevision);
+                    assertExpectedExecutableIdentity(
+                        useProject.getState(),
+                        expected,
+                    );
                     useProject.getState().setProject({
                         files: prepared.files as Map<string, File>,
                     });
@@ -396,12 +445,16 @@ function createTools(
                         focusPath,
                     );
 
-                    const revision = gameRevision(useProject.getState());
+                    const identity = currentGameIdentity();
                     return {
                         updated: true,
                         committed: true,
-                        previousRevision: expectedRevision,
-                        revision,
+                        previousRevision: previousIdentity.revision,
+                        previousContentRevision:
+                            previousIdentity.contentRevision,
+                        revision: identity.revision,
+                        contentRevision: identity.contentRevision,
+                        runtimeFingerprint: identity.runtimeFingerprint,
                         changeCount: prepared.changes.length,
                         totalBytes: prepared.totalBytes,
                         changes: prepared.changes,
@@ -415,10 +468,7 @@ function createTools(
         {
             ...kaplaygroundToolSurface("kaplayground_run_game"),
             execute: async (input, signal) => {
-                const expectedRevision = requiredString(
-                    input.expectedRevision,
-                    "expectedRevision",
-                );
+                const expected = expectedExecutableIdentity(input, true);
                 const mode = optionalEnum(
                     input.mode,
                     "mode",
@@ -442,8 +492,34 @@ function createTools(
                     MAX_PREVIEW_OBJECTS,
                 );
                 const focusRequested = optionalBoolean(input.focus, false);
+                const actions = input.actions === undefined
+                    ? null
+                    : parsePreviewExerciseActions(input.actions);
 
-                assertGameRevision(useProject.getState(), expectedRevision);
+                const requestedState = useProject.getState();
+                assertExpectedExecutableIdentity(requestedState, expected);
+                const requestedIdentity = currentGameIdentity(requestedState);
+                if (
+                    expected.expectedRuntimeFingerprint !== undefined
+                    && mode === "restart-and-check"
+                    && expected.expectedRuntimeFingerprint
+                        !== requestedIdentity.runtimeFingerprint
+                ) {
+                    throw new KaplaygroundToolError(
+                        "STALE_RUNTIME_FINGERPRINT",
+                        `The requested runtime fingerprint ${expected.expectedRuntimeFingerprint} does not match the current executable runtime ${requestedIdentity.runtimeFingerprint}. Inspect the game again before restarting it.`,
+                        {
+                            retryable: true,
+                            details: {
+                                expectedRuntimeFingerprint:
+                                    expected.expectedRuntimeFingerprint,
+                                actualRuntimeFingerprint:
+                                    requestedIdentity.runtimeFingerprint,
+                            },
+                        },
+                    );
+                }
+
                 let runId: string | null = null;
                 let runReadiness: unknown = null;
                 if (mode === "restart-and-check") {
@@ -451,7 +527,6 @@ function createTools(
                     // Resetting prevents evictions from older runs making every
                     // later run look incomplete.
                     consoleCapture.clear();
-                    previewRevisions.clear();
                     try {
                         const run = await useEditor.getState().runWithSignal(
                             signal,
@@ -460,101 +535,146 @@ function createTools(
                         runReadiness = run.readiness;
                     } catch (error) {
                         if (signal.aborted) throw abortReason(signal);
-                        return {
-                            status: "failed",
+                        return failedRunResult({
                             mode,
-                            revision: gameRevision(useProject.getState()),
+                            identity: currentGameIdentity(),
                             runId: previewRunId(error),
                             readiness: null,
-                            focus: {
-                                requested: focusRequested,
-                                canvasFocused: false,
-                            },
+                            focusRequested,
                             summary: "The game could not start.",
                             error: errorMessage(error),
                             notChecked: [
                                 "Playing the controls",
                                 "Visual quality",
                             ],
-                        };
+                        });
                     }
 
+                    const currentIdentity = currentGameIdentity();
                     if (
-                        gameRevision(useProject.getState()) !== expectedRevision
+                        currentIdentity.contentRevision
+                            !== requestedIdentity.contentRevision
+                        || currentIdentity.runtimeFingerprint
+                            !== requestedIdentity.runtimeFingerprint
                     ) {
-                        return {
-                            status: "failed",
+                        return failedRunResult({
                             mode,
-                            revision: gameRevision(useProject.getState()),
+                            identity: currentIdentity,
                             runId,
                             readiness: runReadiness,
-                            focus: {
-                                requested: focusRequested,
-                                canvasFocused: false,
-                            },
+                            focusRequested,
                             summary:
-                                "The game changed while it was starting, so this run no longer matches the requested revision.",
+                                "The executable game changed while it was starting, so this run no longer matches the requested content.",
                             notChecked: [
                                 "Playing the controls",
                                 "Visual quality",
                             ],
-                        };
+                        });
                     }
-                    previewRevisions.set(runId, expectedRevision);
+                    useEditor.setState({
+                        previewContentRevision:
+                            requestedIdentity.contentRevision,
+                        previewRuntimeFingerprint:
+                            requestedIdentity.runtimeFingerprint,
+                    });
                 } else {
                     const editor = useEditor.getState();
                     runId = editor.previewRunId;
                     runReadiness = editor.previewReadiness;
                     if (editor.stopped || runId === null) {
-                        return {
-                            status: "failed",
+                        return failedRunResult({
                             mode,
-                            revision: expectedRevision,
+                            identity: requestedIdentity,
                             runId: null,
                             readiness: runReadiness,
-                            focus: {
-                                requested: focusRequested,
-                                canvasFocused: false,
-                            },
+                            focusRequested,
                             summary:
                                 "There is no current game run to inspect. Restart and check the game first.",
                             notChecked: [
                                 "Playing the controls",
                                 "Visual quality",
                             ],
-                        };
+                        });
                     }
-                    const runRevision = previewRevisions.get(runId);
-                    if (runRevision && runRevision !== expectedRevision) {
-                        return {
-                            status: "failed",
+                    if (
+                        editor.previewContentRevision !== null
+                        && editor.previewContentRevision
+                            !== requestedIdentity.contentRevision
+                    ) {
+                        return failedRunResult({
                             mode,
-                            revision: expectedRevision,
+                            identity: requestedIdentity,
                             runId,
                             readiness: runReadiness,
-                            focus: {
-                                requested: focusRequested,
-                                canvasFocused: false,
-                            },
+                            focusRequested,
                             summary:
-                                "The current game run belongs to an older revision. Restart it before checking this revision.",
-                            runRevision,
+                                "The current game run belongs to older executable content. Restart it before checking this content revision.",
+                            runIdentity: {
+                                contentRevision:
+                                    editor.previewContentRevision,
+                                runtimeFingerprint:
+                                    editor.previewRuntimeFingerprint,
+                            },
                             notChecked: [
                                 "Playing the controls",
                                 "Visual quality",
                             ],
-                        };
+                        });
+                    }
+                    if (
+                        expected.expectedRuntimeFingerprint !== undefined
+                        && editor.previewRuntimeFingerprint
+                            !== expected.expectedRuntimeFingerprint
+                    ) {
+                        return failedRunResult({
+                            mode,
+                            identity: requestedIdentity,
+                            runId,
+                            readiness: runReadiness,
+                            focusRequested,
+                            summary:
+                                "The current game run does not match the requested runtime fingerprint. Restart it before checking this runtime.",
+                            runIdentity: {
+                                contentRevision:
+                                    editor.previewContentRevision,
+                                runtimeFingerprint:
+                                    editor.previewRuntimeFingerprint,
+                            },
+                            notChecked: [
+                                "Playing the controls",
+                                "Visual quality",
+                            ],
+                        });
                     }
                 }
 
                 if (focusRequested) useEditor.getState().focusGame();
                 await settleEditor(signal);
 
+                let gameplay: Record<string, unknown> | null = null;
+                let gameplayError: string | null = null;
                 let scene: Record<string, unknown> = {
                     available: false,
                     runId,
                     readiness: runReadiness,
                 };
+                if (actions !== null) {
+                    try {
+                        const exercised = await useEditor.getState()
+                            .exercisePreview(actions, signal);
+                        gameplay = safeSerializable(exercised) as Record<
+                            string,
+                            unknown
+                        >;
+                    } catch (error) {
+                        if (signal.aborted) throw abortReason(signal);
+                        gameplayError = errorMessage(error);
+                        gameplay = {
+                            available: false,
+                            error: gameplayError,
+                        };
+                    }
+                }
                 try {
                     scene = safeSerializable(
                         await useEditor.getState().inspectPreview(
@@ -611,32 +731,34 @@ function createTools(
                     ),
                 }));
 
-                if (gameRevision(useProject.getState()) !== expectedRevision) {
-                    return {
-                        status: "failed",
+                const currentIdentity = currentGameIdentity();
+                if (
+                    currentIdentity.contentRevision
+                        !== requestedIdentity.contentRevision
+                    || currentIdentity.runtimeFingerprint
+                        !== requestedIdentity.runtimeFingerprint
+                ) {
+                    return failedRunResult({
                         mode,
-                        revision: gameRevision(useProject.getState()),
+                        identity: currentIdentity,
                         runId,
                         readiness: scene.readiness ?? runReadiness,
-                        focus: {
-                            requested: focusRequested,
-                            canvasFocused: scene.canvasFocused === true,
-                        },
+                        focusRequested,
+                        canvasFocused: scene.canvasFocused === true,
                         summary:
-                            "The game changed while checks were running, so the results are no longer current.",
-                        notChecked: ["Playing the controls", "Visual quality"],
-                    };
+                            "The executable game changed while checks were running, so the results are no longer current.",
+                        notChecked: runNotChecked(gameplay),
+                    });
                 }
 
                 const readiness = scene.readiness ?? runReadiness;
                 const incompleteReasons: string[] = [];
                 if (
                     mode === "check-current"
-                    && runId !== null
-                    && !previewRevisions.has(runId)
+                    && editor.previewRuntimeFingerprint === null
                 ) {
                     incompleteReasons.push(
-                        "The current run was not started by this browser-agent connection, so its source revision could not be verified.",
+                        "The current run was not started by a verified browser-agent check, so its runtime fingerprint could not be confirmed.",
                     );
                 }
                 if (!diagnosticsCapture.available) {
@@ -688,33 +810,68 @@ function createTools(
                         "Only part of the running scene was inspected.",
                     );
                 }
-                if (focusRequested && scene.canvasFocused !== true) {
+                const inputWasRequested = actions?.some(action =>
+                    action.type !== "checkpoint" && action.type !== "wait"
+                ) ?? false;
+                if (
+                    (focusRequested || inputWasRequested)
+                    && scene.canvasFocused !== true
+                ) {
                     incompleteReasons.push(
                         "The preview canvas did not confirm keyboard focus.",
                     );
                 }
+                if (gameplayError) {
+                    incompleteReasons.push(
+                        `The requested gameplay sequence could not be completed. ${gameplayError}`,
+                    );
+                }
+                if (
+                    gameplay
+                    && Number(gameplay.inputActionCount) > 0
+                    && Number(gameplay.assertionCount) === 0
+                ) {
+                    incompleteReasons.push(
+                        "Controls were sent, but no checkpoint expectation asserted their effect.",
+                    );
+                }
+                const failedGameplayCheckpoints = gameplay
+                    && Array.isArray(gameplay.checkpoints)
+                    ? gameplay.checkpoints.filter((checkpoint) =>
+                        typeof checkpoint === "object"
+                        && checkpoint !== null
+                        && (checkpoint as Record<string, unknown>).passed
+                            === false
+                    ).length
+                    : 0;
                 const status = classifyGameRun(
                     diagnosticErrors.length,
                     consoleErrors.length,
                     incompleteReasons,
+                    failedGameplayCheckpoints,
                 );
 
                 return {
                     status,
                     mode,
-                    revision: expectedRevision,
+                    revision: currentIdentity.revision,
+                    contentRevision: requestedIdentity.contentRevision,
+                    runtimeFingerprint:
+                        requestedIdentity.runtimeFingerprint,
                     runId,
                     readiness: safeSerializable(readiness),
                     focus: {
-                        requested: focusRequested,
+                        requested: focusRequested || inputWasRequested,
                         canvasFocused: scene.canvasFocused === true,
                     },
                     summary: status === "passed"
-                        ? mode === "restart-and-check"
+                        ? gameplay && Number(gameplay.assertionCount) > 0
+                            ? "The game loaded, has no detected code or console errors, and every requested gameplay checkpoint passed."
+                            : mode === "restart-and-check"
                             ? "The game loaded its assets, rendered a frame, and has no detected code or console errors."
                             : "The current game run is ready and has no detected code or console errors."
                         : status === "failed"
-                        ? "The game run has detected errors."
+                        ? "The game run or a requested gameplay checkpoint has detected errors."
                         : "The game run was checked, but some evidence was unavailable or not ready.",
                     diagnostics: {
                         available: diagnosticsCapture.available,
@@ -734,9 +891,10 @@ function createTools(
                         droppedCount: consoleSnapshot.droppedCount,
                         entries: consoleEntries,
                     },
+                    gameplay,
                     scene,
                     incompleteReasons,
-                    notChecked: ["Playing the controls", "Visual quality"],
+                    notChecked: runNotChecked(gameplay),
                 };
             },
         },
@@ -954,9 +1112,11 @@ function createTools(
                             expectedRevision,
                         );
                         if (!valid) {
-                            throw new Error(
+                            throw new KaplaygroundToolError(
+                                "INVALID_PROJECT_NAME",
                                 validationMessage
                                     ?? "The requested project name is invalid.",
+                                { retryable: true },
                             );
                         }
                         useProject.getState().setProject({
@@ -964,19 +1124,49 @@ function createTools(
                         });
                     }
 
-                    const revision = gameRevision(useProject.getState());
+                    const renamedRevision = gameRevision(useProject.getState());
                     const projectId = await useProject.getState()
                         .persistActiveProject();
+                    // Persistence is committed once the write resolves. Complete
+                    // read-back instead of reporting a canceled failure afterward.
                     const saved = useProject.getState();
+                    const persisted = await saved.getProject(projectId);
+                    const expectedHash = gameProjectFingerprint(saved.project);
+                    const persistedHash = gameProjectFingerprint(persisted);
+                    const readbackVerified = expectedHash === persistedHash;
+                    if (!readbackVerified) {
+                        throw new KaplaygroundToolError(
+                            "SAVE_READBACK_MISMATCH",
+                            "Browser storage acknowledged the save, but the stored project did not match the active project.",
+                            {
+                                retryable: true,
+                                details: {
+                                    projectId,
+                                    expectedHash,
+                                    persistedHash,
+                                    writeAcknowledged: true,
+                                    readbackVerified: false,
+                                },
+                            },
+                        );
+                    }
+                    const identity = currentGameIdentity(saved);
+                    const savedAt = new Date().toISOString();
                     return {
                         saved: true,
                         committed: true,
                         previousRevision: expectedRevision,
-                        revision: gameRevision(saved),
+                        revision: identity.revision,
+                        contentRevision: identity.contentRevision,
+                        runtimeFingerprint: identity.runtimeFingerprint,
                         name: saved.project.name,
                         projectId,
                         storage: "autosaved",
-                        renamed: revision !== expectedRevision,
+                        renamed: renamedRevision !== expectedRevision,
+                        writeAcknowledged: true,
+                        readbackVerified,
+                        persistedHash,
+                        savedAt,
                     };
                 });
             },
@@ -1146,6 +1336,203 @@ function createTools(
         },
     ];
 }
+
+interface ExpectedExecutableIdentity {
+    expectedRevision?: string;
+    expectedContentRevision?: string;
+    expectedRuntimeFingerprint?: string;
+}
+
+interface CurrentGameIdentity {
+    revision: string;
+    contentRevision: string;
+    runtimeFingerprint: string;
+    engineModuleUrl: string;
+    engine: Record<string, unknown>;
+}
+
+function currentGameIdentity(
+    state = useProject.getState(),
+): CurrentGameIdentity {
+    const engineModuleUrl = getVersion(
+        false,
+        state.project.kaplayVersion,
+    ) as string;
+    const contentRevision = gameContentRevision(state);
+    return {
+        revision: gameRevision(state),
+        contentRevision,
+        runtimeFingerprint: gameRuntimeFingerprint(state, {
+            applicationCommit:
+                KAPLAYGROUND_BUILD_IDENTITY.applicationCommit,
+            engineCommit: KAPLAYGROUND_BUILD_IDENTITY.engineCommit,
+            protocolVersion: PREVIEW_PROTOCOL_VERSION,
+            engineModuleUrl,
+        }),
+        engineModuleUrl,
+        engine: engineRuntimeIdentity(
+            state.project.kaplayVersion,
+            engineModuleUrl,
+        ),
+    };
+}
+
+function expectedExecutableIdentity(
+    input: Record<string, unknown>,
+    includeRuntimeFingerprint: boolean,
+): ExpectedExecutableIdentity {
+    const expectedRevision = input.expectedRevision === undefined
+        ? undefined
+        : boundedString(input.expectedRevision, "expectedRevision", 64);
+    const expectedContentRevision = input.expectedContentRevision === undefined
+        ? undefined
+        : boundedString(
+            input.expectedContentRevision,
+            "expectedContentRevision",
+            64,
+        );
+    if (
+        expectedRevision === undefined
+        && expectedContentRevision === undefined
+    ) {
+        throw new TypeError(
+            "expectedRevision or expectedContentRevision is required.",
+        );
+    }
+    if (
+        expectedRevision !== undefined
+        && !/^[0-9]+:[0-9]+$/.test(expectedRevision)
+    ) {
+        throw new TypeError(
+            "expectedRevision must match the project revision returned by inspect_game.",
+        );
+    }
+    if (
+        expectedContentRevision !== undefined
+        && !/^[0-9]+:c:[0-9a-f]{16}$/.test(expectedContentRevision)
+    ) {
+        throw new TypeError(
+            "expectedContentRevision must match the content revision returned by inspect_game.",
+        );
+    }
+    const expectedRuntimeFingerprint = !includeRuntimeFingerprint
+            || input.expectedRuntimeFingerprint === undefined
+        ? undefined
+        : boundedString(
+            input.expectedRuntimeFingerprint,
+            "expectedRuntimeFingerprint",
+            64,
+        );
+    if (
+        expectedRuntimeFingerprint !== undefined
+        && !/^r:[0-9a-f]{16}$/.test(expectedRuntimeFingerprint)
+    ) {
+        throw new TypeError(
+            "expectedRuntimeFingerprint must match a runtime fingerprint returned by inspect_game or run_game.",
+        );
+    }
+    return {
+        expectedRevision,
+        expectedContentRevision,
+        expectedRuntimeFingerprint,
+    };
+}
+
+function assertExpectedExecutableIdentity(
+    state: ReturnType<typeof useProject.getState>,
+    expected: ExpectedExecutableIdentity,
+): void {
+    if (expected.expectedRevision !== undefined) {
+        assertGameRevision(state, expected.expectedRevision);
+    }
+    if (expected.expectedContentRevision !== undefined) {
+        assertGameContentRevision(state, expected.expectedContentRevision);
+    }
+}
+
+function failedRunResult({
+    mode,
+    identity,
+    runId,
+    readiness,
+    focusRequested,
+    canvasFocused = false,
+    summary,
+    error,
+    runIdentity,
+    notChecked,
+}: {
+    mode: "restart-and-check" | "check-current";
+    identity: CurrentGameIdentity;
+    runId: string | null;
+    readiness: unknown;
+    focusRequested: boolean;
+    canvasFocused?: boolean;
+    summary: string;
+    error?: string;
+    runIdentity?: {
+        contentRevision: string | null;
+        runtimeFingerprint: string | null;
+    };
+    notChecked: string[];
+}): Record<string, unknown> {
+    return {
+        status: "failed",
+        mode,
+        revision: identity.revision,
+        contentRevision: identity.contentRevision,
+        runtimeFingerprint: identity.runtimeFingerprint,
+        runId,
+        readiness: safeSerializable(readiness),
+        focus: {
+            requested: focusRequested,
+            canvasFocused,
+        },
+        summary,
+        error: error ?? null,
+        runIdentity: runIdentity ?? null,
+        diagnostics: {
+            available: false,
+            sourcePath: null,
+            sourceCurrent: false,
+            errorCount: 0,
+            total: 0,
+            truncated: false,
+            items: [],
+        },
+        console: {
+            available: false,
+            errorCount: 0,
+            total: 0,
+            truncated: false,
+            droppedCount: 0,
+            entries: [],
+        },
+        gameplay: null,
+        scene: {
+            available: false,
+            runId,
+            readiness: safeSerializable(readiness),
+        },
+        incompleteReasons: [],
+        notChecked,
+    };
+}
+
+function runNotChecked(
+    gameplay: Record<string, unknown> | null,
+): string[] {
+    const inputActionCount = Number(gameplay?.inputActionCount ?? 0);
+    const assertionCount = Number(gameplay?.assertionCount ?? 0);
+    if (inputActionCount > 0 && assertionCount > 0) {
+        return ["Visual quality"];
+    }
+    if (inputActionCount > 0) {
+        return ["Control effects", "Visual quality"];
+    }
+    return ["Playing the controls", "Visual quality"];
+}
+
 
 function synchronizeEditorModels(
     files: ReadonlyMap<string, { value: string; language: string }>,

@@ -402,4 +402,53 @@ describe("sandbox runtime inspection", () => {
         assert.equal(result.objectsAvailable, false);
         assert.deepEqual(result.objects, []);
     });
+
+    it("reports bounded objective layout warnings without judging visual quality", () => {
+        const score = {
+            id: "score",
+            tags: ["score"],
+            pos: { x: 5, y: 20 },
+            width: 40,
+            height: 20,
+            anchor: "center",
+        };
+        const player = {
+            id: "player",
+            tags: ["player"],
+            pos: { x: -100, y: 120 },
+            width: 20,
+            height: 20,
+            anchor: "center",
+        };
+        const context = {
+            width: () => 320,
+            height: () => 240,
+            get: tag => tag === "player" ? [player] : [score, player],
+        };
+
+        const general = inspectorFor(context)({ limit: 10 });
+        assert.deepEqual(
+            general.layoutWarnings.map(warning => warning.code),
+            ["OBJECT_CLIPPED"],
+        );
+        assert.equal(general.layoutWarnings[0].objectId, "score");
+        assert.equal(general.layoutWarningsTruncated, false);
+
+        const explicit = inspectorFor(context)({ tag: "player", limit: 10 });
+        assert.deepEqual(
+            explicit.layoutWarnings.map(warning => warning.code),
+            ["OBJECT_OUTSIDE_VIEWPORT"],
+        );
+
+        const emptyCanvas = inspectorFor(context, {
+            canvas: { width: 0, height: 0 },
+        })({ limit: 0 });
+        assert.equal(
+            emptyCanvas.layoutWarnings.filter(warning =>
+                warning.code === "CANVAS_EMPTY"
+            ).length,
+            2,
+        );
+    });
+
 });

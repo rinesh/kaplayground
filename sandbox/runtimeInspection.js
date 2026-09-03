@@ -2,6 +2,8 @@ const MAX_INSPECTION_OBJECTS = 50;
 const MAX_INSPECTION_TAG_LENGTH = 128;
 const MAX_TAGS_PER_OBJECT = 20;
 const MAX_OBJECT_STRING_LENGTH = 256;
+const MAX_LAYOUT_WARNINGS = 20;
+const UI_TAG_PATTERN = /^(?:ui|hud|screen|title|score|instruction|message|button)$/i;
 
 export function createRuntimeInspector({
     getRunId,
@@ -43,6 +45,24 @@ export function createRuntimeInspector({
         const objects = matchedObjects
             ? matchedObjects.slice(0, normalizedLimit).map(snapshotObject)
             : [];
+        const viewport = viewportWidth !== null && viewportHeight !== null
+            ? { width: viewportWidth, height: viewportHeight }
+            : null;
+        const layoutWarnings = viewport
+            ? collectLayoutWarnings(objects, viewport, normalizedTag !== undefined)
+            : [];
+        if (canvas && (finiteNumber(canvas.width) ?? 0) <= 0) {
+            layoutWarnings.unshift({
+                code: "CANVAS_EMPTY",
+                message: "The preview canvas has no drawing width.",
+            });
+        }
+        if (canvas && (finiteNumber(canvas.height) ?? 0) <= 0) {
+            layoutWarnings.unshift({
+                code: "CANVAS_EMPTY",
+                message: "The preview canvas has no drawing height.",
+            });
+        }
         const hasCamera = cameraPosition !== null
             || cameraScale !== null
             || cameraRotation !== null;
@@ -66,9 +86,7 @@ export function createRuntimeInspector({
             canvasFocused,
             scene: typeof scene === "string" ? boundedString(scene, 256) : null,
             paused: readPaused(),
-            viewport: viewportWidth !== null && viewportHeight !== null
-                ? { width: viewportWidth, height: viewportHeight }
-                : null,
+            viewport,
             camera: hasCamera
                 ? {
                     position: cameraPosition,
@@ -81,6 +99,8 @@ export function createRuntimeInspector({
             objects,
             objectsTruncated: objectCount !== null
                 && objects.length < objectCount,
+            layoutWarnings: layoutWarnings.slice(0, MAX_LAYOUT_WARNINGS),
+            layoutWarningsTruncated: layoutWarnings.length > MAX_LAYOUT_WARNINGS,
         };
     };
 }
@@ -213,6 +233,60 @@ function boundsFromPoints(values) {
         width: Math.max(...xs) - left,
         height: Math.max(...ys) - top,
     };
+}
+
+function collectLayoutWarnings(objects, viewport, includeAll) {
+    const warnings = [];
+    for (const object of objects) {
+        if (object.hidden === true || !object.position || !object.renderedBounds) {
+            continue;
+        }
+        if (!includeAll && !object.tags.some(tag => UI_TAG_PATTERN.test(tag))) {
+            continue;
+        }
+        const scale = object.scale ?? { x: 1, y: 1 };
+        const local = object.renderedBounds;
+        const left = object.position.x + Math.min(
+            local.x * scale.x,
+            (local.x + local.width) * scale.x,
+        );
+        const right = object.position.x + Math.max(
+            local.x * scale.x,
+            (local.x + local.width) * scale.x,
+        );
+        const top = object.position.y + Math.min(
+            local.y * scale.y,
+            (local.y + local.height) * scale.y,
+        );
+        const bottom = object.position.y + Math.max(
+            local.y * scale.y,
+            (local.y + local.height) * scale.y,
+        );
+        const outside = right < 0 || bottom < 0
+            || left > viewport.width || top > viewport.height;
+        const clipped = !outside && (
+            left < -1 || top < -1
+            || right > viewport.width + 1 || bottom > viewport.height + 1
+        );
+        if (!outside && !clipped) continue;
+        warnings.push({
+            code: outside ? "OBJECT_OUTSIDE_VIEWPORT" : "OBJECT_CLIPPED",
+            message: outside
+                ? "A checked object is entirely outside the logical viewport."
+                : "A checked object is partially outside the logical viewport.",
+            objectId: object.id,
+            tags: object.tags,
+            estimatedBounds: {
+                x: left,
+                y: top,
+                width: right - left,
+                height: bottom - top,
+            },
+            viewport,
+            basis: "object-local-estimate",
+        });
+    }
+    return warnings;
 }
 
 function anchorSnapshot(value) {
