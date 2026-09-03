@@ -1823,10 +1823,23 @@ async function loadBrowserFixtures() {
     const currentKaplay = await readFile(
         resolve(root, "kaplay", "dist", "kaplay.mjs"),
     );
+    const kaplayLicense = await readFile(
+        resolve(root, "node_modules", "kaplay", "LICENSE"),
+    );
+    const currentKaplayLicense = await readFile(
+        resolve(root, "kaplay", "LICENSE"),
+    );
+    // Verbatim notice from https://unpkg.com/kaplay@3001.0.19/LICENSE.md.
+    const markdownKaplayLicense = await readFile(
+        resolve(root, "tests", "fixtures", "kaplay-3001.0.19-LICENSE.md"),
+    );
     return {
         esbuild: esbuild.toString("base64"),
         kaplay: kaplay.toString("base64"),
         currentKaplay: currentKaplay.toString("base64"),
+        kaplayLicense: kaplayLicense.toString("base64"),
+        currentKaplayLicense: currentKaplayLicense.toString("base64"),
+        markdownKaplayLicense: markdownKaplayLicense.toString("base64"),
     };
 }
 
@@ -1859,6 +1872,28 @@ async function installFixtureInterception(cdp, fixtures) {
             return;
         }
         if (
+            /\/LICENSE(?:\.md)?$/.test(url)
+            && (url.startsWith("https://unpkg.com/kaplay@")
+                || url.startsWith(
+                    "https://raw.githubusercontent.com/kaplayjs/kaplay/master/",
+                ))
+        ) {
+            const markdownRelease = url.includes("/kaplay@3001.0.19/");
+            await cdp.send("Fetch.fulfillRequest", {
+                requestId: event.requestId,
+                responseCode: markdownRelease && url.endsWith("/LICENSE")
+                    ? 404
+                    : 200,
+                responseHeaders: fixtureHeaders("text/plain; charset=utf-8"),
+                body: markdownRelease
+                    ? fixtures.markdownKaplayLicense
+                    : url.includes("/master/") || url.includes("/kaplay@4000.")
+                    ? fixtures.currentKaplayLicense
+                    : fixtures.kaplayLicense,
+            });
+            return;
+        }
+        if (
             url.includes("/kaplay@")
             || url.includes("kaplay.master.mjs")
         ) {
@@ -1887,6 +1922,15 @@ async function installFixtureInterception(cdp, fixtures) {
             },
             { urlPattern: "*esbuild.wasm*", requestStage: "Request" },
             { urlPattern: "*kaplay*.mjs*", requestStage: "Request" },
+            {
+                urlPattern: "https://unpkg.com/kaplay@*/LICENSE*",
+                requestStage: "Request",
+            },
+            {
+                urlPattern:
+                    "https://raw.githubusercontent.com/kaplayjs/kaplay/master/LICENSE*",
+                requestStage: "Request",
+            },
         ],
     });
 }

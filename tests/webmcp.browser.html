@@ -1236,6 +1236,9 @@ startUnavailableInspection();
             // Test the actual standalone HTML build, including its own canvas,
             // engine initialization, and pointer mapping after it leaves the editor.
             const { buildProject } = await import('/src/features/Projects/application/buildProject.ts');
+            const { assertExportNotices, verifyExportLicenses } = await import('/tests/exportLicenses.browser.mjs');
+            const { default: bundledKaplayLicense } = await import('/kaplay/LICENSE?raw');
+            const exportLicenseArtifacts = await verifyExportLicenses();
             const exported = document.createElement('iframe');
             const exportErrors = [];
             exported.addEventListener('load', () => {
@@ -1246,6 +1249,7 @@ startUnavailableInspection();
             exported.name = 'viewport-export';
             exported.style.cssText = 'position:fixed;left:0;top:0;width:100vw;height:100vh;border:0;z-index:99999';
             exported.srcdoc = await buildProject();
+            assertExportNotices(exported.srcdoc, bundledKaplayLicense);
             document.body.append(exported);
             try {
                 await waitFor(() => exported.contentWindow?.get?.('resize-target').length === 4,
@@ -1431,6 +1435,7 @@ startUnavailableInspection();
                 gameStartups,
                 catalogAudit,
                 viewportAudits,
+                exportLicenseArtifacts,
                 catalogExpectedCount: auditCatalog ? demos.length : 0,
                 pendingAssetsStatus: pendingRun.status,
                 inspectionErrorStatus: inspectionErrorRun.status,

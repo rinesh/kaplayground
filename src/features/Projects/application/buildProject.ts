@@ -1,3 +1,7 @@
+import {
+    getKaplayLicense,
+    sourceLicenseNotices,
+} from "../../../licenseNotices";
 import { getVersion, parseAssets } from "../../../util/compiler";
 import { useProject } from "../stores/useProject";
 import { buildCode } from "./buildCode";
@@ -10,17 +14,33 @@ const toDataUrl = (data: string) => {
 };
 
 export async function buildProject() {
-    const code = await buildCode();
-    const kaplayLib = await getVersion(true);
-    const project = useProject.getState().project;
+    const activeProject = useProject.getState().project;
+    const project = {
+        ...activeProject,
+        files: new Map(activeProject.files),
+        assets: new Map(activeProject.assets),
+    };
+    const [code, kaplayLib, engineLicense] = await Promise.all([
+        buildCode(project),
+        getVersion(true, project.kaplayVersion),
+        getKaplayLicense(project.kaplayVersion),
+    ]);
 
     if (!kaplayLib) {
         throw new Error("Failed to fetch the library");
     }
 
     const kaplayLibDataUrl = toDataUrl(kaplayLib);
+    const licenseNotices = `${sourceLicenseNotices}
+
+KAPLAY ${project.kaplayVersion} (embedded engine)
+
+${engineLicense}`;
+    const escapedNotices = licenseNotices.replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
     const projectCode = `
+<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
@@ -46,8 +66,8 @@ export async function buildProject() {
         }
     </style>
 </head>
-</head>
 <body>
+    <pre id="license-notices" hidden>${escapedNotices}</pre>
     <script type="module">
         import createKaplay from "${kaplayLibDataUrl}";
         const kaplay = (options, ...args) => createKaplay(
@@ -57,7 +77,7 @@ export async function buildProject() {
             }),
             ...args,
         );
-        ${parseAssets(code)}
+        ${parseAssets(code, project.assets)}
     </script>
 </body>
 </html>`;

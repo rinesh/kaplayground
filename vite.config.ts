@@ -27,6 +27,16 @@ export default defineConfig({
         viteStaticCopy({
             targets: [
                 {
+                    src: "LICENSE",
+                    dest: "",
+                    rename: "LICENSE.txt",
+                },
+                {
+                    src: "kaplay/LICENSE",
+                    dest: "licenses",
+                    rename: { stripBase: true, name: "KAPLAY.txt" },
+                },
+                {
                     src: [
                         "kaplay/examples/**",
                         "!kaplay/examples/examples.json",
