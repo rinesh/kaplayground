@@ -13,7 +13,6 @@ export function useCodexPlayGuide() {
     return useMemo(
         () =>
             createCodexPlayGuideForContext({
-                editorOrigin: window.location.origin,
                 demoKey,
                 sourceDemoKey,
                 projectKey,

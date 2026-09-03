@@ -8,7 +8,6 @@ import { getExampleCoachPrompts } from "./exampleCoachPrompts.ts";
 import { getExampleLesson } from "./exampleLessons.ts";
 
 export type CodexPlayContext = {
-    editorOrigin?: string;
     demoKey: string | null;
     sourceDemoKey?: string;
     projectKey: string | null;
@@ -30,7 +29,6 @@ export function createCodexPlayGuideForContext(
             context.projectKey,
         ),
         title: activeDemo?.formattedName ?? context.projectName,
-        editorOrigin: context.editorOrigin,
         source: context.projectSource ?? sourceDemo?.code,
         isStarter: sourceDemo?.key === WEBMCP_EXAMPLE_NAME,
         prompts: getExampleCoachPrompts(sourceDemo?.key),

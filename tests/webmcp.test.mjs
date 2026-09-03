@@ -409,14 +409,11 @@ describe("simple KAPLAYGROUND browser tools", () => {
 });
 
 describe("new-player Codex prompts", () => {
-    function assertOpenEditorPrompt(
-        prompt,
-        idea,
-        editorOrigin = "https://promptmygame.com",
-    ) {
+    function assertOpenEditorPrompt(prompt, idea) {
         assert.ok(prompt.startsWith(
-            `Use the game editor already open at ${editorOrigin} in the in-app browser.`,
+            "Use the game editor already open at https://promptmygame.com in the in-app browser.",
         ));
+        assert.doesNotMatch(prompt, /https?:\/\/(?:localhost|127\.0\.0\.1)/);
         assert.match(prompt, /Inspect its current game first\./);
         if (idea) assert.ok(prompt.includes(idea), "The creative idea was lost.");
         assert.match(
@@ -475,8 +472,7 @@ describe("new-player Codex prompts", () => {
         }
     });
 
-    it("uses the current site for sample, starter, and custom-game prompts", () => {
-        const editorOrigin = "http://127.0.0.1:5173";
+    it("always targets promptmygame.com for sample, starter, and custom-game prompts", () => {
         for (const subject of [
             { isStarter: true },
             { prompts: EXAMPLE_COACH_PROMPTS.basicsStart },
@@ -487,13 +483,13 @@ describe("new-player Codex prompts", () => {
             const guide = createCodexPlayGuide({
                 key: "current-game",
                 title: "Signal / Drift",
-                editorOrigin,
+                // A legacy caller must not override the production address.
+                editorOrigin: "http://127.0.0.1:5173",
                 ...subject,
             });
             for (const step of guide.steps) {
                 if (!step.prompt) continue;
-                assertOpenEditorPrompt(step.prompt, undefined, editorOrigin);
-                assert.doesNotMatch(step.prompt, /promptmygame\.com/);
+                assertOpenEditorPrompt(step.prompt);
             }
         }
     });
