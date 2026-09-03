@@ -10,10 +10,35 @@ export function createRuntimeExercise({
     getRunId,
     inspectRuntime,
     findCanvas = () => document.querySelector("canvas"),
+    getFrameCount = () => globalThis._k_ctx?.debug?.numFrames?.(),
+    now = () => performance.now(),
     sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
     createKeyboardEvent = (type, options) => new KeyboardEvent(type, options),
     createMouseEvent = (type, options) => new MouseEvent(type, options),
 }) {
+    function readFrameCount() {
+        const count = getFrameCount();
+        if (!Number.isFinite(count) || count < 0) {
+            throw new Error("The game cannot confirm that it processed simulated input.");
+        }
+        return count;
+    }
+
+    async function waitForInputFrame(previousFrame, minimumMs, signal) {
+        const deadline = now() + Math.max(minimumMs, 1_000);
+        await waitWithAbort(sleep, minimumMs, signal);
+        // A timer can fire between game frames, especially in a slow browser.
+        // Wait for the engine's frame counter so each press and release reaches
+        // a separate input tick, including across scene transitions.
+        while (readFrameCount() <= previousFrame) {
+            if (now() >= deadline) {
+                throw new DOMException("The game did not process the input before the frame deadline.", "TimeoutError");
+            }
+            await waitWithAbort(sleep, 16, signal);
+        }
+        return readFrameCount();
+    }
+
     return async function exerciseRuntime({ runId, actions, signal }) {
         throwIfAborted(signal);
         if (runId !== getRunId()) {
@@ -75,13 +100,14 @@ export function createRuntimeExercise({
                 continue;
             }
 
-            if (action.type === "press") {
+            if (action.type === "press" || action.type === "hold") {
                 inputActionCount++;
+                let processedFrame = readFrameCount();
                 dispatchKey(canvas, action.key, false, createKeyboardEvent);
                 try {
-                    await waitWithAbort(
-                        sleep,
-                        PREVIEW_PRESS_DURATION_MS,
+                    processedFrame = await waitForInputFrame(
+                        processedFrame,
+                        action.type === "hold" ? action.durationMs : PREVIEW_PRESS_DURATION_MS,
                         signal,
                     );
                 } finally {
@@ -93,24 +119,7 @@ export function createRuntimeExercise({
                     );
                 }
                 assertActiveRun(getRunId, runId);
-                await waitWithAbort(sleep, PREVIEW_PRESS_DURATION_MS, signal);
-                continue;
-            }
-            if (action.type === "hold") {
-                inputActionCount++;
-                dispatchKey(canvas, action.key, false, createKeyboardEvent);
-                try {
-                    await waitWithAbort(sleep, action.durationMs, signal);
-                } finally {
-                    dispatchKey(
-                        canvas,
-                        action.key,
-                        true,
-                        createKeyboardEvent,
-                    );
-                }
-                assertActiveRun(getRunId, runId);
-                await waitWithAbort(sleep, PREVIEW_PRESS_DURATION_MS, signal);
+                await waitForInputFrame(processedFrame, PREVIEW_PRESS_DURATION_MS, signal);
                 continue;
             }
             if (action.type === "wait") {
@@ -120,7 +129,7 @@ export function createRuntimeExercise({
                 continue;
             }
             inputActionCount++;
-            await dispatchClick(canvas, action, createMouseEvent, sleep, signal);
+            await dispatchClick(canvas, action, createMouseEvent, readFrameCount, waitForInputFrame, signal);
         }
 
         throwIfAborted(signal);
@@ -286,7 +295,7 @@ function dispatchKey(target, requestedKey, released, createKeyboardEvent) {
     }));
 }
 
-async function dispatchClick(canvas, action, createMouseEvent, sleep, signal) {
+async function dispatchClick(canvas, action, createMouseEvent, readFrameCount, waitForInputFrame, signal) {
     const rect = canvas.getBoundingClientRect();
     const clientX = rect.left + rect.width * action.x;
     const clientY = rect.top + rect.height * action.y;
@@ -300,16 +309,17 @@ async function dispatchClick(canvas, action, createMouseEvent, sleep, signal) {
     };
     // KAPLAY consumes mouse events. Synthetic pointer events don't generate
     // compatibility mouse events and cannot establish native pointer capture.
+    let processedFrame = readFrameCount();
     canvas.dispatchEvent(createMouseEvent("mousemove", { ...base, buttons: 0 }));
     canvas.dispatchEvent(createMouseEvent("mousedown", base));
     try {
-        await waitWithAbort(sleep, PREVIEW_PRESS_DURATION_MS, signal);
+        processedFrame = await waitForInputFrame(processedFrame, PREVIEW_PRESS_DURATION_MS, signal);
     } finally {
         canvas.dispatchEvent(createMouseEvent("mouseup", { ...base, buttons: 0 }));
     }
     throwIfAborted(signal);
     canvas.dispatchEvent(createMouseEvent("click", { ...base, buttons: 0 }));
-    await waitWithAbort(sleep, PREVIEW_PRESS_DURATION_MS, signal);
+    await waitForInputFrame(processedFrame, PREVIEW_PRESS_DURATION_MS, signal);
 }
 
 function assertActiveRun(getRunId, expectedRunId) {

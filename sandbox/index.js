@@ -38,6 +38,7 @@ const inspectRuntime = createRuntimeInspector({
 });
 const exerciseRuntime = createRuntimeExercise({
     getRunId: () => activeRunId,
+    getFrameCount: () => getDebug()?.numFrames?.(),
     inspectRuntime,
 });
 const exerciseControllers = new Map();

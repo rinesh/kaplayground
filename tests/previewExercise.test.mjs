@@ -44,6 +44,11 @@ function canvasFixture() {
     return { canvas, events };
 }
 
+function exerciseFixture(options) {
+    let frames = 0;
+    return createRuntimeExercise({ getFrameCount: () => frames++, ...options });
+}
+
 describe("preview exercise contract", () => {
 
     it("publishes bounded actions on the existing run tool", () => {
@@ -134,7 +139,7 @@ describe("preview exercise contract", () => {
                 layoutAvailable: true,
             },
         ];
-        const exercise = createRuntimeExercise({
+        const exercise = exerciseFixture({
             getRunId: () => runId,
             inspectRuntime: () => snapshots.shift(),
             findCanvas: () => canvas,
@@ -204,7 +209,7 @@ describe("preview exercise contract", () => {
             /more than one checkpoint named/i,
         );
         let focused = false;
-        const exercise = createRuntimeExercise({
+        const exercise = exerciseFixture({
             getRunId: () => "run-1",
             inspectRuntime: () => ({
                 runId: "run-1",
@@ -234,7 +239,7 @@ describe("preview exercise contract", () => {
     it("releases a simulated mouse button on cancellation", async () => {
         const { canvas, events } = canvasFixture();
         const controller = new AbortController();
-        const exercise = createRuntimeExercise({
+        const exercise = exerciseFixture({
             getRunId: () => "run-1",
             inspectRuntime: () => ({}),
             findCanvas: () => canvas,
@@ -255,6 +260,58 @@ describe("preview exercise contract", () => {
             { type: "mousedown", buttons: 2 },
             { type: "mouseup", buttons: 0 },
         ]);
+    });
+
+    it("keeps repeated taps on separate input frames in a slow game", async () => {
+        const { canvas } = canvasFixture();
+        let clock = 0;
+        const frame = () => Math.floor(clock / 100);
+        const transitions = [];
+        for (const type of ["keydown", "keyup"]) {
+            canvas.addEventListener(type, () => transitions.push({ type, frame: frame() }));
+        }
+        const exercise = exerciseFixture({
+            getRunId: () => "run-1",
+            findCanvas: () => canvas,
+            inspectRuntime: () => ({}),
+            getFrameCount: frame,
+            now: () => clock,
+            sleep: async milliseconds => { clock += milliseconds; },
+            createKeyboardEvent: event,
+        });
+        await exercise({ runId: "run-1", actions: [
+            { type: "press", key: "r" },
+            { type: "press", key: "r" },
+        ] });
+        assert.deepEqual(transitions, [
+            { type: "keydown", frame: 0 },
+            { type: "keyup", frame: 1 },
+            { type: "keydown", frame: 2 },
+            { type: "keyup", frame: 3 },
+        ]);
+        assert.equal(frame(), 4, "The final release must reach the game too.");
+    });
+
+    it("bounds waiting for a stalled game and still releases its key", async () => {
+        const { canvas } = canvasFixture();
+        let clock = 0;
+        const transitions = [];
+        canvas.addEventListener("keydown", () => transitions.push("down"));
+        canvas.addEventListener("keyup", () => transitions.push("up"));
+        const exercise = exerciseFixture({
+            getRunId: () => "run-1",
+            findCanvas: () => canvas,
+            inspectRuntime: () => ({}),
+            getFrameCount: () => 0,
+            now: () => clock,
+            sleep: async milliseconds => { clock += milliseconds; },
+            createKeyboardEvent: event,
+        });
+        await assert.rejects(exercise({ runId: "run-1", actions: [
+            { type: "press", key: "r" },
+        ] }), error => error.name === "TimeoutError");
+        assert.deepEqual(transitions, ["down", "up"]);
+        assert(clock >= 1_000 && clock < 1_050);
     });
 
     it("keeps unavailable and truncated checkpoint evidence inconclusive", () => {
@@ -280,7 +337,7 @@ describe("preview exercise contract", () => {
 
     it("requires game-state assertions after the input being verified", async () => {
         const { canvas } = canvasFixture();
-        const exercise = createRuntimeExercise({
+        const exercise = exerciseFixture({
             getRunId: () => "run-1",
             inspectRuntime: () => ({ available: true, scene: "game", canvasFocused: true }),
             findCanvas: () => canvas,
@@ -302,7 +359,7 @@ describe("preview exercise contract", () => {
         canvas.addEventListener("keyup", event => events.push(event.type));
         const controller = new AbortController();
         let releaseSleep;
-        const exercise = createRuntimeExercise({
+        const exercise = exerciseFixture({
             getRunId: () => "run-1",
             inspectRuntime: () => ({
                 runId: "run-1",
