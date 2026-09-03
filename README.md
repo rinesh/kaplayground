@@ -59,7 +59,7 @@ The page exposes one revision value for the open game. It changes whenever the a
 
 The remaining tools page through reusable assets and examples, save the game, and open a selected example. File updates and example replacements are serialized, and replacements recheck their revision at the commit point. Replacing unsaved work requires a confirmation clicked in the page—the tool's Boolean argument can request that prompt but cannot approve it. Source file contents are hidden from the visible activity history; the panel retains only useful details such as paths, counts, timing, and errors.
 
-The Codex coach deliberately uses ordinary creative requests. Every copied idea names the already-open game editor, keeps changes and the preview in that project, and tells Codex not to create a separate local app. Prompts always target `https://promptmygame.com`, including in local previews, without including project links or query strings. They do not mention WebMCP, tool names, revision values, or browser-routing syntax.
+The Codex coach deliberately uses ordinary creative requests. Every copied idea adds only “Use the open editor at https://promptmygame.com.” before the original creative prompt, including in local previews. Prompts do not include project links, query strings, WebMCP, tool names, revision values, or browser-routing syntax.
 
 Run the verification suite with:
 

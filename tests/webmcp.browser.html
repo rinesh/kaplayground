@@ -1112,12 +1112,12 @@ startUnavailableInspection();
             await waitFor(() => tipCopies.length === 2, "the clipboard fallback for feature prompts");
             document.execCommand = copyCommand;
             navigator.clipboard.writeText = clipboardWrite;
+            const { EXAMPLE_COACH_PROMPTS } = await import("/src/integrations/webmcp/exampleCoachPrompts.ts");
+            const coachPromptPrefix = "Use the open editor at https://promptmygame.com. ";
             assert(tipCopies[0] === tipCopies[1], "Clipboard paths copied different prompts.");
             assert(tipCopies[0].includes("dinosaur") && tipCopies[0].includes("frame sequences"), "The prompt is not grounded in the chosen feature sample.");
-            assert(tipCopies[0].startsWith("Use the game editor already open at https://promptmygame.com in the in-app browser."), "The copied prompt doesn't target promptmygame.com.");
+            assert(tipCopies[0] === coachPromptPrefix + EXAMPLE_COACH_PROMPTS.spriteAnim.explain, "The copied prompt should only add the website instruction to the original idea.");
             assert(!/https?:\/\/(?:localhost|127\.0\.0\.1)/.test(tipCopies[0]), "The copied prompt contains the local preview address.");
-            assert(tipCopies[0].includes("Inspect its current game first.") && tipCopies[0].includes("Keep any changes in that project and run its preview afterward."), "The copied prompt doesn't keep inspection, edits, and preview in the open game.");
-            assert(tipCopies[0].endsWith("Don't create a separate local app; tell me if you can't access the editor."), "The copied prompt permits a standalone fallback.");
             assert(coach.textContent.includes(tipCopies[0]), "The visible prompt differs from the copied prompt.");
 
             // Clipboard denial must leave the complete idea available to select.
@@ -1311,7 +1311,6 @@ startUnavailableInspection();
             // for every sample and idea, including examples with no controls.
             const catalogAudit = [];
             if (auditCatalog) {
-                const { EXAMPLE_COACH_PROMPTS } = await import("/src/integrations/webmcp/exampleCoachPrompts.ts");
                 const { CODEX_PLAY_STEPS } = await import("/src/integrations/webmcp/agentGuide.ts");
                 const { createCodexPlayGuideForContext } = await import("/src/integrations/webmcp/codexPlayContext.ts");
                 for (const sample of demos) {
@@ -1360,9 +1359,8 @@ startUnavailableInspection();
                             await waitFor(() => tips.textContent.includes(expectedPrompts[index]), `${sample.key} idea ${index + 2}`);
                             [...tips.querySelectorAll("button")].find(button => button.textContent.trim() === "Copy for Codex").click();
                             await waitFor(() => copies.length === index + 1, `copying ${sample.key} idea ${index + 2}`);
-                            assert(copies[index].includes(expectedPrompts[index]), `${sample.key} lost the creative idea ${index + 2}.`);
+                            assert(copies[index] === coachPromptPrefix + expectedPrompts[index], `${sample.key} should only add the website instruction to idea ${index + 2}.`);
                             assert(copies[index] === guide.steps[index + 1].prompt, `${sample.key} copied the wrong idea ${index + 2}.`);
-                            assert(copies[index].startsWith("Use the game editor already open at https://promptmygame.com in the in-app browser."), `${sample.key} didn't target promptmygame.com.`);
                         }
                     } finally {
                         document.execCommand = copyCommand;

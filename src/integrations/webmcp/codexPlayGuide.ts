@@ -101,7 +101,7 @@ export function createCodexPlayGuide(
 }
 
 function promptForOpenEditor(prompt: string): string {
-    return `Use the game editor already open at https://promptmygame.com in the in-app browser. Inspect its current game first. ${prompt} Keep any changes in that project and run its preview afterward. Don't create a separate local app; tell me if you can't access the editor.`;
+    return `Use the open editor at https://promptmygame.com. ${prompt}`;
 }
 
 function createFallbackCoachPrompts(

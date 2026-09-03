@@ -410,22 +410,12 @@ describe("simple KAPLAYGROUND browser tools", () => {
 
 describe("new-player Codex prompts", () => {
     function assertOpenEditorPrompt(prompt, idea) {
-        assert.ok(prompt.startsWith(
-            "Use the game editor already open at https://promptmygame.com in the in-app browser.",
-        ));
+        const prefix = "Use the open editor at https://promptmygame.com. ";
+        assert.ok(prompt.startsWith(prefix));
         assert.doesNotMatch(prompt, /https?:\/\/(?:localhost|127\.0\.0\.1)/);
-        assert.match(prompt, /Inspect its current game first\./);
-        if (idea) assert.ok(prompt.includes(idea), "The creative idea was lost.");
-        assert.match(
-            prompt,
-            /Keep any changes in that project and run its preview afterward\./,
-        );
-        assert.match(
-            prompt,
-            /Don't create a separate local app; tell me if you can't access the editor\.$/,
-        );
+        if (idea) assert.equal(prompt, prefix + idea);
         assert.doesNotMatch(prompt, FRIENDLY_PROMPT_FORBIDDEN);
-        assert.ok(prompt.length < 800);
+        assert.ok(prompt.length < 450);
     }
 
     it("keeps the starter ideas free of integration jargon", () => {
