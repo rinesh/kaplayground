@@ -73,6 +73,7 @@ export function summarizeWebMCPActivityResult(
                         ? scene.layoutWarnings.length
                         : undefined,
                     layoutWarningsTruncated: scene.layoutWarningsTruncated,
+                    layoutAvailable: scene.layoutAvailable,
                 }
                 : undefined,
             gameplay: summarizeGameplay(gameplay),
@@ -213,6 +214,7 @@ function summarizeGameplay(
         inputActionCount: gameplay.inputActionCount,
         checkpointCount: gameplay.checkpointCount,
         assertionCount: gameplay.assertionCount,
+        unassertedInputActionCount: gameplay.unassertedInputActionCount,
         passed: gameplay.passed,
         checkpoints,
     });

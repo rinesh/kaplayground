@@ -122,6 +122,7 @@ export interface EditorStore {
     exercisePreview: (
         actions: PreviewExerciseAction[],
         signal?: AbortSignal,
+        expectedRunId?: string | null,
     ) => Promise<PreviewExerciseResult>;
     pause: () => void;
     stop: () => void;
@@ -589,7 +590,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
             operation.dispose();
         }
     },
-    async exercisePreview(actions, callerSignal) {
+    async exercisePreview(actions, callerSignal, expectedRunId) {
         if (get().stopped) {
             throw new Error(
                 "The preview is stopped. Run it before exercising it.",
@@ -599,6 +600,9 @@ export const useEditor = create<EditorStore>((set, get) => ({
         const iframeWindow = getPreviewWindow(get().runtime.iframe);
         const runId = get().previewRunId;
         if (runId === null) throw new Error("The preview has no active run.");
+        if (expectedRunId !== undefined && runId !== expectedRunId) {
+            throw new Error("The preview run changed before the input sequence could start.");
+        }
         const requestId = createRequestId("exercise");
         const operation = createOperationSignal(
             [previewSessionController.signal, callerSignal],

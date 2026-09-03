@@ -81,6 +81,8 @@ export interface PreviewObjectSnapshot {
     /** Local rendered bounds, before the object's world transform. */
     renderedBounds?: PreviewBounds;
     collisionBounds?: PreviewCollisionBounds;
+    screenBounds?: PreviewBounds;
+    textTruncated?: boolean;
 }
 
 export interface PreviewLayoutWarning {
@@ -90,7 +92,7 @@ export interface PreviewLayoutWarning {
     tags?: string[];
     estimatedBounds?: PreviewBounds;
     viewport?: { width: number; height: number };
-    basis?: "object-local-estimate";
+    basis?: "screen-space-bounds";
 }
 
 export interface PreviewInspection {
@@ -111,18 +113,19 @@ export interface PreviewInspection {
     objectsTruncated: boolean;
     layoutWarnings: PreviewLayoutWarning[];
     layoutWarningsTruncated: boolean;
+    layoutAvailable: boolean;
 }
 
 export interface PreviewCheckpointCheck {
     name: string;
-    passed: boolean;
+    passed: boolean | null;
     expected: unknown;
     actual: unknown;
 }
 
 export interface PreviewExerciseCheckpointResult {
     name: string;
-    passed: boolean;
+    passed: boolean | null;
     checks: PreviewCheckpointCheck[];
     inspection: PreviewInspection;
 }
@@ -134,6 +137,8 @@ export interface PreviewExerciseResult {
     inputActionCount: number;
     checkpointCount: number;
     assertionCount: number;
+    unassertedInputActionCount: number;
+    incompleteReasons: string[];
     passed: boolean;
     checkpoints: PreviewExerciseCheckpointResult[];
     finalInspection: PreviewInspection;

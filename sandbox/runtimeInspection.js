@@ -48,9 +48,10 @@ export function createRuntimeInspector({
         const viewport = viewportWidth !== null && viewportHeight !== null
             ? { width: viewportWidth, height: viewportHeight }
             : null;
-        const layoutWarnings = viewport
+        const layout = viewport
             ? collectLayoutWarnings(objects, viewport, normalizedTag !== undefined)
-            : [];
+            : { warnings: [], available: false };
+        const layoutWarnings = layout.warnings;
         if (canvas && (finiteNumber(canvas.width) ?? 0) <= 0) {
             layoutWarnings.unshift({
                 code: "CANVAS_EMPTY",
@@ -101,6 +102,8 @@ export function createRuntimeInspector({
                 && objects.length < objectCount,
             layoutWarnings: layoutWarnings.slice(0, MAX_LAYOUT_WARNINGS),
             layoutWarningsTruncated: layoutWarnings.length > MAX_LAYOUT_WARNINGS,
+            layoutAvailable: layout.available && objectsAvailable
+                && objects.length === objectCount,
         };
     };
 }
@@ -144,7 +147,9 @@ function snapshotObject(object) {
     const text = safeRead(object, "text");
     const sprite = safeRead(object, "sprite");
     const anchor = anchorSnapshot(safeRead(object, "anchor"));
-    const renderedBounds = renderedBoundsSnapshot(object);
+    const renderArea = safeMethod(object, "renderArea");
+    const renderedBounds = renderedBoundsSnapshot(object, renderArea);
+    const screenBounds = screenBoundsSnapshot(object, renderArea, renderedBounds);
     const collisionBounds = collisionBoundsSnapshot(object);
 
     if (position) snapshot.position = position;
@@ -155,18 +160,20 @@ function snapshotObject(object) {
     if (typeof paused === "boolean") snapshot.paused = paused;
     if (typeof text === "string") {
         snapshot.text = boundedString(text, MAX_OBJECT_STRING_LENGTH);
+        snapshot.textTruncated = text.length > MAX_OBJECT_STRING_LENGTH;
     }
     if (typeof sprite === "string") {
         snapshot.sprite = boundedString(sprite, MAX_OBJECT_STRING_LENGTH);
     }
     if (anchor) snapshot.anchor = anchor;
     if (renderedBounds) snapshot.renderedBounds = renderedBounds;
+    if (screenBounds) snapshot.screenBounds = screenBounds;
     if (collisionBounds) snapshot.collisionBounds = collisionBounds;
     return snapshot;
 }
 
-function renderedBoundsSnapshot(object) {
-    const reported = boundsSnapshot(safeMethod(object, "renderArea"));
+function renderedBoundsSnapshot(object, renderArea) {
+    const reported = boundsSnapshot(renderArea);
     if (reported) return reported;
 
     const width = finiteNumber(safeRead(object, "width"));
@@ -175,6 +182,28 @@ function renderedBoundsSnapshot(object) {
     const anchor = anchorSnapshot(safeRead(object, "anchor"));
     const offset = anchorOffset(anchor, width, height);
     return { x: offset.x, y: offset.y, width, height };
+}
+
+function screenBoundsSnapshot(object, renderArea, bounds) {
+    if (!bounds) return null;
+    // Rect render areas are unanchored; dimension-only fallbacks already
+    // include the anchor. Transform through the engine so parent transforms,
+    // rotation, fixed objects, and the camera use the same screen coordinates.
+    const isRect = pointSnapshot(safeRead(renderArea, "pos"))
+        && finiteNumber(safeRead(renderArea, "width")) !== null
+        && finiteNumber(safeRead(renderArea, "height")) !== null;
+    const offset = isRect
+        ? anchorOffset(anchorSnapshot(safeRead(object, "anchor")), bounds.width, bounds.height)
+        : { x: 0, y: 0 };
+    const left = bounds.x + offset.x;
+    const top = bounds.y + offset.y;
+    const points = [
+        { x: left, y: top },
+        { x: left + bounds.width, y: top },
+        { x: left, y: top + bounds.height },
+        { x: left + bounds.width, y: top + bounds.height },
+    ].map(point => pointSnapshot(safeMethod(object, "toScreen", point)));
+    return points.every(Boolean) ? boundsFromPoints(points) : null;
 }
 
 function collisionBoundsSnapshot(object) {
@@ -237,31 +266,23 @@ function boundsFromPoints(values) {
 
 function collectLayoutWarnings(objects, viewport, includeAll) {
     const warnings = [];
+    let available = true;
     for (const object of objects) {
-        if (object.hidden === true || !object.position || !object.renderedBounds) {
+        if (object.hidden === true) {
             continue;
         }
         if (!includeAll && !object.tags.some(tag => UI_TAG_PATTERN.test(tag))) {
             continue;
         }
-        const scale = object.scale ?? { x: 1, y: 1 };
-        const local = object.renderedBounds;
-        const left = object.position.x + Math.min(
-            local.x * scale.x,
-            (local.x + local.width) * scale.x,
-        );
-        const right = object.position.x + Math.max(
-            local.x * scale.x,
-            (local.x + local.width) * scale.x,
-        );
-        const top = object.position.y + Math.min(
-            local.y * scale.y,
-            (local.y + local.height) * scale.y,
-        );
-        const bottom = object.position.y + Math.max(
-            local.y * scale.y,
-            (local.y + local.height) * scale.y,
-        );
+        const bounds = object.screenBounds;
+        if (!bounds) {
+            available = false;
+            continue;
+        }
+        const left = bounds.x;
+        const right = left + bounds.width;
+        const top = bounds.y;
+        const bottom = top + bounds.height;
         const outside = right < 0 || bottom < 0
             || left > viewport.width || top > viewport.height;
         const clipped = !outside && (
@@ -283,10 +304,10 @@ function collectLayoutWarnings(objects, viewport, includeAll) {
                 height: bottom - top,
             },
             viewport,
-            basis: "object-local-estimate",
+            basis: "screen-space-bounds",
         });
     }
-    return warnings;
+    return { warnings, available };
 }
 
 function anchorSnapshot(value) {

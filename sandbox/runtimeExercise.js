@@ -10,13 +10,9 @@ export function createRuntimeExercise({
     getRunId,
     inspectRuntime,
     findCanvas = () => document.querySelector("canvas"),
-    getWindow = () => window,
     sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
     createKeyboardEvent = (type, options) => new KeyboardEvent(type, options),
-    createPointerEvent = (type, options) =>
-        typeof PointerEvent === "function"
-            ? new PointerEvent(type, options)
-            : new MouseEvent(type.replace("pointer", "mouse"), options),
+    createMouseEvent = (type, options) => new MouseEvent(type, options),
 }) {
     return async function exerciseRuntime({ runId, actions, signal }) {
         throwIfAborted(signal);
@@ -39,8 +35,10 @@ export function createRuntimeExercise({
         }
 
         const checkpoints = [];
+        const incompleteReasons = [];
         let inputActionCount = 0;
         let assertionCount = 0;
+        let assertedInputActionCount = 0;
         for (const action of parsed) {
             throwIfAborted(signal);
             assertActiveRun(getRunId, runId);
@@ -55,9 +53,22 @@ export function createRuntimeExercise({
                     checkpoints,
                 );
                 assertionCount += evaluation.length;
+                const incomplete = evaluation.some(check => check.passed === null);
+                if (incomplete || inspection.available === false) {
+                    incompleteReasons.push(`Checkpoint "${action.name}" did not have enough inspection evidence.`);
+                }
+                if (evaluation.some(check =>
+                    check.passed !== null
+                    && check.name !== "canvasFocused"
+                    && check.name !== "layoutWarningsEmpty"
+                )) {
+                    assertedInputActionCount = inputActionCount;
+                }
                 checkpoints.push({
                     name: action.name,
-                    passed: evaluation.every(check => check.passed),
+                    passed: evaluation.some(check => check.passed === false)
+                        ? false
+                        : incomplete || evaluation.length === 0 ? null : true,
                     checks: evaluation,
                     inspection,
                 });
@@ -66,7 +77,7 @@ export function createRuntimeExercise({
 
             if (action.type === "press") {
                 inputActionCount++;
-                dispatchKey(getWindow(), action.key, false, createKeyboardEvent);
+                dispatchKey(canvas, action.key, false, createKeyboardEvent);
                 try {
                     await waitWithAbort(
                         sleep,
@@ -75,29 +86,31 @@ export function createRuntimeExercise({
                     );
                 } finally {
                     dispatchKey(
-                        getWindow(),
+                        canvas,
                         action.key,
                         true,
                         createKeyboardEvent,
                     );
                 }
                 assertActiveRun(getRunId, runId);
+                await waitWithAbort(sleep, PREVIEW_PRESS_DURATION_MS, signal);
                 continue;
             }
             if (action.type === "hold") {
                 inputActionCount++;
-                dispatchKey(getWindow(), action.key, false, createKeyboardEvent);
+                dispatchKey(canvas, action.key, false, createKeyboardEvent);
                 try {
                     await waitWithAbort(sleep, action.durationMs, signal);
                 } finally {
                     dispatchKey(
-                        getWindow(),
+                        canvas,
                         action.key,
                         true,
                         createKeyboardEvent,
                     );
                 }
                 assertActiveRun(getRunId, runId);
+                await waitWithAbort(sleep, PREVIEW_PRESS_DURATION_MS, signal);
                 continue;
             }
             if (action.type === "wait") {
@@ -107,7 +120,7 @@ export function createRuntimeExercise({
                 continue;
             }
             inputActionCount++;
-            dispatchClick(canvas, action, createPointerEvent);
+            await dispatchClick(canvas, action, createMouseEvent, sleep, signal);
         }
 
         throwIfAborted(signal);
@@ -120,7 +133,9 @@ export function createRuntimeExercise({
             inputActionCount,
             checkpointCount: checkpoints.length,
             assertionCount,
-            passed: checkpoints.every(checkpoint => checkpoint.passed),
+            unassertedInputActionCount: inputActionCount - assertedInputActionCount,
+            incompleteReasons,
+            passed: checkpoints.every(checkpoint => checkpoint.passed !== false),
             checkpoints,
             finalInspection,
         };
@@ -134,12 +149,16 @@ export function evaluateCheckpoint(
 ) {
     if (!expectation) return [];
     const checks = [];
+    const available = inspection.available !== false;
+    const objectsAvailable = available && inspection.objectsAvailable !== false
+        && Array.isArray(inspection.objects);
     if (expectation.scene !== undefined) {
         checks.push(check(
             "scene",
             inspection.scene === expectation.scene,
             expectation.scene,
             inspection.scene,
+            available,
         ));
     }
     if (expectation.canvasFocused !== undefined) {
@@ -148,6 +167,7 @@ export function evaluateCheckpoint(
             inspection.canvasFocused === expectation.canvasFocused,
             expectation.canvasFocused,
             inspection.canvasFocused,
+            available && typeof inspection.canvasFocused === "boolean",
         ));
     }
     if (expectation.objectCountAtLeast !== undefined) {
@@ -157,6 +177,7 @@ export function evaluateCheckpoint(
                 && inspection.objectCount >= expectation.objectCountAtLeast,
             expectation.objectCountAtLeast,
             inspection.objectCount,
+            available && typeof inspection.objectCount === "number",
         ));
     }
     if (expectation.objectCountAtMost !== undefined) {
@@ -166,6 +187,7 @@ export function evaluateCheckpoint(
                 && inspection.objectCount <= expectation.objectCountAtMost,
             expectation.objectCountAtMost,
             inspection.objectCount,
+            available && typeof inspection.objectCount === "number",
         ));
     }
     if (expectation.layoutWarningsEmpty !== undefined) {
@@ -178,6 +200,11 @@ export function evaluateCheckpoint(
                 && (warningCount === 0) === expectation.layoutWarningsEmpty,
             expectation.layoutWarningsEmpty,
             warningCount === null ? null : warningCount === 0,
+            available && warningCount !== null && (
+                warningCount > 0
+                || (inspection.layoutAvailable === true
+                    && inspection.layoutWarningsTruncated !== true)
+            ),
         ));
     }
     if (expectation.firstObjectPosition !== undefined) {
@@ -198,6 +225,7 @@ export function evaluateCheckpoint(
                 typeof actual === "number" && operation(actual, expected),
                 expected,
                 actual,
+                objectsAvailable && typeof actual === "number",
             ));
         }
     }
@@ -207,6 +235,10 @@ export function evaluateCheckpoint(
         );
         const before = previous?.inspection?.objects?.[0]?.position ?? null;
         const after = inspection.objects?.[0]?.position ?? null;
+        const beforeId = previous?.inspection?.objects?.[0]?.id;
+        const afterId = inspection.objects?.[0]?.id;
+        const sameObject = beforeId !== undefined && beforeId !== null
+            && beforeId === afterId;
         const axis = expectation.firstObjectMovedFrom.axis;
         let distance = null;
         if (before && after) {
@@ -222,6 +254,7 @@ export function evaluateCheckpoint(
                 && distance >= expectation.firstObjectMovedFrom.minDistance,
             expectation.firstObjectMovedFrom,
             { before, after, distance },
+            objectsAvailable && sameObject && typeof distance === "number",
         ));
     }
     for (const expectedText of expectation.textIncludes ?? []) {
@@ -233,6 +266,9 @@ export function evaluateCheckpoint(
             text.includes(expectedText),
             expectedText,
             text.slice(0, 500),
+            objectsAvailable && (text.includes(expectedText)
+                || (inspection.objectsTruncated !== true
+                    && !inspection.objects.some(object => object.textTruncated === true))),
         ));
     }
     return checks;
@@ -250,7 +286,7 @@ function dispatchKey(target, requestedKey, released, createKeyboardEvent) {
     }));
 }
 
-function dispatchClick(canvas, action, createPointerEvent) {
+async function dispatchClick(canvas, action, createMouseEvent, sleep, signal) {
     const rect = canvas.getBoundingClientRect();
     const clientX = rect.left + rect.width * action.x;
     const clientY = rect.top + rect.height * action.y;
@@ -258,17 +294,22 @@ function dispatchClick(canvas, action, createPointerEvent) {
         bubbles: true,
         cancelable: true,
         button: action.button,
-        buttons: 1 << action.button,
+        buttons: [1, 4, 2][action.button],
         clientX,
         clientY,
-        pointerId: 1,
-        pointerType: "mouse",
-        isPrimary: true,
     };
-    canvas.dispatchEvent(createPointerEvent("pointermove", base));
-    canvas.dispatchEvent(createPointerEvent("pointerdown", base));
-    canvas.dispatchEvent(createPointerEvent("pointerup", { ...base, buttons: 0 }));
-    canvas.dispatchEvent(createPointerEvent("click", { ...base, buttons: 0 }));
+    // KAPLAY consumes mouse events. Synthetic pointer events don't generate
+    // compatibility mouse events and cannot establish native pointer capture.
+    canvas.dispatchEvent(createMouseEvent("mousemove", { ...base, buttons: 0 }));
+    canvas.dispatchEvent(createMouseEvent("mousedown", base));
+    try {
+        await waitWithAbort(sleep, PREVIEW_PRESS_DURATION_MS, signal);
+    } finally {
+        canvas.dispatchEvent(createMouseEvent("mouseup", { ...base, buttons: 0 }));
+    }
+    throwIfAborted(signal);
+    canvas.dispatchEvent(createMouseEvent("click", { ...base, buttons: 0 }));
+    await waitWithAbort(sleep, PREVIEW_PRESS_DURATION_MS, signal);
 }
 
 function assertActiveRun(getRunId, expectedRunId) {
@@ -277,8 +318,8 @@ function assertActiveRun(getRunId, expectedRunId) {
     }
 }
 
-function check(name, passed, expected, actual) {
-    return { name, passed, expected, actual };
+function check(name, passed, expected, actual, available = true) {
+    return { name, passed: available ? passed : null, expected, actual };
 }
 
 

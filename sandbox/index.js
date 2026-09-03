@@ -264,6 +264,16 @@ const messageEventHandlers = {
             return;
         }
 
+        if (exerciseControllers.size > 0) {
+            postParent({
+                type: "RUNTIME_EXERCISE_RESULT",
+                requestId,
+                runId: activeRunId,
+                error: "Another input sequence is already running. Wait for it to finish before retrying.",
+            });
+            return;
+        }
+
         const controller = new AbortController();
         exerciseControllers.set(requestId, { runId, controller });
         try {

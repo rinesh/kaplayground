@@ -166,12 +166,18 @@ const VerificationReceipt = ({ toolName, result }: ReceiptProps) => {
                             const checkpoint = record(value);
                             return (
                                 <li key={`${String(checkpoint?.name)}-${index}`}>
-                                    {checkpoint?.passed === true ? "✓" : "×"}{" "}
+                                    {checkpoint?.passed === true ? "✓" : checkpoint?.passed === false ? "×" : "—"}{" "}
                                     {String(checkpoint?.name ?? "Checkpoint")}
+                                    {checkpoint?.checkCount === 0 && " (snapshot)"}
                                 </li>
                             );
                         })}
                     </ul>
+                )}
+                {Array.isArray(result.incompleteReasons) && result.incompleteReasons.length > 0 && (
+                    <p className="mt-1 text-warning">
+                        {result.incompleteReasons.join(" ")}
+                    </p>
                 )}
                 {Array.isArray(result.notChecked) && result.notChecked.length > 0 && (
                     <p className="mt-1 text-base-content/45">

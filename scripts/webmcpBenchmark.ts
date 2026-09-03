@@ -126,11 +126,14 @@ function optionalDistribution(values: Array<number | undefined>) {
 function distribution(values: number[]) {
     if (values.length === 0) return null;
     const sorted = [...values].sort((a, b) => a - b);
-    const percentile = (ratio: number) =>
-        sorted[Math.min(
-            sorted.length - 1,
-            Math.floor((sorted.length - 1) * ratio),
-        )];
+    const percentile = (ratio: number) => {
+        const index = (sorted.length - 1) * ratio;
+        const lower = Math.floor(index);
+        const upper = Math.ceil(index);
+        if (lower === upper) return sorted[lower];
+        return sorted[lower]
+            + (sorted[upper] - sorted[lower]) * (index - lower);
+    };
     return {
         minimum: sorted[0],
         median: percentile(0.5),
@@ -199,10 +202,18 @@ function validate(input: BenchmarkInput): void {
     const ids = new Set<string>();
     const acceptanceKeys = Object.keys(input.runs[0]?.acceptance ?? {}).sort();
     for (const run of input.runs) {
-        if (!run.id || ids.has(run.id)) {
+        if (
+            typeof run.id !== "string"
+            || run.id.length === 0
+            || run.id.length > 200
+            || ids.has(run.id)
+        ) {
             throw new Error(`Invalid run id: ${run.id}`);
         }
         ids.add(run.id);
+        if (run.workflow !== "webmcp" && run.workflow !== "standard-editor") {
+            throw new Error(`${run.id}: workflow must be webmcp or standard-editor.`);
+        }
         for (
             const [name, value] of Object.entries({
                 durationMs: run.durationMs,
@@ -232,11 +243,12 @@ function validate(input: BenchmarkInput): void {
             && (
                 !Number.isFinite(run.firstFullyVerifiedRunMs)
                 || run.firstFullyVerifiedRunMs <= 0
+                || run.firstFullyVerifiedRunMs < run.firstSuccessfulRunMs
                 || run.firstFullyVerifiedRunMs > run.durationMs
             )
         ) {
             throw new Error(
-                `${run.id}: firstFullyVerifiedRunMs must be null or a positive time within the run.`,
+                `${run.id}: firstFullyVerifiedRunMs must be null or a time between the first successful run and completion.`,
             );
         }
         for (

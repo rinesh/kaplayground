@@ -33,11 +33,12 @@ function canvasFixture() {
         width: 200,
         height: 100,
     });
-    for (const type of ["pointermove", "pointerdown", "pointerup", "click"]) {
+    for (const type of ["mousemove", "mousedown", "mouseup", "click"]) {
         canvas.addEventListener(type, value => events.push({
             type: value.type,
             clientX: value.clientX,
             clientY: value.clientY,
+            buttons: value.buttons,
         }));
     }
     return { canvas, events };
@@ -73,6 +74,9 @@ describe("preview exercise contract", () => {
             code: "KeyW",
             keyCode: 87,
         });
+        for (const key of ["constructor", "toString", "__proto__"]) {
+            assert.throws(() => normalizePreviewKey(key), /key must be/i);
+        }
     });
 
     it("bounds actions and aggregate waiting", () => {
@@ -101,15 +105,14 @@ describe("preview exercise contract", () => {
     });
 
     it("dispatches bounded input and returns checkpoint evidence", async () => {
-        const target = new EventTarget();
+        const { canvas, events } = canvasFixture();
         const keyboard = [];
         for (const type of ["keydown", "keyup"]) {
-            target.addEventListener(type, value => keyboard.push({
+            canvas.addEventListener(type, value => keyboard.push({
                 type: value.type,
                 key: value.key,
             }));
         }
-        const { canvas, events } = canvasFixture();
         let runId = "run-1";
         const snapshots = [
             {
@@ -117,26 +120,27 @@ describe("preview exercise contract", () => {
                 scene: "game",
                 canvasFocused: true,
                 objectCount: 1,
-                objects: [{ text: "Score 1 / 5", position: { x: 10, y: 20 } }],
+                objects: [{ id: 1, text: "Score 1 / 5", position: { x: 10, y: 20 } }],
                 layoutWarnings: [],
+                layoutAvailable: true,
             },
             {
                 runId,
                 scene: "game",
                 canvasFocused: true,
                 objectCount: 1,
-                objects: [{ position: { x: 30, y: 20 } }],
+                objects: [{ id: 1, position: { x: 30, y: 20 } }],
                 layoutWarnings: [],
+                layoutAvailable: true,
             },
         ];
         const exercise = createRuntimeExercise({
             getRunId: () => runId,
             inspectRuntime: () => snapshots.shift(),
             findCanvas: () => canvas,
-            getWindow: () => target,
             sleep: async () => {},
             createKeyboardEvent: event,
-            createPointerEvent: event,
+            createMouseEvent: event,
         });
         const result = await exercise({
             runId,
@@ -219,14 +223,83 @@ describe("preview exercise contract", () => {
         assert.equal(focused, false);
         assert.equal(result.assertionCount, 0);
         assert.equal(result.checkpointCount, 1);
+        assert.equal(result.checkpoints[0].passed, null);
+        assert.throws(() => parsePreviewExerciseActions([{
+            type: "checkpoint",
+            name: "later",
+            expect: { firstObjectMovedFrom: { checkpoint: "missing", minDistance: 1 } },
+        }]), /earlier checkpoint/i);
+    });
+
+    it("releases a simulated mouse button on cancellation", async () => {
+        const { canvas, events } = canvasFixture();
+        const controller = new AbortController();
+        const exercise = createRuntimeExercise({
+            getRunId: () => "run-1",
+            inspectRuntime: () => ({}),
+            findCanvas: () => canvas,
+            createMouseEvent: event,
+            sleep: () => new Promise(() => {}),
+        });
+        const pending = exercise({
+            runId: "run-1",
+            actions: [{ type: "click", x: 0.5, y: 0.5, button: 2 }],
+            signal: controller.signal,
+        });
+        controller.abort();
+        await assert.rejects(pending, error => error.name === "AbortError");
+        assert.deepEqual(events.filter(value => value.type !== "focus").map(
+            ({ type, buttons }) => ({ type, buttons }),
+        ), [
+            { type: "mousemove", buttons: 0 },
+            { type: "mousedown", buttons: 2 },
+            { type: "mouseup", buttons: 0 },
+        ]);
+    });
+
+    it("keeps unavailable and truncated checkpoint evidence inconclusive", () => {
+        for (const inspection of [
+            { available: false, objects: [], layoutWarnings: [] },
+            { available: true, objects: [], objectsTruncated: true, layoutWarnings: [], layoutAvailable: false },
+            { available: true, objects: [{ text: "some text", textTruncated: true }], layoutWarnings: [], layoutWarningsTruncated: true },
+        ]) {
+            const checks = evaluateCheckpoint(inspection, {
+                textIncludes: ["Victory"],
+                layoutWarningsEmpty: true,
+            });
+            assert(checks.every(check => check.passed === null));
+        }
+        const [movement] = evaluateCheckpoint({
+            objects: [{ id: 2, position: { x: 100, y: 0 } }],
+        }, { firstObjectMovedFrom: { checkpoint: "before", axis: "x", minDistance: 5 } }, [{
+            name: "before",
+            inspection: { objects: [{ id: 1, position: { x: 0, y: 0 } }] },
+        }]);
+        assert.equal(movement.passed, null, "Different objects must not count as movement.");
+    });
+
+    it("requires game-state assertions after the input being verified", async () => {
+        const { canvas } = canvasFixture();
+        const exercise = createRuntimeExercise({
+            getRunId: () => "run-1",
+            inspectRuntime: () => ({ available: true, scene: "game", canvasFocused: true }),
+            findCanvas: () => canvas,
+            createKeyboardEvent: event,
+            sleep: async () => {},
+        });
+        const result = await exercise({ runId: "run-1", actions: [
+            { type: "checkpoint", name: "before", expect: { scene: "game" } },
+            { type: "press", key: "r" },
+            { type: "checkpoint", name: "focus", expect: { canvasFocused: true } },
+        ] });
+        assert.equal(result.unassertedInputActionCount, 1);
     });
 
     it("cancels a held key and always releases it", async () => {
-        const target = new EventTarget();
-        const events = [];
-        target.addEventListener("keydown", event => events.push(event.type));
-        target.addEventListener("keyup", event => events.push(event.type));
         const { canvas } = canvasFixture();
+        const events = [];
+        canvas.addEventListener("keydown", event => events.push(event.type));
+        canvas.addEventListener("keyup", event => events.push(event.type));
         const controller = new AbortController();
         let releaseSleep;
         const exercise = createRuntimeExercise({
@@ -237,7 +310,6 @@ describe("preview exercise contract", () => {
                 layoutWarnings: [],
             }),
             findCanvas: () => canvas,
-            getWindow: () => target,
             sleep: () => new Promise(resolve => { releaseSleep = resolve; }),
             createKeyboardEvent: event,
         });

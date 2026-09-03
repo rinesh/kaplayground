@@ -95,6 +95,20 @@ describe("game identity", () => {
         );
     });
 
+    it("invalidates content for assets, engine selection, build mode, and project replacement", () => {
+        const original = state();
+        const originalRevision = gameContentRevision(original);
+        for (const changed of [
+            state({ kaplayVersion: "4000.0.0" }),
+            state({ buildMode: "legacy" }),
+            state({ mode: "ex" }),
+            state({ assets: new Map([["hero", { url: "data:image/png;base64,AA", kind: "sprite" }]]) }),
+            { ...original, projectGeneration: original.projectGeneration + 1 },
+        ]) {
+            assert.notEqual(gameContentRevision(changed), originalRevision);
+        }
+    });
+
     it("ignores the IndexedDB id in project read-back fingerprints", () => {
         const project = state().project;
         assert.equal(

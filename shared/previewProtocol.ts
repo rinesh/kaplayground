@@ -74,7 +74,9 @@ const NAMED_KEYS: Record<string, NormalizedPreviewKey> = {
 
 export function normalizePreviewKey(value: unknown): NormalizedPreviewKey {
     const requested = boundedString(value, "key", 32);
-    const named = NAMED_KEYS[requested];
+    const named = Object.prototype.hasOwnProperty.call(NAMED_KEYS, requested)
+        ? NAMED_KEYS[requested]
+        : undefined;
     if (named) return { ...named };
     if (requested === " ") return { ...NAMED_KEYS.Space };
 
@@ -122,7 +124,7 @@ export function parsePreviewExerciseActions(
             assertKeys(action, ["type", "key"], `actions[${index}]`);
             const key = boundedString(action.key, `actions[${index}].key`, 32);
             normalizePreviewKey(key);
-            totalDurationMs += PREVIEW_PRESS_DURATION_MS;
+            totalDurationMs += PREVIEW_PRESS_DURATION_MS * 2;
             return { type, key };
         }
 
@@ -140,7 +142,7 @@ export function parsePreviewExerciseActions(
                 1,
                 MAX_PREVIEW_ACTION_DURATION_MS,
             );
-            totalDurationMs += durationMs;
+            totalDurationMs += durationMs + PREVIEW_PRESS_DURATION_MS;
             return { type, key, durationMs };
         }
 
@@ -153,6 +155,7 @@ export function parsePreviewExerciseActions(
             const button = action.button === undefined
                 ? 0
                 : integer(action.button, `actions[${index}].button`, 0, 2);
+            totalDurationMs += PREVIEW_PRESS_DURATION_MS * 2;
             return {
                 type,
                 x: unitNumber(action.x, `actions[${index}].x`),
@@ -198,6 +201,13 @@ export function parsePreviewExerciseActions(
                     `actions contains more than one checkpoint named "${name}".`,
                 );
             }
+            const expect = action.expect === undefined
+                ? undefined
+                : parseExpectation(action.expect, `actions[${index}].expect`);
+            const previousCheckpoint = expect?.firstObjectMovedFrom?.checkpoint;
+            if (previousCheckpoint !== undefined && !checkpointNames.has(previousCheckpoint)) {
+                throw new TypeError(`actions[${index}] must reference an earlier checkpoint for movement.`);
+            }
             checkpointNames.add(name);
             return {
                 type,
@@ -211,12 +221,7 @@ export function parsePreviewExerciseActions(
                         0,
                         MAX_PREVIEW_CHECKPOINT_OBJECTS,
                     ),
-                expect: action.expect === undefined
-                    ? undefined
-                    : parseExpectation(
-                        action.expect,
-                        `actions[${index}].expect`,
-                    ),
+                expect,
             };
         }
 

@@ -556,6 +556,7 @@ function createTools(
                             !== requestedIdentity.contentRevision
                         || currentIdentity.runtimeFingerprint
                             !== requestedIdentity.runtimeFingerprint
+                        || useEditor.getState().previewRunId !== runId
                     ) {
                         return failedRunResult({
                             mode,
@@ -564,7 +565,7 @@ function createTools(
                             readiness: runReadiness,
                             focusRequested,
                             summary:
-                                "The executable game changed while it was starting, so this run no longer matches the requested content.",
+                                "The executable game or active preview changed while starting, so this run can no longer be verified.",
                             notChecked: [
                                 "Playing the controls",
                                 "Visual quality",
@@ -661,11 +662,25 @@ function createTools(
                 if (actions !== null) {
                     try {
                         const exercised = await useEditor.getState()
-                            .exercisePreview(actions, signal);
-                        gameplay = safeSerializable(exercised) as Record<
-                            string,
-                            unknown
-                        >;
+                            .exercisePreview(actions, signal, runId);
+                        gameplay = {
+                            runId: exercised.runId,
+                            inputProvenance: exercised.inputProvenance,
+                            actionCount: exercised.actionCount,
+                            inputActionCount: exercised.inputActionCount,
+                            checkpointCount: exercised.checkpointCount,
+                            assertionCount: exercised.assertionCount,
+                            unassertedInputActionCount: exercised.unassertedInputActionCount,
+                            incompleteReasons: exercised.incompleteReasons,
+                            passed: exercised.passed,
+                            checkpoints: exercised.checkpoints.map(checkpoint => ({
+                                name: checkpoint.name,
+                                passed: checkpoint.passed,
+                                checks: checkpoint.checks.map(check => safeSerializable(check)),
+                                inspection: safeSerializable(checkpoint.inspection),
+                            })),
+                            finalInspection: safeSerializable(exercised.finalInspection),
+                        };
                     } catch (error) {
                         if (signal.aborted) throw abortReason(signal);
                         gameplayError = errorMessage(error);
@@ -826,13 +841,17 @@ function createTools(
                         `The requested gameplay sequence could not be completed. ${gameplayError}`,
                     );
                 }
+                if (Array.isArray(gameplay?.incompleteReasons)) {
+                    incompleteReasons.push(...gameplay.incompleteReasons.filter(
+                        (reason): reason is string => typeof reason === "string",
+                    ));
+                }
                 if (
                     gameplay
-                    && Number(gameplay.inputActionCount) > 0
-                    && Number(gameplay.assertionCount) === 0
+                    && Number(gameplay.unassertedInputActionCount) > 0
                 ) {
                     incompleteReasons.push(
-                        "Controls were sent, but no checkpoint expectation asserted their effect.",
+                        "Some controls were sent without a later checkpoint asserting a game-state result.",
                     );
                 }
                 const failedGameplayCheckpoints = gameplay
@@ -1523,8 +1542,8 @@ function runNotChecked(
     gameplay: Record<string, unknown> | null,
 ): string[] {
     const inputActionCount = Number(gameplay?.inputActionCount ?? 0);
-    const assertionCount = Number(gameplay?.assertionCount ?? 0);
-    if (inputActionCount > 0 && assertionCount > 0) {
+    const unassertedInputActionCount = Number(gameplay?.unassertedInputActionCount ?? inputActionCount);
+    if (inputActionCount > 0 && unassertedInputActionCount === 0) {
         return ["Visual quality"];
     }
     if (inputActionCount > 0) {
