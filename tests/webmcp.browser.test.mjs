@@ -412,7 +412,8 @@ async function main() {
                     const canvas = document.querySelector('canvas');
                     if (!canvas) return null;
                     const r = canvas.getBoundingClientRect();
-                    return { x: r.x, y: r.y, width: r.width, height: r.height, bufferWidth: canvas.width, bufferHeight: canvas.height };
+                    return { x: r.x, y: r.y, width: r.width, height: r.height, bufferWidth: canvas.width, bufferHeight: canvas.height,
+                        inputFrame: Number(canvas.dataset.webmcpInputFrame ?? -1), eventFrame: Number(canvas.dataset.webmcpEventFrame ?? -1) };
                 })()`,
                 returnByValue: true,
             });
@@ -1368,6 +1369,19 @@ async function main() {
                     }
                 }
                 if (request.pointer) {
+                    const waitForProcessedPointerEvent = async () => {
+                        const frameDeadline = Date.now() + 2_000;
+                        let input;
+                        do {
+                            await delay(16);
+                            input = await readCanvasDisplay(request.frameSelector);
+                        } while (
+                            input.inputFrame <= input.eventFrame
+                            && Date.now() < frameDeadline
+                        );
+                        assert(input.eventFrame >= 0 && input.inputFrame > input.eventFrame,
+                            `${request.label}: the game did not process native pointer input.`);
+                    };
                     const scale = Math.min(
                         frame.width / state.viewport.width,
                         frame.height / state.viewport.height,
@@ -1392,7 +1406,7 @@ async function main() {
                             type: "mouseMoved",
                             ...point,
                         });
-                        await delay(30);
+                        await waitForProcessedPointerEvent();
                         expectedClicks++;
                         let count;
                         try {
@@ -1421,6 +1435,7 @@ async function main() {
                                 clickCount: 1,
                                 ...point,
                             });
+                            await waitForProcessedPointerEvent();
                         }
                         assert.equal(
                             count,

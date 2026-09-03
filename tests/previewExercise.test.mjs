@@ -239,19 +239,23 @@ describe("preview exercise contract", () => {
     it("releases a simulated mouse button on cancellation", async () => {
         const { canvas, events } = canvasFixture();
         const controller = new AbortController();
+        let waitCount = 0;
         const exercise = exerciseFixture({
             getRunId: () => "run-1",
             inspectRuntime: () => ({}),
             findCanvas: () => canvas,
             createMouseEvent: event,
-            sleep: () => new Promise(() => {}),
+            sleep: () => {
+                waitCount++;
+                if (waitCount === 1) return Promise.resolve();
+                return new Promise(() => controller.abort());
+            },
         });
         const pending = exercise({
             runId: "run-1",
             actions: [{ type: "click", x: 0.5, y: 0.5, button: 2 }],
             signal: controller.signal,
         });
-        controller.abort();
         await assert.rejects(pending, error => error.name === "AbortError");
         assert.deepEqual(events.filter(value => value.type !== "focus").map(
             ({ type, buttons }) => ({ type, buttons }),
@@ -260,6 +264,35 @@ describe("preview exercise contract", () => {
             { type: "mousedown", buttons: 2 },
             { type: "mouseup", buttons: 0 },
         ]);
+    });
+
+    it("processes pointer movement before pressing a click target", async () => {
+        const { canvas } = canvasFixture();
+        let clock = 0;
+        const frame = () => Math.floor(clock / 100);
+        const transitions = [];
+        for (const type of ["mousemove", "mousedown", "mouseup", "click"]) {
+            canvas.addEventListener(type, () => transitions.push({ type, frame: frame() }));
+        }
+        const exercise = exerciseFixture({
+            getRunId: () => "run-1",
+            findCanvas: () => canvas,
+            inspectRuntime: () => ({}),
+            getFrameCount: frame,
+            now: () => clock,
+            sleep: async milliseconds => { clock += milliseconds; },
+            createMouseEvent: event,
+        });
+        await exercise({ runId: "run-1", actions: [
+            { type: "click", x: 0.5, y: 0.5, button: 0 },
+        ] });
+        assert.deepEqual(transitions, [
+            { type: "mousemove", frame: 0 },
+            { type: "mousedown", frame: 1 },
+            { type: "mouseup", frame: 2 },
+            { type: "click", frame: 2 },
+        ]);
+        assert.equal(frame(), 3, "The release must reach the game too.");
     });
 
     it("keeps repeated taps on separate input frames in a slow game", async () => {

@@ -124,7 +124,7 @@ export function parsePreviewExerciseActions(
             assertKeys(action, ["type", "key"], `actions[${index}]`);
             const key = boundedString(action.key, `actions[${index}].key`, 32);
             normalizePreviewKey(key);
-            totalDurationMs += PREVIEW_PRESS_DURATION_MS * 2;
+            totalDurationMs += PREVIEW_PRESS_DURATION_MS * 3;
             return { type, key };
         }
 

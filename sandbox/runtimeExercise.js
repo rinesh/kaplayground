@@ -129,7 +129,15 @@ export function createRuntimeExercise({
                 continue;
             }
             inputActionCount++;
-            await dispatchClick(canvas, action, createMouseEvent, readFrameCount, waitForInputFrame, signal);
+            await dispatchClick(
+                canvas,
+                action,
+                createMouseEvent,
+                readFrameCount,
+                waitForInputFrame,
+                () => assertActiveRun(getRunId, runId),
+                signal,
+            );
         }
 
         throwIfAborted(signal);
@@ -295,7 +303,7 @@ function dispatchKey(target, requestedKey, released, createKeyboardEvent) {
     }));
 }
 
-async function dispatchClick(canvas, action, createMouseEvent, readFrameCount, waitForInputFrame, signal) {
+async function dispatchClick(canvas, action, createMouseEvent, readFrameCount, waitForInputFrame, assertRun, signal) {
     const rect = canvas.getBoundingClientRect();
     const clientX = rect.left + rect.width * action.x;
     const clientY = rect.top + rect.height * action.y;
@@ -311,6 +319,8 @@ async function dispatchClick(canvas, action, createMouseEvent, readFrameCount, w
     // compatibility mouse events and cannot establish native pointer capture.
     let processedFrame = readFrameCount();
     canvas.dispatchEvent(createMouseEvent("mousemove", { ...base, buttons: 0 }));
+    processedFrame = await waitForInputFrame(processedFrame, PREVIEW_PRESS_DURATION_MS, signal);
+    assertRun();
     canvas.dispatchEvent(createMouseEvent("mousedown", base));
     try {
         processedFrame = await waitForInputFrame(processedFrame, PREVIEW_PRESS_DURATION_MS, signal);
