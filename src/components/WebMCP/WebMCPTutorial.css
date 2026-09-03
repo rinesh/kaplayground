@@ -1,0 +1,20 @@
+.codex-idea-content {
+    animation: codex-idea-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes codex-idea-enter {
+    from {
+        opacity: 0;
+        transform: translateX(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .codex-idea-content {
+        animation: none;
+    }
+}

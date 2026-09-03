@@ -395,13 +395,14 @@ async function main() {
             let state;
             while (Date.now() < deadline) {
                 state = await pageValue(`(async () => {
-                    const inspection = await globalThis.__webmcpInspectLayoutPreview();
+                    const inspection = await globalThis.__webmcpInspectLayoutPreview({ tag: 'instruction', limit: 1 });
                     const game = document.querySelector('#game-view').getBoundingClientRect();
                     const columns = document.querySelector('#workspace-columns');
                     const panes = [...columns.querySelector(':scope > .split-view-container').children];
                     const columnsSettled = innerWidth < 900 || Math.abs(panes.reduce((sum, pane) => sum + pane.getBoundingClientRect().width, 0) - columns.getBoundingClientRect().width) <= 2;
                     return {
                         viewport: inspection.viewport,
+                        instruction: inspection.objects[0],
                         game: { width: game.width, height: game.height },
                         columnsSettled,
                     };
@@ -410,6 +411,18 @@ async function main() {
                     state.viewport && state.columnsSettled
                     && Math.abs(state.viewport.width - state.game.width) <= 2
                     && Math.abs(state.viewport.height - state.game.height) <= 2
+                    && state.instruction
+                    && Math.abs(
+                            state.instruction.position.x
+                                - state.viewport.width / 2,
+                        ) <= 1
+                    && Math.abs(
+                            state.instruction.position.y
+                                - state.viewport.height / 2,
+                        ) <= 1
+                    && state.instruction.renderedBounds.width
+                                * state.instruction.scale.x
+                        <= state.viewport.width - 30
                 ) {
                     canvasResizeChecks.push({ label, ...state });
                     return;
@@ -426,10 +439,9 @@ async function main() {
             pageValue(`(() => {
             const rect = selector => document.querySelector(selector).getBoundingClientRect();
             const columns = rect('#workspace-columns');
-            const preview = rect('#workspace-preview');
             return {
                 game: rect('#workspace-columns-first').width / columns.width,
-                tips: rect('#workspace-preview-second').height / preview.height,
+                tipsHeight: rect('#workspace-preview-second').height,
             };
         })()`);
         await client.send("Emulation.setDeviceMetricsOverride", {
@@ -450,15 +462,19 @@ async function main() {
         await delay(250);
         await assertCanvasFollowsGame("a wider, taller window");
         const widerProportions = await panelProportions();
-        for (const panel of ["game", "tips"]) {
-            assert(
-                Math.abs(originalProportions[panel] - widerProportions[panel])
-                    < 0.01,
-                `${panel} didn't resize proportionally with the window: ${
-                    JSON.stringify({ originalProportions, widerProportions })
-                }`,
-            );
-        }
+        assert(
+            Math.abs(originalProportions.game - widerProportions.game) < 0.01,
+            "The game column didn't resize proportionally with the window.",
+        );
+        assert.equal(originalProportions.tipsHeight, 240);
+        assert.equal(widerProportions.tipsHeight, 240);
+        assert.equal(
+            await pageValue(
+                "document.querySelector('#workspace-preview [role=separator]')",
+            ),
+            null,
+            "Ideas should only open and close; they must not expose a resize divider.",
+        );
         const assertExpandedGame = async () => {
             const state = await pageValue(`(() => {
                 const r = document.querySelector('#game-view').getBoundingClientRect();
@@ -574,6 +590,7 @@ async function main() {
                 );
             }
             const stepHeights = [];
+            const summaryOffsets = [];
             for (let step = 1; step <= 5; step++) {
                 await clickControl(
                     `aside[aria-label="Codex tips"] button[aria-label^="Go to idea ${step}:"]`,
@@ -584,7 +601,11 @@ async function main() {
                     const card = coach.querySelector('section').getBoundingClientRect();
                     const footer = coach.querySelector('footer').getBoundingClientRect();
                     const game = document.querySelector('#game-view').getBoundingClientRect();
+                    const body = coach.querySelector('.codex-idea-content');
+                    const summary = body.firstElementChild.getBoundingClientRect();
                     return { paneHeight: pane.height, cardHeight: card.height, gameHeight: game.height,
+                        summaryOffset: summary.top - body.getBoundingClientRect().top,
+                        scrollTop: body.scrollTop,
                         footerInside: footer.top >= pane.top && footer.bottom <= pane.bottom,
                         scrollsInside: getComputedStyle(coach.querySelector('section > div')).overflowY === 'auto' };
                 })()`);
@@ -592,14 +613,25 @@ async function main() {
                     Math.abs(tip.paneHeight - layout.coachPane.height) <= 1
                         && Math.abs(tip.cardHeight - tip.paneHeight) <= 2
                         && Math.abs(tip.gameHeight - layout.preview.height) <= 1
+                        && Math.abs(tip.summaryOffset) <= 1
+                        && tip.scrollTop === 0
                         && tip.footerInside && tip.scrollsInside,
                     `Idea ${step} changed the game or card height at ${width}px: ${
                         JSON.stringify(tip)
                     }`,
                 );
                 stepHeights.push(tip.cardHeight);
+                summaryOffsets.push(tip.summaryOffset);
+                await pageValue(
+                    "document.querySelector('aside[aria-label=\"Codex tips\"] .codex-idea-content').scrollTop = 10000",
+                );
             }
-            tipsContentChecks.push({ width, height, stepHeights });
+            tipsContentChecks.push({
+                width,
+                height,
+                stepHeights,
+                summaryOffsets,
+            });
             await clickControl("button[aria-label=\"Minimize Codex ideas\"]");
             await assertCanvasFollowsGame("minimizing the ideas to their dock");
             const minimized = await pageValue(`(() => {
@@ -667,6 +699,71 @@ async function main() {
             await clickControl("button[aria-label=\"Restore panels\"]");
             layoutChecks.push({ width, height, passed: true });
         }
+        const ideaMotion = await pageValue(`(async () => {
+            const coach = document.querySelector('aside[aria-label="Codex tips"]');
+            const control = coach.querySelector('button[aria-label^="Go to idea 2:"]');
+            control.focus();
+            control.click();
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            const body = coach.querySelector('.codex-idea-content');
+            const animation = body.getAnimations().find(item => item.animationName === 'codex-idea-enter');
+            if (!animation) return { available: false };
+            animation.pause();
+            const duration = animation.effect.getTiming().duration;
+            const frames = [0, duration / 2, duration].map(time => {
+                animation.currentTime = time;
+                return { opacity: Number(getComputedStyle(body).opacity), top: body.firstElementChild.getBoundingClientRect().top };
+            });
+            animation.finish();
+            return { available: true, duration, frames, focusRetained: document.activeElement === control };
+        })()`);
+        assert(
+            ideaMotion.available && ideaMotion.duration === 180
+                && ideaMotion.focusRetained,
+        );
+        assert(
+            ideaMotion.frames[0].opacity === 0
+                && ideaMotion.frames[1].opacity > 0
+                && ideaMotion.frames[1].opacity < 1
+                && ideaMotion.frames[2].opacity === 1,
+        );
+        assert(
+            ideaMotion.frames.every(frame =>
+                frame.top === ideaMotion.frames[0].top
+            ),
+            "Idea transitions moved the text vertically.",
+        );
+        await client.send("Emulation.setEmulatedMedia", {
+            features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+        });
+        await clickControl(
+            "aside[aria-label=\"Codex tips\"] button[aria-label^=\"Go to idea 3:\"]",
+        );
+        assert.equal(
+            await pageValue(
+                "document.querySelector('aside[aria-label=\"Codex tips\"] .codex-idea-content').getAnimations().length",
+            ),
+            0,
+            "Reduced motion must disable idea animation.",
+        );
+        await client.send("Emulation.setEmulatedMedia", {
+            features: [{
+                name: "prefers-reduced-motion",
+                value: "no-preference",
+            }],
+        });
+        await pageValue(`(async () => {
+            const coach = document.querySelector('aside[aria-label="Codex tips"]');
+            for (const step of [4, 2, 5]) coach.querySelector('button[aria-label^="Go to idea ' + step + ':"]').click();
+            await new Promise(resolve => requestAnimationFrame(resolve));
+        })()`);
+        assert.equal(
+            await pageValue(
+                "document.querySelector('aside[aria-label=\"Codex tips\"] [aria-current=step]').getAttribute('aria-label')",
+            ),
+            "Go to idea 5: Describe the version you want",
+            "Rapid navigation settled on the wrong idea.",
+        );
         const beforeKeyboardWidth = await pageValue(
             "document.querySelector('[aria-label=\"Workspace panels\"]').getBoundingClientRect().width",
         );
@@ -759,21 +856,6 @@ async function main() {
             x: -60,
             y: 0,
         });
-        await dragDivider("[aria-label=\"Resize game and Codex ideas\"]", {
-            x: 0,
-            y: 40,
-        });
-        await assertCanvasFollowsGame("a vertical divider drag");
-        const afterVerticalDrag = await gameRect();
-        assert(
-            Math.abs(afterVerticalDrag.height - beforeDrag.height - 40) <= 2
-                && Math.abs(afterVerticalDrag.width - beforeDrag.width) <= 2,
-            "A vertical drag must change the game height without changing its width.",
-        );
-        await dragDivider("[aria-label=\"Resize game and Codex ideas\"]", {
-            x: 0,
-            y: -40,
-        });
         await dragDivider("[aria-label=\"Resize workspace panels\"]", "right");
         assert.equal(
             await pageValue(
@@ -782,22 +864,12 @@ async function main() {
             true,
             "Dragging to the right didn't snap the tools closed.",
         );
-        await dragDivider(
-            "[aria-label=\"Resize game and Codex ideas\"]",
-            "bottom",
-        );
         assert.equal(
             await pageValue(
                 "document.querySelector('#workspace-preview-second').getBoundingClientRect().height",
             ),
-            140,
-            "Dragging the ideas divider should stop at the reading minimum.",
-        );
-        assert.equal(
-            await pageValue(
-                "document.querySelector('#workspace-preview-second').inert",
-            ),
-            false,
+            240,
+            "Changing the sidebar must not change the ideas height.",
         );
         await clickControl("button[aria-label=\"Restore panels\"]");
         assert.equal(
@@ -828,7 +900,7 @@ async function main() {
             y: 0,
         });
 
-        // Keyboard resizing follows the same sidebar and tips limits as dragging.
+        // Keyboard resizing follows the same sidebar limits as dragging.
         for (
             const [label, key, code, hiddenId, expectedHidden] of [
                 [
@@ -844,13 +916,6 @@ async function main() {
                     35,
                     "workspace-columns-second",
                     true,
-                ],
-                [
-                    "Resize game and Codex ideas",
-                    "End",
-                    35,
-                    "workspace-preview-second",
-                    false,
                 ],
             ]
         ) {
@@ -908,10 +973,216 @@ async function main() {
         await delay(250);
         await assertExpandedGame();
         await clickControl("button[aria-label=\"Restore panels\"]");
+        const flappyResizeChecks = [];
+        await pageValue("globalThis.__webmcpOpenLayoutSample('flappy')");
+        const flappyRun = await pageValue(
+            "(async () => (await globalThis.__webmcpInspectLayoutPreview()).runId)()",
+        );
+        const assertFlappyAligned = async label => {
+            let state;
+            const deadline = Date.now() + 5_000;
+            while (Date.now() < deadline) {
+                state = await pageValue(`(async () => {
+                    const player = await globalThis.__webmcpInspectLayoutPreview({ tag: 'player', limit: 1 });
+                    const score = await globalThis.__webmcpInspectLayoutPreview({ tag: 'score', limit: 1 });
+                    const game = document.querySelector('#game-view').getBoundingClientRect();
+                    return { runId: player.runId, scene: player.scene, viewport: player.viewport, player: player.objects[0], score: score.objects[0], game: { width: game.width, height: game.height } };
+                })()`);
+                const { viewport, player, score, game } = state;
+                const offset = viewport && Math.min(108, viewport.height * 0.2);
+                if (
+                    state.scene === "lose" && viewport && player && score
+                    && Math.abs(viewport.width - game.width) <= 2
+                    && Math.abs(viewport.height - game.height) <= 2
+                    && Math.abs(player.position.x - viewport.width / 2) <= 1
+                    && Math.abs(score.position.x - viewport.width / 2) <= 1
+                    && Math.abs(
+                            player.position.y - (viewport.height / 2 - offset),
+                        ) <= 1
+                    && Math.abs(
+                            score.position.y - (viewport.height / 2 + offset),
+                        ) <= 1
+                ) {
+                    assert.equal(
+                        state.runId,
+                        flappyRun,
+                        "Resizing restarted Flappy.",
+                    );
+                    flappyResizeChecks.push({ label, ...state });
+                    return;
+                }
+                await delay(50);
+            }
+            assert.fail(
+                `Flappy didn't align after ${label}: ${JSON.stringify(state)}`,
+            );
+        };
+        await assertFlappyAligned("opening the result screen");
+        await dragDivider("[aria-label=\"Resize workspace panels\"]", {
+            x: 60,
+            y: 0,
+        });
+        await assertFlappyAligned("widening the game panel");
+        await dragDivider("[aria-label=\"Resize workspace panels\"]", {
+            x: -60,
+            y: 0,
+        });
+        await clickControl("button[aria-label=\"Minimize Codex ideas\"]");
+        await assertFlappyAligned("closing the ideas");
+        await clickControl("button[aria-label=\"Show Codex ideas\"]");
+        await assertFlappyAligned("reopening the ideas");
+        await client.send("Emulation.setDeviceMetricsOverride", {
+            width: 390,
+            height: 700,
+            deviceScaleFactor: 1,
+            mobile: false,
+        });
+        await delay(250);
+        await assertFlappyAligned("a narrow window");
+        await clickControl("button[aria-label=\"Expand game\"]");
+        await assertFlappyAligned("expanding the game");
+        await clickControl("button[aria-label=\"Restore panels\"]");
+        await client.send("Emulation.setDeviceMetricsOverride", {
+            width: 1042,
+            height: 936,
+            deviceScaleFactor: 1,
+            mobile: false,
+        });
+        await delay(250);
+        await assertFlappyAligned("returning to desktop");
+
+        // Play until a pipe pair exists, then use KAPLAY's pause shortcut so
+        // geometry checks don't depend on how long a resize takes to render.
+        const readFlappyPlay = () =>
+            pageValue(`(async () => {
+            const [player, score, pipes] = await Promise.all([
+                globalThis.__webmcpInspectLayoutPreview({ tag: 'player', limit: 1 }),
+                globalThis.__webmcpInspectLayoutPreview({ tag: 'score', limit: 1 }),
+                globalThis.__webmcpInspectLayoutPreview({ tag: 'pipe', limit: 10 }),
+            ]);
+            return { runId: player.runId, scene: player.scene, paused: player.paused, viewport: player.viewport, player: player.objects[0], score: score.objects[0], pipes: pipes.objects };
+        })()`);
+        const pressGameKey = async (key, code, keyCode) => {
+            for (const type of ["keyDown", "keyUp"]) {
+                await client.send("Input.dispatchKeyEvent", {
+                    type,
+                    key,
+                    code,
+                    windowsVirtualKeyCode: keyCode,
+                    nativeVirtualKeyCode: keyCode,
+                });
+            }
+        };
+        await clickControl("#game-view");
+        let playing;
+        let previousY = 0;
+        const playDeadline = Date.now() + 5_000;
+        while (Date.now() < playDeadline) {
+            playing = await readFlappyPlay();
+            assert.equal(
+                playing.scene,
+                "game",
+                "Flappy didn't stay playable before resizing.",
+            );
+            if (playing.pipes.length >= 2) {
+                await pressGameKey("F8", "F8", 119);
+                await delay(100);
+                playing = await readFlappyPlay();
+                break;
+            }
+            const y = playing.player.position.y;
+            if (y > playing.viewport.height * 0.28 && y >= previousY) {
+                await pressGameKey(" ", "Space", 32);
+            }
+            previousY = y;
+            await delay(40);
+        }
+        assert(
+            playing?.paused && playing.pipes.length === 2,
+            `Couldn't pause a live Flappy pipe pair: ${
+                JSON.stringify(playing)
+            }`,
+        );
+        const flappyGameplayChecks = [];
+        for (const [width, height] of [[1042, 600], [390, 700], [1042, 936]]) {
+            await client.send("Emulation.setDeviceMetricsOverride", {
+                width,
+                height,
+                deviceScaleFactor: 1,
+                mobile: false,
+            });
+            await delay(250);
+            const state = await readFlappyPlay();
+            assert.equal(state.scene, "game");
+            assert.equal(state.runId, flappyRun);
+            assert(state.paused, "Resizing resumed the paused game.");
+            assert.equal(state.player.id, playing.player.id);
+            assert.equal(state.score.text, playing.score.text);
+            assert.deepEqual(
+                state.pipes.map(pipe => pipe.id),
+                playing.pipes.map(pipe => pipe.id),
+            );
+            assert(
+                Math.abs(state.player.position.x - state.viewport.width / 4)
+                    <= 1,
+            );
+            assert(
+                state.player.position.y >= 0
+                    && state.player.position.y < state.viewport.height,
+            );
+            assert(
+                Math.abs(state.score.position.x - state.viewport.width / 2)
+                    <= 1,
+            );
+            assert(
+                state.score.position.y > 0
+                    && state.score.position.y < state.viewport.height,
+            );
+            const [top, bottom] = [...state.pipes].sort((a, b) =>
+                a.position.y - b.position.y
+            );
+            assert.equal(top.position.y, 0);
+            assert(
+                top.renderedBounds.height > 0
+                    && bottom.renderedBounds.height > 0,
+            );
+            const gap = bottom.position.y - top.renderedBounds.height;
+            assert(
+                gap > state.player.renderedBounds.height,
+                "Resizing left no passable opening between Flappy's pipes.",
+            );
+            assert(
+                Math.abs(
+                    bottom.position.y + bottom.renderedBounds.height
+                        - state.viewport.height,
+                ) <= 1,
+                "The bottom pipe no longer meets the game edge.",
+            );
+            assert(
+                Math.abs(top.position.x - bottom.position.x) <= 1,
+                "Resizing separated Flappy's pipe pair.",
+            );
+            flappyGameplayChecks.push({ window: { width, height }, ...state });
+        }
+        await pressGameKey("F8", "F8", 119);
+        await pressGameKey(" ", "Space", 32);
+        await delay(100);
+        const resumedPlay = await readFlappyPlay();
+        assert(
+            !resumedPlay.paused && resumedPlay.scene === "game"
+                && resumedPlay.player.id === playing.player.id,
+            "Flappy didn't resume the same playable scene after resizing.",
+        );
+        await pageValue("globalThis.__webmcpOpenLayoutSample('burp')");
         const workspacePanelChecks = {
-            proportionalWindowResize: { originalProportions, widerProportions },
+            windowResize: { originalProportions, widerProportions },
             canvasResizeChecks,
             tipsContentChecks,
+            ideaMotion,
+            reducedIdeaMotion: true,
+            fixedIdeasHeight: true,
+            flappyResizeChecks,
+            flappyGameplayChecks,
             expandAndRestore: true,
             horizontalSnapping: true,
             toolsWidthLimit: true,

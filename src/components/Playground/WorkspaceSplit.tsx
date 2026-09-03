@@ -10,7 +10,6 @@ type Props = {
     maxSizes?: [number | undefined, number | undefined];
     visible: [boolean, boolean];
     snap?: [boolean, boolean];
-    onChange?: (sizes: number[]) => void;
     onVisibleChange: (index: number, visible: boolean) => void;
     onDragEnd: (sizes: number[]) => void;
     vertical?: boolean;
@@ -31,7 +30,6 @@ export const WorkspaceSplit = (props: Props) => {
 
     const updateSize = (sizes: number[]) => {
         currentSizes.current = sizes;
-        latest.current.onChange?.(sizes);
         const total = sizes[0] + sizes[1];
         sash.current?.setAttribute(
             "aria-valuenow",

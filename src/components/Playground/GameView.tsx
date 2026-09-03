@@ -44,7 +44,7 @@ export const GameView: FC = () => {
                         id="game-view"
                         tabIndex={0}
                         src={iframeSrc}
-                        className="bg-black/30 rounded-xl"
+                        className="block bg-black/30 rounded-xl"
                         style={{
                             border: "none",
                             outline: "none",

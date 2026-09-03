@@ -12,6 +12,31 @@
     min-height: 0;
 }
 
+.workspace-preview {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    padding: 0 1px 1px;
+}
+
+.workspace-ideas {
+    flex: none;
+    height: 240px;
+    max-height: max(40px, calc(100% - 180px));
+    padding-top: 1px;
+    overflow: hidden;
+}
+
+.workspace-preview[data-tips-minimized="true"] .workspace-ideas {
+    height: 40px;
+}
+
+.workspace-preview[data-tips-visible="false"] .workspace-ideas {
+    height: 0;
+    padding: 0;
+}
+
 .workspace-split {
     position: relative;
     height: 100%;

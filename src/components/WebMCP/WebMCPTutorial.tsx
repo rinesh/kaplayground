@@ -7,6 +7,7 @@ import {
 } from "../../integrations/webmcp/codexPlayProgress";
 import { cn } from "../../util/cn";
 import { copyText } from "../../util/copyText";
+import "./WebMCPTutorial.css";
 
 const STEP_EVENT = "kaplayground-codex-play-step";
 
@@ -131,16 +132,17 @@ export const WebMCPTutorial = ({
             )}
         >
             <div
+                key={step?.id ?? stepIndex}
                 className={cn(
-                    "grid items-center gap-4",
+                    "codex-idea-content grid content-start items-start gap-4",
                     contained
                         && "min-h-0 flex-1 overflow-y-auto scrollbar-thin",
                     condensed
-                        && "@2xl:grid-cols-[minmax(15rem,0.8fr)_minmax(21rem,1.2fr)]",
+                        && "@xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]",
                 )}
             >
                 <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2 pr-6">
                         <span className="rounded-full bg-fuchsia-300/15 px-2.5 py-1 text-[10px] font-bold tracking-[0.16em] text-fuchsia-200">
                             {step?.eyebrow}
                         </span>
@@ -257,7 +259,7 @@ export const WebMCPTutorial = ({
                             <span
                                 aria-hidden="true"
                                 className={cn(
-                                    "h-1.5 rounded-full transition-all",
+                                    "h-1.5 rounded-full transition-all motion-reduce:transition-none",
                                     index === stepIndex
                                         ? "w-6 bg-fuchsia-300"
                                         : "w-2 bg-white/20 hover:bg-white/35",

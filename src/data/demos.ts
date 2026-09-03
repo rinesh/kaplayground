@@ -4,6 +4,8 @@ import {
 } from "../../kaplay/examples/examples.json";
 import { WEBMCP_EXAMPLE_NAME } from "../integrations/webmcp/constants";
 import examplesList from "./exampleList.json";
+import burpCode from "./examples/burp.js?raw";
+import flappyCode from "./examples/flappy.js?raw";
 
 export { WEBMCP_EXAMPLE_NAME } from "../integrations/webmcp/constants";
 
@@ -311,26 +313,36 @@ export const difficulties = [
 export const difficultyByName = (name: string) =>
     difficulties.find(d => d.name === name);
 
+const responsiveExamples: Record<string, string> = {
+    burp: burpCode,
+    flappy: flappyCode,
+};
+
 export const demos = [webMCPExample, ...examplesList].map((example) => {
     const obj: Example = {
         ...example,
+        // Keep these starters aligned when the workspace changes size.
         // The checked-out engine accepts an asset handle where the hosted
         // engine also accepts raw SpriteData. Keep this lesson valid in both,
         // and demonstrate managed fetches with a reliable same-site asset.
-        code: example.name === "loadingScreen"
-            ? example.code
-                .replace(".onLoad((data) =>", ".onLoad(() =>")
-                .replace(
-                    "The promise resolves to the raw sprite data",
-                    "Keep the loaded asset handle for drawing",
-                )
-                .replace("spr = data;", "spr = getSprite(\"bean\");")
-                .replace(
-                    "load(fetch(\"https://kaboomjs.com/\"));",
-                    "load(fetch(\"/sprites/bean.png\"));",
-                )
-                .replace("raw sprite data here", "the loaded asset handle here")
-            : example.code,
+        code: responsiveExamples[example.name]
+            ?? (example.name === "loadingScreen"
+                ? example.code
+                    .replace(".onLoad((data) =>", ".onLoad(() =>")
+                    .replace(
+                        "The promise resolves to the raw sprite data",
+                        "Keep the loaded asset handle for drawing",
+                    )
+                    .replace("spr = data;", "spr = getSprite(\"bean\");")
+                    .replace(
+                        "load(fetch(\"https://kaboomjs.com/\"));",
+                        "load(fetch(\"/sprites/bean.png\"));",
+                    )
+                    .replace(
+                        "raw sprite data here",
+                        "the loaded asset handle here",
+                    )
+                : example.code),
         tags: example.tags.map(tag => ({
             name: tag,
             ...(tags as ExamplesDataRecord)?.[tag],

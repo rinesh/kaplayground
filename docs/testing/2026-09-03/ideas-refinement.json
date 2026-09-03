@@ -1,0 +1,1386 @@
+{
+  "date": "2026-09-03",
+  "scope": "Fixed ideas panel, top-aligned animated steps, responsive Burp and Flappy starters",
+  "verification": {
+    "command": "VITE_SANDBOX_URL=https://e506a68f.iframe-kaplay-3h0.pages.dev npm run verify:webmcp",
+    "passed": true,
+    "unitTests": 67,
+    "unitSuites": 14,
+    "typeScript": "passed",
+    "browserIntegration": true,
+    "sandboxBuild": "passed",
+    "siteBuild": "passed",
+    "gameStarters": 14,
+    "regressionStarters": 2
+  },
+  "layoutChecks": [
+    {
+      "width": 1042,
+      "height": 936,
+      "passed": true
+    },
+    {
+      "width": 1440,
+      "height": 1000,
+      "passed": true
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "passed": true
+    },
+    {
+      "width": 390,
+      "height": 700,
+      "passed": true
+    },
+    {
+      "width": 1042,
+      "height": 936,
+      "passed": true
+    }
+  ],
+  "windowResize": {
+    "originalProportions": {
+      "game": 0.6727447216890595,
+      "tipsHeight": 240
+    },
+    "widerProportions": {
+      "game": 0.6729166666666667,
+      "tipsHeight": 240
+    }
+  },
+  "tipsContentChecks": [
+    {
+      "width": 1042,
+      "height": 936,
+      "stepHeights": [
+        239,
+        239,
+        239,
+        239,
+        239
+      ],
+      "summaryOffsets": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "width": 1440,
+      "height": 1000,
+      "stepHeights": [
+        239,
+        239,
+        239,
+        239,
+        239
+      ],
+      "summaryOffsets": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "stepHeights": [
+        239,
+        239,
+        239,
+        239,
+        239
+      ],
+      "summaryOffsets": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "width": 390,
+      "height": 700,
+      "stepHeights": [
+        239,
+        239,
+        239,
+        239,
+        239
+      ],
+      "summaryOffsets": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "width": 1042,
+      "height": 936,
+      "stepHeights": [
+        239,
+        239,
+        239,
+        239,
+        239
+      ],
+      "summaryOffsets": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "ideaMotion": {
+    "available": true,
+    "duration": 180,
+    "frames": [
+      {
+        "opacity": 0,
+        "top": 713
+      },
+      {
+        "opacity": 0.946079,
+        "top": 713
+      },
+      {
+        "opacity": 1,
+        "top": 713
+      }
+    ],
+    "focusRetained": true
+  },
+  "reducedIdeaMotion": true,
+  "fixedIdeasHeight": true,
+  "tipsMinimizeAndRestore": true,
+  "burpResizeChecks": [
+    {
+      "label": "the initial desktop layout",
+      "game": {
+        "width": 699,
+        "height": 650
+      },
+      "viewport": {
+        "width": 699,
+        "height": 650
+      },
+      "instruction": {
+        "position": {
+          "x": 349.5,
+          "y": 325
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "a wider, taller window",
+      "game": {
+        "width": 967,
+        "height": 714
+      },
+      "viewport": {
+        "width": 967,
+        "height": 714
+      },
+      "instruction": {
+        "position": {
+          "x": 483.5,
+          "y": 357
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "the 1042 by 936 workspace",
+      "game": {
+        "width": 699,
+        "height": 650
+      },
+      "viewport": {
+        "width": 699,
+        "height": 650
+      },
+      "instruction": {
+        "position": {
+          "x": 349.5,
+          "y": 325
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "minimizing the ideas to their dock",
+      "game": {
+        "width": 699,
+        "height": 850
+      },
+      "viewport": {
+        "width": 699,
+        "height": 850
+      },
+      "instruction": {
+        "position": {
+          "x": 349.5,
+          "y": 425
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "restoring the ideas from their dock",
+      "game": {
+        "width": 699,
+        "height": 650
+      },
+      "viewport": {
+        "width": 699,
+        "height": 650
+      },
+      "instruction": {
+        "position": {
+          "x": 349.5,
+          "y": 325
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "the expanded game",
+      "game": {
+        "width": 1040,
+        "height": 890
+      },
+      "viewport": {
+        "width": 1040,
+        "height": 890
+      },
+      "instruction": {
+        "position": {
+          "x": 520,
+          "y": 445
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "the 1440 by 1000 workspace",
+      "game": {
+        "width": 967,
+        "height": 714
+      },
+      "viewport": {
+        "width": 967,
+        "height": 714
+      },
+      "instruction": {
+        "position": {
+          "x": 483.5,
+          "y": 357
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "minimizing the ideas to their dock",
+      "game": {
+        "width": 967,
+        "height": 914
+      },
+      "viewport": {
+        "width": 967,
+        "height": 914
+      },
+      "instruction": {
+        "position": {
+          "x": 483.5,
+          "y": 457
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "restoring the ideas from their dock",
+      "game": {
+        "width": 967,
+        "height": 714
+      },
+      "viewport": {
+        "width": 967,
+        "height": 714
+      },
+      "instruction": {
+        "position": {
+          "x": 483.5,
+          "y": 357
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "the expanded game",
+      "game": {
+        "width": 1438,
+        "height": 954
+      },
+      "viewport": {
+        "width": 1438,
+        "height": 954
+      },
+      "instruction": {
+        "position": {
+          "x": 719,
+          "y": 477
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "the 390 by 844 workspace",
+      "game": {
+        "width": 373,
+        "height": 514
+      },
+      "viewport": {
+        "width": 373,
+        "height": 514
+      },
+      "instruction": {
+        "position": {
+          "x": 186.5,
+          "y": 257
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "minimizing the ideas to their dock",
+      "game": {
+        "width": 373,
+        "height": 714
+      },
+      "viewport": {
+        "width": 373,
+        "height": 714
+      },
+      "instruction": {
+        "position": {
+          "x": 186.5,
+          "y": 357
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "restoring the ideas from their dock",
+      "game": {
+        "width": 373,
+        "height": 514
+      },
+      "viewport": {
+        "width": 373,
+        "height": 514
+      },
+      "instruction": {
+        "position": {
+          "x": 186.5,
+          "y": 257
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "the expanded game",
+      "game": {
+        "width": 388,
+        "height": 754
+      },
+      "viewport": {
+        "width": 388,
+        "height": 754
+      },
+      "instruction": {
+        "position": {
+          "x": 194,
+          "y": 377
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "the 390 by 700 workspace",
+      "game": {
+        "width": 373,
+        "height": 370
+      },
+      "viewport": {
+        "width": 373,
+        "height": 370
+      },
+      "instruction": {
+        "position": {
+          "x": 186.5,
+          "y": 185
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "minimizing the ideas to their dock",
+      "game": {
+        "width": 373,
+        "height": 570
+      },
+      "viewport": {
+        "width": 373,
+        "height": 570
+      },
+      "instruction": {
+        "position": {
+          "x": 186.5,
+          "y": 285
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "restoring the ideas from their dock",
+      "game": {
+        "width": 373,
+        "height": 370
+      },
+      "viewport": {
+        "width": 373,
+        "height": 370
+      },
+      "instruction": {
+        "position": {
+          "x": 186.5,
+          "y": 185
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "the expanded game",
+      "game": {
+        "width": 388,
+        "height": 610
+      },
+      "viewport": {
+        "width": 388,
+        "height": 610
+      },
+      "instruction": {
+        "position": {
+          "x": 194,
+          "y": 305
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "the 1042 by 936 workspace",
+      "game": {
+        "width": 699,
+        "height": 650
+      },
+      "viewport": {
+        "width": 699,
+        "height": 650
+      },
+      "instruction": {
+        "position": {
+          "x": 349.5,
+          "y": 325
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "minimizing the ideas to their dock",
+      "game": {
+        "width": 699,
+        "height": 850
+      },
+      "viewport": {
+        "width": 699,
+        "height": 850
+      },
+      "instruction": {
+        "position": {
+          "x": 349.5,
+          "y": 425
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "restoring the ideas from their dock",
+      "game": {
+        "width": 699,
+        "height": 650
+      },
+      "viewport": {
+        "width": 699,
+        "height": 650
+      },
+      "instruction": {
+        "position": {
+          "x": 349.5,
+          "y": 325
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "the expanded game",
+      "game": {
+        "width": 1040,
+        "height": 890
+      },
+      "viewport": {
+        "width": 1040,
+        "height": 890
+      },
+      "instruction": {
+        "position": {
+          "x": 520,
+          "y": 445
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "a horizontal divider drag",
+      "game": {
+        "width": 739,
+        "height": 650
+      },
+      "viewport": {
+        "width": 739,
+        "height": 650
+      },
+      "instruction": {
+        "position": {
+          "x": 369.5,
+          "y": 325
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "the widest allowed tools sidebar",
+      "game": {
+        "width": 571.09375,
+        "height": 650
+      },
+      "viewport": {
+        "width": 571,
+        "height": 650
+      },
+      "instruction": {
+        "position": {
+          "x": 285.5,
+          "y": 325
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "the expanded game",
+      "game": {
+        "width": 1040,
+        "height": 890
+      },
+      "viewport": {
+        "width": 1040,
+        "height": 890
+      },
+      "instruction": {
+        "position": {
+          "x": 520,
+          "y": 445
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "the expanded game",
+      "game": {
+        "width": 388,
+        "height": 754
+      },
+      "viewport": {
+        "width": 388,
+        "height": 754
+      },
+      "instruction": {
+        "position": {
+          "x": 194,
+          "y": 377
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    },
+    {
+      "label": "the expanded game",
+      "game": {
+        "width": 1040,
+        "height": 890
+      },
+      "viewport": {
+        "width": 1040,
+        "height": 890
+      },
+      "instruction": {
+        "position": {
+          "x": 520,
+          "y": 445
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 329.0625,
+          "height": 36
+        }
+      }
+    }
+  ],
+  "flappyResultChecks": [
+    {
+      "label": "opening the result screen",
+      "game": {
+        "width": 678.984375,
+        "height": 650
+      },
+      "viewport": {
+        "width": 679,
+        "height": 650
+      },
+      "player": {
+        "id": 5,
+        "position": {
+          "x": 339.5,
+          "y": 217
+        },
+        "scale": {
+          "x": 3,
+          "y": 3
+        }
+      },
+      "score": {
+        "id": 6,
+        "position": {
+          "x": 339.5,
+          "y": 433
+        },
+        "scale": {
+          "x": 3,
+          "y": 3
+        }
+      },
+      "sameRun": true
+    },
+    {
+      "label": "widening the game panel",
+      "game": {
+        "width": 738.984375,
+        "height": 650
+      },
+      "viewport": {
+        "width": 739,
+        "height": 650
+      },
+      "player": {
+        "id": 5,
+        "position": {
+          "x": 369.5,
+          "y": 217
+        },
+        "scale": {
+          "x": 3,
+          "y": 3
+        }
+      },
+      "score": {
+        "id": 6,
+        "position": {
+          "x": 369.5,
+          "y": 433
+        },
+        "scale": {
+          "x": 3,
+          "y": 3
+        }
+      },
+      "sameRun": true
+    },
+    {
+      "label": "closing the ideas",
+      "game": {
+        "width": 678.984375,
+        "height": 850
+      },
+      "viewport": {
+        "width": 679,
+        "height": 850
+      },
+      "player": {
+        "id": 5,
+        "position": {
+          "x": 339.5,
+          "y": 317
+        },
+        "scale": {
+          "x": 3,
+          "y": 3
+        }
+      },
+      "score": {
+        "id": 6,
+        "position": {
+          "x": 339.5,
+          "y": 533
+        },
+        "scale": {
+          "x": 3,
+          "y": 3
+        }
+      },
+      "sameRun": true
+    },
+    {
+      "label": "reopening the ideas",
+      "game": {
+        "width": 678.984375,
+        "height": 650
+      },
+      "viewport": {
+        "width": 679,
+        "height": 650
+      },
+      "player": {
+        "id": 5,
+        "position": {
+          "x": 339.5,
+          "y": 217
+        },
+        "scale": {
+          "x": 3,
+          "y": 3
+        }
+      },
+      "score": {
+        "id": 6,
+        "position": {
+          "x": 339.5,
+          "y": 433
+        },
+        "scale": {
+          "x": 3,
+          "y": 3
+        }
+      },
+      "sameRun": true
+    },
+    {
+      "label": "a narrow window",
+      "game": {
+        "width": 373,
+        "height": 370
+      },
+      "viewport": {
+        "width": 373,
+        "height": 370
+      },
+      "player": {
+        "id": 5,
+        "position": {
+          "x": 186.5,
+          "y": 111
+        },
+        "scale": {
+          "x": 2.3125,
+          "y": 2.3125
+        }
+      },
+      "score": {
+        "id": 6,
+        "position": {
+          "x": 186.5,
+          "y": 259
+        },
+        "scale": {
+          "x": 2.3125,
+          "y": 2.3125
+        }
+      },
+      "sameRun": true
+    },
+    {
+      "label": "expanding the game",
+      "game": {
+        "width": 388,
+        "height": 610
+      },
+      "viewport": {
+        "width": 388,
+        "height": 610
+      },
+      "player": {
+        "id": 5,
+        "position": {
+          "x": 194,
+          "y": 197
+        },
+        "scale": {
+          "x": 2.425,
+          "y": 2.425
+        }
+      },
+      "score": {
+        "id": 6,
+        "position": {
+          "x": 194,
+          "y": 413
+        },
+        "scale": {
+          "x": 2.425,
+          "y": 2.425
+        }
+      },
+      "sameRun": true
+    },
+    {
+      "label": "returning to desktop",
+      "game": {
+        "width": 679,
+        "height": 650
+      },
+      "viewport": {
+        "width": 679,
+        "height": 650
+      },
+      "player": {
+        "id": 5,
+        "position": {
+          "x": 339.5,
+          "y": 217
+        },
+        "scale": {
+          "x": 3,
+          "y": 3
+        }
+      },
+      "score": {
+        "id": 6,
+        "position": {
+          "x": 339.5,
+          "y": 433
+        },
+        "scale": {
+          "x": 3,
+          "y": 3
+        }
+      },
+      "sameRun": true
+    }
+  ],
+  "flappyGameplayChecks": [
+    {
+      "window": {
+        "width": 1042,
+        "height": 600
+      },
+      "viewport": {
+        "width": 679,
+        "height": 314
+      },
+      "scene": "game",
+      "paused": true,
+      "player": {
+        "id": 7,
+        "position": {
+          "x": 169.75,
+          "y": 12.985107692307693
+        }
+      },
+      "score": {
+        "id": 8,
+        "text": "0",
+        "position": {
+          "x": 339.5,
+          "y": 62.800000000000004
+        }
+      },
+      "pipes": [
+        {
+          "id": 9,
+          "position": {
+            "x": 646.968,
+            "y": 0
+          },
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 64,
+            "height": 47.1
+          },
+          "collisionBounds": {
+            "x": 646.968,
+            "y": 0,
+            "width": 64,
+            "height": 47.1
+          }
+        },
+        {
+          "id": 10,
+          "position": {
+            "x": 646.968,
+            "y": 266.9
+          },
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 64,
+            "height": 47.099999999999994
+          },
+          "collisionBounds": {
+            "x": 646.968,
+            "y": 266.9,
+            "width": 64,
+            "height": 47.10000000000002
+          }
+        }
+      ],
+      "sameRunAndObjects": true
+    },
+    {
+      "window": {
+        "width": 390,
+        "height": 700
+      },
+      "viewport": {
+        "width": 373,
+        "height": 370
+      },
+      "scene": "game",
+      "paused": true,
+      "player": {
+        "id": 7,
+        "position": {
+          "x": 93.25,
+          "y": 15.300923076923077
+        }
+      },
+      "score": {
+        "id": 8,
+        "text": "0",
+        "position": {
+          "x": 186.5,
+          "y": 74
+        }
+      },
+      "pipes": [
+        {
+          "id": 9,
+          "position": {
+            "x": 355.4036288659794,
+            "y": 0
+          },
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 64,
+            "height": 74.5
+          },
+          "collisionBounds": {
+            "x": 355.4036288659794,
+            "y": 0,
+            "width": 64,
+            "height": 74.5
+          }
+        },
+        {
+          "id": 10,
+          "position": {
+            "x": 355.4036288659794,
+            "y": 314.5
+          },
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 64,
+            "height": 55.5
+          },
+          "collisionBounds": {
+            "x": 355.4036288659794,
+            "y": 314.5,
+            "width": 64,
+            "height": 55.5
+          }
+        }
+      ],
+      "sameRunAndObjects": true
+    },
+    {
+      "window": {
+        "width": 1042,
+        "height": 936
+      },
+      "viewport": {
+        "width": 679,
+        "height": 650
+      },
+      "scene": "game",
+      "paused": true,
+      "player": {
+        "id": 7,
+        "position": {
+          "x": 169.75,
+          "y": 26.88
+        }
+      },
+      "score": {
+        "id": 8,
+        "text": "0",
+        "position": {
+          "x": 339.5,
+          "y": 80
+        }
+      },
+      "pipes": [
+        {
+          "id": 9,
+          "position": {
+            "x": 646.9680000000001,
+            "y": 0
+          },
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 64,
+            "height": 254.2985701560974
+          },
+          "collisionBounds": {
+            "x": 646.9680000000001,
+            "y": 0,
+            "width": 64,
+            "height": 254.2985701560974
+          }
+        },
+        {
+          "id": 10,
+          "position": {
+            "x": 646.9680000000001,
+            "y": 494.2985701560974
+          },
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 64,
+            "height": 155.7014298439026
+          },
+          "collisionBounds": {
+            "x": 646.9680000000001,
+            "y": 494.2985701560974,
+            "width": 64,
+            "height": 155.7014298439026
+          }
+        }
+      ],
+      "sameRunAndObjects": true
+    }
+  ],
+  "flappyNativeControlsAndResume": true,
+  "existingRegressions": {
+    "expandAndRestore": true,
+    "horizontalSnapping": true,
+    "toolsWidthLimit": true,
+    "keyboardPanelLimits": true,
+    "expandedViewportChanges": true
+  },
+  "nativeHostedSandbox": {
+    "sandbox": "https://e506a68f.iframe-kaplay-3h0.pages.dev",
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "sample": "flappy",
+    "ideaTopPositions": [
+      497,
+      497,
+      497
+    ],
+    "ideaHeight": 240,
+    "dockHeight": 40,
+    "gameBefore": {
+      "width": 834,
+      "height": 434
+    },
+    "gameAfterSidebarDrag": {
+      "width": 894,
+      "height": 434
+    },
+    "gameWithIdeasClosed": {
+      "width": 894,
+      "height": 634
+    },
+    "gameRestored": {
+      "width": 834,
+      "height": 434
+    },
+    "tipsResizeHandleAbsent": true,
+    "resultAlignmentVisuallyReviewed": true,
+    "testTabClosed": true
+  }
+}
