@@ -1,10 +1,12 @@
 import * as HookModule from "console-feed/lib/Hook";
 import * as UnhookModule from "console-feed/lib/Unhook";
+import { PREVIEW_PROTOCOL_VERSION } from "../shared/previewProtocol.ts";
 import {
     createConsoleBridge,
     resolveConsoleFeedExport,
 } from "./consoleBridge.js";
 import { createPreviewReadinessTracker } from "./readiness.js";
+import { createRuntimeExercise } from "./runtimeExercise.js";
 import { createRuntimeInspector } from "./runtimeInspection.js";
 
 const Hook = resolveConsoleFeedExport(HookModule);
@@ -13,7 +15,6 @@ const Unhook = resolveConsoleFeedExport(UnhookModule);
 const PARENT_ORIGIN = document.referrer
     ? new URL(document.referrer).origin
     : null;
-const PREVIEW_PROTOCOL_VERSION = 2;
 const RUN_LOADED_CALLBACK = "__kaplaygroundModuleLoaded";
 const RUN_CONTEXT_CALLBACK = "__kaplaygroundCaptureContext";
 const RUN_READINESS_TIMEOUT_MS = Math.max(
@@ -35,6 +36,12 @@ const inspectRuntime = createRuntimeInspector({
     getContext: () => window._k_ctx,
     readPaused,
 });
+const exerciseRuntime = createRuntimeExercise({
+    getRunId: () => activeRunId,
+    getFrameCount: () => getDebug()?.numFrames?.(),
+    inspectRuntime,
+});
+const exerciseControllers = new Map();
 
 Object.defineProperty(globalThis, RUN_CONTEXT_CALLBACK, {
     configurable: false,
@@ -65,6 +72,7 @@ window.addEventListener("unhandledrejection", event => {
 });
 
 const executeCode = (code, runId) => {
+    cancelExercises("The preview run changed.");
     activeRunId = runId;
     activeContext = null;
     window._k_ctx = null;
@@ -238,6 +246,71 @@ const messageEventHandlers = {
         }
     },
 
+    async EXERCISE_RUNTIME({ requestId, runId, actions }) {
+        if (
+            typeof requestId !== "string"
+            || typeof runId !== "string"
+            || !Array.isArray(actions)
+        ) {
+            return;
+        }
+
+        if (runId !== activeRunId) {
+            postParent({
+                type: "RUNTIME_EXERCISE_RESULT",
+                requestId,
+                runId: activeRunId,
+                error: "The requested preview run is no longer active.",
+            });
+            return;
+        }
+
+        if (exerciseControllers.size > 0) {
+            postParent({
+                type: "RUNTIME_EXERCISE_RESULT",
+                requestId,
+                runId: activeRunId,
+                error: "Another input sequence is already running. Wait for it to finish before retrying.",
+            });
+            return;
+        }
+
+        const controller = new AbortController();
+        exerciseControllers.set(requestId, { runId, controller });
+        try {
+            postParent({
+                type: "RUNTIME_EXERCISE_RESULT",
+                requestId,
+                runId: activeRunId,
+                exercise: await exerciseRuntime({
+                    runId,
+                    actions,
+                    signal: controller.signal,
+                }),
+            });
+        } catch (error) {
+            postParent({
+                type: "RUNTIME_EXERCISE_RESULT",
+                requestId,
+                runId: activeRunId,
+                error: errorText(error),
+            });
+        } finally {
+            if (exerciseControllers.get(requestId)?.controller === controller) {
+                exerciseControllers.delete(requestId);
+            }
+        }
+    },
+
+    CANCEL_EXERCISE({ requestId, runId }) {
+        if (typeof requestId !== "string" || typeof runId !== "string") return;
+        const active = exerciseControllers.get(requestId);
+        if (!active || active.runId !== runId) return;
+        active.controller.abort(
+            new DOMException("The input sequence was canceled.", "AbortError"),
+        );
+    },
+
     FOCUS() {
         console.log("[sandbox] Focusing the game");
         const canvas = document.querySelector("canvas");
@@ -254,7 +327,11 @@ const messageEventHandlers = {
 
 window.addEventListener("message", event => {
     if (event.origin !== PARENT_ORIGIN || event.source !== window.parent) return;
-    messageEventHandlers[event.data?.type]?.(event.data);
+    const handler = messageEventHandlers[event.data?.type];
+    if (!handler) return;
+    void Promise.resolve(handler(event.data)).catch(error => {
+        console.error("[sandbox] Preview request failed", error);
+    });
 });
 
 window.addEventListener("load", () => {
@@ -263,6 +340,13 @@ window.addEventListener("load", () => {
         protocolVersion: PREVIEW_PROTOCOL_VERSION,
     });
 });
+
+function cancelExercises(message) {
+    for (const { controller } of exerciseControllers.values()) {
+        controller.abort(new DOMException(message, "AbortError"));
+    }
+    exerciseControllers.clear();
+}
 
 function captureContext(context) {
     if (!context || activeRunId === null) return;
@@ -295,7 +379,8 @@ function readPaused() {
 }
 
 function getDebug() {
-    return window._k_ctx?.debug ?? window.debug ?? window._k_debug ?? null;
+    return activeContext?.debug ?? window._k_ctx?.debug ?? window.debug
+        ?? window._k_debug ?? null;
 }
 
 function errorText(error) {

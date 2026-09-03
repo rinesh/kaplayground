@@ -402,4 +402,81 @@ describe("sandbox runtime inspection", () => {
         assert.equal(result.objectsAvailable, false);
         assert.deepEqual(result.objects, []);
     });
+
+    it("reports bounded objective layout warnings without judging visual quality", () => {
+        const score = {
+            id: "score",
+            tags: ["score"],
+            pos: { x: 5, y: 20 },
+            width: 40,
+            height: 20,
+            anchor: "center",
+            toScreen(point) {
+                return { x: point.x + this.pos.x, y: point.y + this.pos.y };
+            },
+        };
+        const player = {
+            id: "player",
+            tags: ["player"],
+            pos: { x: -100, y: 120 },
+            width: 20,
+            height: 20,
+            anchor: "center",
+            toScreen(point) {
+                return { x: point.x + this.pos.x, y: point.y + this.pos.y };
+            },
+        };
+        const context = {
+            width: () => 320,
+            height: () => 240,
+            get: tag => tag === "player" ? [player] : [score, player],
+        };
+
+        const general = inspectorFor(context)({ limit: 10 });
+        assert.deepEqual(
+            general.layoutWarnings.map(warning => warning.code),
+            ["OBJECT_CLIPPED"],
+        );
+        assert.equal(general.layoutWarnings[0].objectId, "score");
+        assert.equal(general.layoutWarningsTruncated, false);
+
+        const explicit = inspectorFor(context)({ tag: "player", limit: 10 });
+        assert.deepEqual(
+            explicit.layoutWarnings.map(warning => warning.code),
+            ["OBJECT_OUTSIDE_VIEWPORT"],
+        );
+
+        const emptyCanvas = inspectorFor(context, {
+            canvas: { width: 0, height: 0 },
+        })({ limit: 0 });
+        assert.equal(
+            emptyCanvas.layoutWarnings.filter(warning =>
+                warning.code === "CANVAS_EMPTY"
+            ).length,
+            2,
+        );
+    });
+
+    it("uses anchored screen geometry and marks partial layout checks unavailable", () => {
+        const title = {
+            id: "title",
+            tags: ["title"],
+            pos: { x: 1000, y: 1000 },
+            anchor: "center",
+            renderArea: () => ({ pos: { x: 0, y: 0 }, width: 300, height: 40 }),
+            // The camera/parent transform centers the title on screen even
+            // though its world position is far outside the viewport.
+            toScreen: point => ({ x: 160 - point.y, y: 120 + point.x * 0.5 }),
+        };
+        const context = { width: () => 320, height: () => 240, get: () => [title] };
+        const full = inspectorFor(context)({ tag: "title", limit: 1 });
+        assert.deepEqual(full.objects[0].screenBounds, { x: 140, y: 45, width: 40, height: 150 });
+        assert.deepEqual(full.layoutWarnings, []);
+        assert.equal(full.layoutAvailable, true);
+        const partial = inspectorFor(context)({ tag: "title", limit: 0 });
+        assert.equal(partial.layoutAvailable, false);
+        const missingGeometry = inspectorFor({ get: () => [{ tags: ["title"] }] })({ limit: 1 });
+        assert.equal(missingGeometry.layoutAvailable, false);
+    });
+
 });

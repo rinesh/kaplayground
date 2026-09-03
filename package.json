@@ -19,11 +19,12 @@
     "prepare": "cd kaplay && npm i && cd .. && npm run generate:lib",
     "sandbox:build": "cd sandbox && vite build",
     "sandbox:deploy": "cd sandbox && wrangler pages deploy --branch=main",
-    "test:webmcp": "npm run generate:all && node --experimental-strip-types --test tests/webmcp.test.mjs tests/boundedConsoleCapture.test.mjs tests/projectModels.test.mjs tests/webMCPLifecycle.test.mjs tests/previewReadiness.test.mjs tests/runtimeInspection.test.mjs tests/rootStartup.test.mjs tests/gameFirst.test.mjs",
+    "test:webmcp": "npm run generate:all && node --experimental-strip-types --test tests/webmcp.test.mjs tests/boundedConsoleCapture.test.mjs tests/projectModels.test.mjs tests/webMCPLifecycle.test.mjs tests/previewReadiness.test.mjs tests/runtimeInspection.test.mjs tests/previewExercise.test.mjs tests/gameIdentity.test.mjs tests/toolResults.test.mjs tests/webmcpBenchmark.test.mjs tests/rootStartup.test.mjs tests/gameFirst.test.mjs",
     "test:webmcp:browser": "node tests/webmcp.browser.test.mjs",
     "test:artifacts": "node --test tests/licenseArtifacts.test.mjs",
     "test:catalog": "npm run generate:all && node tests/webmcp.browser.test.mjs --catalog",
     "verify:webmcp": "npm run test:webmcp && npm run check && npm run test:webmcp:browser && npm run sandbox:build && npm run build && npm run test:artifacts",
+    "benchmark:webmcp": "node --experimental-strip-types scripts/webmcpBenchmark.ts",
     "neu": "neu"
   },
   "dependencies": {

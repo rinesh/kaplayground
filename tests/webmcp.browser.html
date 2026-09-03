@@ -485,6 +485,8 @@ export function startFixture() {
         ]);
 
         onKeyDown("right", () => player.move(PLAYER_SPEED, 0));
+        onKeyPress("r", () => { player.pos.y -= 10; });
+        onMousePress("left", () => { player.pos.y = mousePos().y; });
     });
     go("webmcp-ready-scene");
 }
@@ -550,14 +552,60 @@ export function startFixture() {
             );
 
             const run = await invoke("kaplayground_run_game", {
-                expectedRevision: updated.revision,
+                expectedContentRevision: updated.contentRevision,
                 mode: "restart-and-check",
                 inspectTag: "webmcp-player",
                 focus: true,
                 consoleLimit: 20,
                 objectLimit: 10,
+                actions: [
+                    {
+                        type: "checkpoint",
+                        name: "before-input",
+                        tag: "webmcp-player",
+                        limit: 1,
+                    },
+                    {
+                        type: "hold",
+                        key: "ArrowRight",
+                        durationMs: 120,
+                    },
+                    {
+                        type: "checkpoint",
+                        name: "after-input",
+                        tag: "webmcp-player",
+                        limit: 1,
+                        expect: {
+                            scene: "webmcp-ready-scene",
+                            canvasFocused: true,
+                            layoutWarningsEmpty: true,
+                            firstObjectMovedFrom: {
+                                checkpoint: "before-input",
+                                minDistance: 5,
+                                axis: "x",
+                            },
+                        },
+                    },
+                    { type: "press", key: "r" },
+                    { type: "press", key: "r" },
+                    {
+                        type: "checkpoint", name: "after-taps", tag: "webmcp-player", limit: 1,
+                        expect: { firstObjectPosition: { yAtLeast: 99, yAtMost: 101 } },
+                    },
+                    { type: "click", x: 0.5, y: 0.75 },
+                    {
+                        type: "checkpoint", name: "after-click", tag: "webmcp-player", limit: 1,
+                        expect: { firstObjectPosition: { yAtLeast: 179, yAtMost: 181 } },
+                    },
+                ],
             });
             assert(run.status === "passed", `Healthy run was ${run.status}: ${JSON.stringify(run)}`);
+            assert(run.contractVersion === 1 && run.ok === true && run.complete === true, "run_game omitted its versioned result envelope.");
+            assert(run.gameplay?.inputProvenance === "sandbox-simulated", "Gameplay evidence did not identify simulated input.");
+            assert(run.gameplay?.passed === true && run.gameplay.checkpointCount === 4 && run.gameplay.assertionCount === 8, "Held input, repeated taps, and mouse input did not all produce passing assertions.");
+            const beforePosition = run.gameplay.checkpoints[0].inspection.objects[0].position;
+            const movementEvidence = run.gameplay.checkpoints[1].checks.find(check => check.name === "firstObjectMovedFrom");
+            assert(beforePosition.x === 40 && movementEvidence.actual.distance >= 5, "Nested checkpoint evidence was lost while serializing the response.");
             assert(typeof run.runId === "string", "run_game did not return a run id.");
             assert(run.readiness?.status === "ready", "Healthy run was not ready.");
             assert(run.readiness?.assetsLoaded === true, "Asset readiness was not confirmed.");
@@ -613,6 +661,24 @@ export function startFixture() {
                 "Supported browser input did not move the focused player.",
             );
 
+            const partialCheckpoint = await invoke("kaplayground_run_game", {
+                expectedContentRevision: updated.contentRevision,
+                mode: "check-current",
+                inspectTag: "webmcp-player",
+                actions: [{ type: "checkpoint", name: "partial-layout", tag: "webmcp-player", limit: 0, expect: { layoutWarningsEmpty: true } }],
+            });
+            assert(partialCheckpoint.status === "incomplete" && partialCheckpoint.gameplay.checkpoints[0].passed === null, "An empty bounded snapshot falsely passed its layout assertion.");
+            const uncheckedInput = await invoke("kaplayground_run_game", {
+                expectedContentRevision: updated.contentRevision,
+                mode: "check-current",
+                inspectTag: "webmcp-player",
+                actions: [
+                    { type: "checkpoint", name: "before-key", expect: { scene: "webmcp-ready-scene" } },
+                    { type: "press", key: "z" },
+                ],
+            });
+            assert(uncheckedInput.status === "incomplete" && uncheckedInput.notChecked.includes("Control effects"), "A checkpoint before input falsely verified its effect.");
+
             // Cancel the navigation event without issuing a pagehide or pageshow.
             const cancelUnload = event => event.preventDefault();
             window.addEventListener("beforeunload", cancelUnload);
@@ -637,6 +703,16 @@ export function startFixture() {
             assert(saved.name === savedName, "save_game did not persist the requested name.");
             assert(typeof saved.projectId === "string", "save_game omitted the project id.");
             assert(saved.revision !== updated.revision, "Renaming did not advance the revision.");
+            assert(saved.contentRevision === run.contentRevision, "Renaming changed executable content identity.");
+            assert(saved.writeAcknowledged === true && saved.readbackVerified === true, "save_game did not verify browser-storage read-back.");
+            const renamedRun = await invoke("kaplayground_run_game", {
+                expectedContentRevision: saved.contentRevision,
+                expectedRuntimeFingerprint: run.runtimeFingerprint,
+                mode: "check-current",
+                inspectTag: "webmcp-player",
+                objectLimit: 10,
+            });
+            assert(renamedRun.status === "passed" && renamedRun.runId === run.runId, "A metadata-only rename invalidated the matching runtime.");
 
             const persisted = await useProject.getState().getProject(saved.projectId);
             assert(persisted?.name === savedName, "The saved project name was not stored.");
@@ -1412,6 +1488,10 @@ startUnavailableInspection();
                 canceledUnloadConfirmed: canceledInspection.revision === updated.revision,
                 focusConfirmed: run.focus.canvasFocused,
                 movementConfirmed: movedPlayer.position.x > initialPlayer.position.x,
+                gameplayExerciseConfirmed: run.gameplay?.passed === true,
+                renamePreservedRuntimeConfirmed: renamedRun.runId === run.runId,
+                saveReadbackConfirmed: saved.readbackVerified === true,
+                contractVersionConfirmed: run.contractVersion === 1,
                 dimensionsConfirmed: true,
                 saveReopenConfirmed: reopened.projectId === saved.projectId,
                 readOnlyAssetsConfirmed: true,

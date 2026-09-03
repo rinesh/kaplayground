@@ -49,15 +49,15 @@ The normal flow is intentionally small:
 inspect the game → read the needed files → update the game → run and check it
 ```
 
-The page exposes one revision value for the open game. It changes whenever the active project or its contents change. Updates must include the revision they were based on, preventing the agent from overwriting a newer user edit.
+The page exposes a project revision and a separate executable content revision. Metadata-only changes such as renaming advance the project revision without invalidating an identical running game. Runs also expose a runtime fingerprint tied to the content, application commit, checked-out engine identity, module reference, and shared sandbox protocol.
 
 `kaplayground_inspect_game` pages file metadata in groups of at most 100, and `kaplayground_read_files` reads at most ten exact paths within a 512 KiB aggregate response budget. This keeps discovery and source responses bounded without splitting the normal workflow into more tools.
 
 `kaplayground_update_game` accepts several related file changes and applies them together. Every path and size is validated before the project is changed, so an invalid multi-file update changes nothing. It may focus one requested file for the user after committing, while editor-model synchronization errors are reported separately from the already-committed project update. Running remains a separate step, making it clear whether an edit failed or the updated game failed to start.
 
-`kaplayground_run_game` normally builds and starts the requested revision, then checks editor diagnostics, run-specific console errors, and a bounded snapshot of the running scene. Its `check-current` mode performs the same checks after the user has played without restarting the game. It reports `passed`, `failed`, or `incomplete`; playing the controls and judging visual quality remain browser-level checks rather than hidden claims made by the page.
+`kaplayground_run_game` normally builds and starts the requested executable content, then checks diagnostics, run-specific console errors, and a bounded scene snapshot. It can also execute a bounded sequence of sandbox-simulated key or pointer actions with named checkpoints that assert scenes, text, object counts, positions, movement, focus, and objective layout warnings. The result labels this input provenance explicitly. Its `check-current` mode preserves gameplay. Visual quality remains unjudged rather than being inferred from geometry.
 
-The remaining tools page through reusable assets and examples, save the game, and open a selected example. File updates and example replacements are serialized, and replacements recheck their revision at the commit point. Replacing unsaved work requires a confirmation clicked in the page—the tool's Boolean argument can request that prompt but cannot approve it. Source file contents are hidden from the visible activity history; the panel retains only useful details such as paths, counts, timing, and errors.
+The remaining tools page through reusable assets and examples, save the game, and open a selected example. Saves return a persistence receipt only after IndexedDB acknowledges the write and a canonical read-back hash matches the active project. File updates and example replacements are serialized, and replacements recheck their revision at the commit point. Replacing unsaved work still requires an in-page user confirmation. Source contents remain hidden from visible history; the panel stores allowlisted verification receipts instead.
 
 The Codex coach deliberately uses ordinary creative requests. Every copied idea adds only “Use the open editor at https://promptmygame.com.” before the original creative prompt, including in local previews. Prompts do not include project links, query strings, WebMCP, tool names, revision values, or browser-routing syntax.
 
@@ -72,6 +72,8 @@ It opens every sample, records startup readiness and errors, and checks all four
 copyable ideas for each sample. The regular browser suite also exercises
 clipboard failures, modal focus, delayed copy responses, saved projects, and
 desktop and portrait layouts.
+
+For repeated matched comparisons, record pinned workflow runs and use `npm run benchmark:webmcp -- <runs.json> <summary.json>`. The benchmark reports distributions, acceptance coverage, retries, unsupported claims, interactions, and cached and uncached tokens separately; it is intentionally not a pull-request gate.
 
 The app and preview sandbox use a versioned message protocol and must be released together. Deploy `sandbox/` with `npm run sandbox:deploy`, then set `VITE_SANDBOX_URL` to that deployment when building the app. An older sandbox is rejected before project code is sent because it cannot acknowledge runs, pause state, or inspection requests.
 

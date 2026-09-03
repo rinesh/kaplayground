@@ -1,5 +1,8 @@
 import { create } from "zustand";
-import { summarizeWebMCPActivityInput } from "./activitySummary.ts";
+import {
+    summarizeWebMCPActivityInput,
+    summarizeWebMCPActivityResult,
+} from "./activitySummary.ts";
 import type {
     KaplaygroundWebMCPInvocation,
     KaplaygroundWebMCPStatus,
@@ -9,6 +12,7 @@ const MAX_ACTIVITY_ENTRIES = 100;
 
 export interface WebMCPActivityEntry extends KaplaygroundWebMCPInvocation {
     input: Record<string, unknown>;
+    result?: Record<string, unknown>;
 }
 
 interface WebMCPActivityStore {
@@ -60,6 +64,11 @@ export const useWebMCPActivity = create<WebMCPActivityStore>((set) => ({
                 status: invocation.status,
                 durationMs: invocation.durationMs,
                 error: invocation.error,
+                errorCode: invocation.errorCode,
+                result: summarizeWebMCPActivityResult(
+                    invocation.toolName,
+                    invocation.result,
+                ),
             };
             return { entries };
         });

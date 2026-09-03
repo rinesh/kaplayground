@@ -17,12 +17,16 @@ import {
 } from "./previewAssets";
 import {
     MAX_PREVIEW_INSPECTION_OBJECTS,
+    PREVIEW_PROTOCOL_VERSION,
+    type PreviewExerciseAction,
+    type PreviewExerciseResult,
     type PreviewInspection,
     type PreviewInspectionOptions,
     type PreviewPauseResult,
     type PreviewReadiness,
     PreviewRunError,
     type PreviewRunResult,
+    type SandboxExerciseResultMessage,
     type SandboxInspectionResultMessage,
     type SandboxPauseResultMessage,
     type SandboxRunResultMessage,
@@ -33,7 +37,7 @@ import { useWorkspace } from "./useWorkspace";
 const PREVIEW_READY_TIMEOUT_MS = 10_000;
 const PREVIEW_RUN_TIMEOUT_MS = 30_000;
 const PREVIEW_CONTROL_TIMEOUT_MS = 10_000;
-const PREVIEW_PROTOCOL_VERSION = 2;
+const PREVIEW_EXERCISE_TIMEOUT_MS = 15_000;
 const LAYOUT_POLL_INTERVAL_MS = 100;
 const previewRunCoordinator = createPreviewRunCoordinator();
 let previewSessionController = new AbortController();
@@ -97,6 +101,9 @@ export interface EditorStore {
     runtime: EditorRuntime;
     stopped: boolean;
     previewRunId: string | null;
+    /** Executable identity attached only to runs verified by run_game. */
+    previewContentRevision: string | null;
+    previewRuntimeFingerprint: string | null;
     previewReadiness: PreviewReadiness | null;
     previewAssets: PreviewAssets;
     previewProjectGeneration: number | null;
@@ -112,6 +119,11 @@ export interface EditorStore {
         options?: PreviewInspectionOptions,
         signal?: AbortSignal,
     ) => Promise<PreviewInspection>;
+    exercisePreview: (
+        actions: PreviewExerciseAction[],
+        signal?: AbortSignal,
+        expectedRunId?: string | null,
+    ) => Promise<PreviewExerciseResult>;
     pause: () => void;
     stop: () => void;
     getRuntime: () => EditorRuntime;
@@ -150,6 +162,8 @@ export const useEditor = create<EditorStore>((set, get) => ({
     },
     stopped: (new URL(window.location.href)).searchParams.has("stopped"),
     previewRunId: null,
+    previewContentRevision: null,
+    previewRuntimeFingerprint: null,
     previewReadiness: null,
     previewAssets: emptyPreviewAssets(),
     previewProjectGeneration: null,
@@ -296,6 +310,8 @@ export const useEditor = create<EditorStore>((set, get) => ({
         set({
             stopped: false,
             previewRunId: runId,
+            previewContentRevision: null,
+            previewRuntimeFingerprint: null,
             previewReadiness: null,
             previewAssets: emptyPreviewAssets(),
             previewProjectGeneration: useProject.getState().projectGeneration,
@@ -436,6 +452,8 @@ export const useEditor = create<EditorStore>((set, get) => ({
                         set({
                             stopped: true,
                             previewRunId: null,
+                            previewContentRevision: null,
+                            previewRuntimeFingerprint: null,
                             previewReadiness: null,
                             previewAssets: emptyPreviewAssets(),
                             previewProjectGeneration: null,
@@ -572,6 +590,78 @@ export const useEditor = create<EditorStore>((set, get) => ({
             operation.dispose();
         }
     },
+    async exercisePreview(actions, callerSignal, expectedRunId) {
+        if (get().stopped) {
+            throw new Error(
+                "The preview is stopped. Run it before exercising it.",
+            );
+        }
+
+        const iframeWindow = getPreviewWindow(get().runtime.iframe);
+        const runId = get().previewRunId;
+        if (runId === null) throw new Error("The preview has no active run.");
+        if (expectedRunId !== undefined && runId !== expectedRunId) {
+            throw new Error("The preview run changed before the input sequence could start.");
+        }
+        const requestId = createRequestId("exercise");
+        const operation = createOperationSignal(
+            [previewSessionController.signal, callerSignal],
+            PREVIEW_EXERCISE_TIMEOUT_MS,
+            "Exercising the preview timed out.",
+        );
+
+        const cancelExercise = () => {
+            iframeWindow.postMessage(
+                { type: "CANCEL_EXERCISE", requestId, runId },
+                SANDBOX_ORIGIN,
+            );
+        };
+        operation.signal.addEventListener("abort", cancelExercise, {
+            once: true,
+        });
+
+        try {
+            const result = await requestSandbox(
+                iframeWindow,
+                {
+                    type: "EXERCISE_RUNTIME",
+                    requestId,
+                    runId,
+                    actions,
+                },
+                (data): data is SandboxExerciseResultMessage =>
+                    isRecord(data)
+                    && data.type === "RUNTIME_EXERCISE_RESULT"
+                    && data.requestId === requestId,
+                operation.signal,
+                PREVIEW_EXERCISE_TIMEOUT_MS,
+                "[game] sandbox did not complete the input sequence in time",
+            );
+
+            if (
+                result.error
+                || result.runId !== runId
+                || !result.exercise
+                || result.exercise.runId !== runId
+            ) {
+                throw new Error(
+                    result.error
+                        ?? "The sandbox did not exercise the active preview run.",
+                );
+            }
+
+            set({
+                previewReadiness: result.exercise.finalInspection.readiness,
+                ...(typeof result.exercise.finalInspection.paused === "boolean"
+                    ? { paused: result.exercise.finalInspection.paused }
+                    : {}),
+            });
+            return result.exercise;
+        } finally {
+            operation.signal.removeEventListener("abort", cancelExercise);
+            operation.dispose();
+        }
+    },
     pause() {
         if (get().stopped) {
             void get().run();
@@ -591,6 +681,8 @@ export const useEditor = create<EditorStore>((set, get) => ({
         set({
             stopped: true,
             previewRunId: null,
+            previewContentRevision: null,
+            previewRuntimeFingerprint: null,
             previewReadiness: null,
             previewAssets: emptyPreviewAssets(),
             previewProjectGeneration: null,
