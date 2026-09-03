@@ -510,7 +510,10 @@ async function main() {
             "Ideas should only open and close; they must not expose a resize divider.",
         );
         const assertExpandedGame = async () => {
-            const state = await pageValue(`(() => {
+            const deadline = Date.now() + 5_000;
+            let state;
+            while (Date.now() < deadline) {
+                state = await pageValue(`(() => {
                 const r = document.querySelector('#game-view').getBoundingClientRect();
                 const area = document.querySelector('main.workspace-main').getBoundingClientRect();
                 return {
@@ -521,18 +524,24 @@ async function main() {
                     tipsInert: document.querySelector('#workspace-preview-second').inert,
                     restore: !!document.querySelector('button[aria-label="Restore panels"]'),
                 };
-            })()`);
-            assert(
-                Math.abs(state.game.width - state.area.width) <= 2
+                })()`);
+                if (
+                    Math.abs(state.game.width - state.area.width) <= 2
                     && Math.abs(state.game.height - state.area.height) <= 2
                     && Math.abs(state.game.top - state.area.top) <= 1
                     && Math.abs(state.game.bottom - state.viewportHeight) <= 2
-                    && state.toolsInert && state.tipsInert && state.restore,
+                    && state.toolsInert && state.tipsInert && state.restore
+                ) {
+                    await assertCanvasFollowsGame("the expanded game");
+                    return;
+                }
+                await delay(50);
+            }
+            assert.fail(
                 `The expanded game doesn't fill the workspace: ${
                     JSON.stringify(state)
                 }`,
             );
-            await assertCanvasFollowsGame("the expanded game");
         };
         const layoutChecks = [];
         const tipsContentChecks = [];
