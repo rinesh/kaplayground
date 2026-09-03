@@ -1393,26 +1393,35 @@ async function main() {
                             ...point,
                         });
                         await delay(30);
-                        for (const type of ["mousePressed", "mouseReleased"]) {
+                        expectedClicks++;
+                        let count;
+                        try {
                             await client.send("Input.dispatchMouseEvent", {
-                                type,
+                                type: "mousePressed",
+                                button: "left",
+                                clickCount: 1,
+                                ...point,
+                            });
+                            // KAPLAY samples pressed state during its update.
+                            // Releasing before that frame can erase the click.
+                            const clickDeadline = Date.now() + 2_000;
+                            do {
+                                await delay(30);
+                                count = await pageValue(
+                                    "globalThis.__webmcpReadPointerCount()",
+                                );
+                            } while (
+                                count !== expectedClicks
+                                && Date.now() < clickDeadline
+                            );
+                        } finally {
+                            await client.send("Input.dispatchMouseEvent", {
+                                type: "mouseReleased",
                                 button: "left",
                                 clickCount: 1,
                                 ...point,
                             });
                         }
-                        expectedClicks++;
-                        const clickDeadline = Date.now() + 2_000;
-                        let count;
-                        do {
-                            await delay(30);
-                            count = await pageValue(
-                                "globalThis.__webmcpReadPointerCount()",
-                            );
-                        } while (
-                            count !== expectedClicks
-                            && Date.now() < clickDeadline
-                        );
                         assert.equal(
                             count,
                             expectedClicks,
