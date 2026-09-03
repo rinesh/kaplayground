@@ -7,8 +7,94 @@ import {
     isPlayableStartingPoint,
     matchesStartingPoint,
 } from "../src/data/startingPoints.ts";
+import { fitGameToViewport } from "../src/features/Projects/application/gameViewport.ts";
 import { createActiveProjectPersister } from "../src/features/Projects/stores/activeProjectPersistence.ts";
 import { isActiveGameConsoleMessage } from "../src/hooks/consoleMessages.ts";
+
+describe("game viewport defaults", () => {
+    const viewport = { width: 960, height: 540 };
+
+    it("fits an unspecified game to its initial playfield without moving its coordinates", () => {
+        assert.deepEqual(fitGameToViewport(undefined, viewport), {
+            width: 960,
+            height: 540,
+            letterbox: true,
+        });
+    });
+
+    it("preserves authored resolution, portrait orientation, and engine options", () => {
+        const options = Object.freeze({
+            width: 320,
+            height: 560,
+            background: "blue",
+            global: false,
+        });
+        assert.deepEqual(fitGameToViewport(options, viewport), {
+            ...options,
+            letterbox: true,
+        });
+        assert.equal(options.letterbox, undefined);
+    });
+
+    it("keeps the initial logical size of games using pixel scale", () => {
+        assert.deepEqual(fitGameToViewport({ scale: 2 }, viewport), {
+            scale: 2,
+            width: 480,
+            height: 270,
+            letterbox: true,
+        });
+        assert.deepEqual(
+            fitGameToViewport({ width: 320, scale: 2 }, viewport),
+            {
+                scale: 2,
+                width: 320,
+                height: 270,
+                letterbox: true,
+            },
+        );
+    });
+
+    it("retains explicit responsive, stretched, and custom canvas behavior", () => {
+        for (
+            const options of [{ letterbox: false }, { stretch: true }, {
+                canvas: {},
+            }, { root: {} }]
+        ) {
+            assert.equal(fitGameToViewport(options, viewport), options);
+        }
+    });
+
+    it("supplies missing dimensions when letterboxing is explicitly requested", () => {
+        assert.deepEqual(fitGameToViewport({ letterbox: true }, viewport), {
+            width: 960,
+            height: 540,
+            letterbox: true,
+        });
+    });
+
+    it("starts with a usable design size when the container is initially hidden", () => {
+        assert.deepEqual(
+            fitGameToViewport(undefined, { width: 0, height: 0 }),
+            {
+                width: 960,
+                height: 540,
+                letterbox: true,
+            },
+        );
+    });
+
+    it("runs without module state when embedded in previews and exports", () => {
+        const embedded = new Function(
+            `return (${fitGameToViewport.toString()});`,
+        )();
+        assert.deepEqual(embedded({ scale: 0.5 }, viewport), {
+            scale: 0.5,
+            width: 1920,
+            height: 1080,
+            letterbox: true,
+        });
+    });
+});
 
 function deferred() {
     let resolve;

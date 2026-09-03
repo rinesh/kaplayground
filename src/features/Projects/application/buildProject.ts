@@ -2,6 +2,7 @@ import { getVersion, parseAssets } from "../../../util/compiler";
 import { useProject } from "../stores/useProject";
 import { buildCode } from "./buildCode";
 import { defaultFavicon } from "./defaultFavicon";
+import { fitGameToViewport } from "./gameViewport";
 
 const toDataUrl = (data: string) => {
     const base64 = btoa(data);
@@ -48,7 +49,14 @@ export async function buildProject() {
 </head>
 <body>
     <script type="module">
-        import kaplay from "${kaplayLibDataUrl}";
+        import createKaplay from "${kaplayLibDataUrl}";
+        const kaplay = (options, ...args) => createKaplay(
+            (${fitGameToViewport.toString()})(options, {
+                width: window.innerWidth,
+                height: window.innerHeight,
+            }),
+            ...args,
+        );
         ${parseAssets(code)}
     </script>
 </body>

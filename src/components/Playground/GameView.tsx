@@ -1,5 +1,12 @@
 import { assets } from "@kaplayjs/crew";
-import { type FC, useCallback, useEffect, useMemo, useState } from "react";
+import {
+    type FC,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import { useEditor } from "../../hooks/useEditor";
 import { FocusFrame, useFocusFrameRef } from "../UI/FocusFrame";
 
@@ -9,9 +16,38 @@ export const GameView: FC = () => {
     const run = useEditor((s) => s.run);
     const [iframeHidden, setIframeHidden] = useState(stopped);
     const focusFrameRef = useFocusFrameRef();
+    const containerRef = useRef<HTMLDivElement>(null);
+    const frameElement = useRef<HTMLIFrameElement | null>(null);
     const iframeSrc = useMemo(() => useEditor.getState().getIframeSrc(), []);
 
+    const updateFrameSize = useCallback(() => {
+        const iframe = frameElement.current;
+        const container = iframe?.parentElement;
+        if (!iframe || !container?.clientWidth || !container.clientHeight) {
+            return;
+        }
+        iframe.style.width = `${container.clientWidth}px`;
+        iframe.style.height = `${container.clientHeight}px`;
+    }, []);
+
+    useEffect(() => {
+        if (!containerRef.current) return;
+        let frame = 0;
+        // Allotment lays out panes inside ResizeObserver. Resize the iframe in
+        // the next frame so its canvas doesn't receive an intermediate layout.
+        const observer = new ResizeObserver(() => {
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(updateFrameSize);
+        });
+        observer.observe(containerRef.current);
+        return () => {
+            observer.disconnect();
+            cancelAnimationFrame(frame);
+        };
+    }, [updateFrameSize]);
+
     const iframeRef = useCallback((iframe: HTMLIFrameElement | null) => {
+        frameElement.current = iframe;
         if (!iframe) {
             const editor = useEditor.getState();
             if (!editor.stopped) editor.stop();
@@ -20,6 +56,7 @@ export const GameView: FC = () => {
             return;
         }
 
+        updateFrameSize();
         const iframeWindow = iframe.contentWindow?.window;
         (window as any).iframeWindow = iframeWindow;
 
@@ -28,7 +65,7 @@ export const GameView: FC = () => {
         iframe.addEventListener("focusiframe", () => {
             focusFrameRef.current?.blink();
         });
-    }, []);
+    }, [updateFrameSize]);
 
     useEffect(() => {
         setTimeout(() => setIframeHidden(stopped));
@@ -36,7 +73,10 @@ export const GameView: FC = () => {
     }, [stopped, setIframeHidden]);
 
     return (
-        <div className="relative size-full bg-black/50 rounded-xl z-0">
+        <div
+            ref={containerRef}
+            className="relative size-full overflow-hidden bg-black/50 rounded-xl z-0"
+        >
             {!iframeHidden
                 ? (
                     <iframe

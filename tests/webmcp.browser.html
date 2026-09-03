@@ -223,18 +223,30 @@
             const checkBrowserHeightMotion = async (element, activate, property = "height") => {
                 const before = element.getBoundingClientRect().height;
                 let onTransition;
+                let observer;
                 const started = new Promise(resolve => {
-                    onTransition = event => {
-                        if (event.target !== element || event.propertyName !== property) return;
+                    const capture = () => {
                         const animation = element.getAnimations().find(animation => animation.transitionProperty === property);
-                        animation?.pause();
+                        if (!animation) return;
+                        animation.pause();
                         resolve(animation);
                     };
+                    onTransition = event => {
+                        if (event.target !== element || event.propertyName !== property) return;
+                        capture();
+                    };
                     element.addEventListener("transitionrun", onTransition);
+                    // Observe the triggering attribute before the next paint:
+                    // a busy frame can deliver transitionrun after it finishes.
+                    observer = new MutationObserver(capture);
+                    observer.observe(element, { attributes: true, attributeFilter: ["style", "data-expanded"] });
                 });
                 activate();
                 const animation = await withTimeout(started, `${element.className} ${property} transition from ${before}px`, 5_000)
-                    .finally(() => element.removeEventListener("transitionrun", onTransition));
+                    .finally(() => {
+                        observer.disconnect();
+                        element.removeEventListener("transitionrun", onTransition);
+                    });
                 assert(animation, "The browser changed height without a transition.");
                 animation.currentTime = Number(animation.effect.getTiming().duration) / 2;
                 await browserPaint();
@@ -1145,6 +1157,115 @@ startUnavailableInspection();
             assert(useEditor.getState().previewRunId === featureRun, "Reading or collapsing tips restarted the sample.");
             assert((await db.getAllKeys("projects")).length === beforeFeatureCount, "A feature sample was saved without an edit.");
 
+            const viewportAudits = [];
+            let viewportAuditId = 0;
+            async function auditViewport(label, { pointer = false, pixelDensity = null, exported = null, checkObjects = true, responsive = false, readErrors = () => useGameConsole.getState().entries.filter(entry => entry.level === 'error') } = {}) {
+                const project = useProject.getState();
+                const runId = useEditor.getState().previewRunId;
+                const iframe = exported ?? document.querySelector('#game-view');
+                const inspect = exported ? async () => {
+                    const k = exported.contentWindow;
+                    return {
+                        runId: 'html-export',
+                        viewport: { width: k.width(), height: k.height() },
+                        objects: k.get('resize-target').map(object => ({
+                            id: object.id, position: { x: object.pos.x, y: object.pos.y },
+                            tags: object.tags,
+                        })),
+                    };
+                } : () => useEditor.getState().inspectPreview({ limit: 50 });
+                if (!pointer) await useEditor.getState().setPaused(true);
+                const before = await inspect();
+                globalThis.__webmcpReadViewportAudit = async () => ({
+                    ...await inspect(),
+                    errors: readErrors(),
+                });
+                globalThis.__webmcpViewportAuditRequest = {
+                    id: viewportAuditId++, label, before, checkObjects, responsive,
+                    frameSelector: exported ? '#viewport-export' : '#game-view', pointer, pixelDensity,
+                };
+                const result = await withTimeout(new Promise(resolve => {
+                    globalThis.__webmcpCompleteViewportAudit = resolve;
+                }), `resizing ${label}`, 30_000);
+                delete globalThis.__webmcpViewportAuditRequest;
+                delete globalThis.__webmcpCompleteViewportAudit;
+                delete globalThis.__webmcpReadViewportAudit;
+                assert(document.querySelector(exported ? '#viewport-export' : '#game-view') === iframe,
+                    `${label} remounted its frame while resizing.`);
+                assert(useProject.getState().projectRevision === project.projectRevision
+                    && useProject.getState().projectGeneration === project.projectGeneration
+                    && useEditor.getState().previewRunId === runId,
+                    `${label} changed source or restarted while resizing.`);
+                viewportAudits.push(result);
+                if (!pointer) await useEditor.getState().setPaused(false);
+            }
+
+            async function createSizingProject(mode, replace) {
+                const previousRun = useEditor.getState().previewRunId;
+                await useProject.getState().createNewProject(mode, replace);
+                await waitFor(() => useEditor.getState().previewRunId !== previousRun
+                    && useEditor.getState().previewReadiness?.status === 'ready', 'the new sizing project');
+                await delay(100);
+            }
+            for (const [label, mode, replace] of [
+                ['new-project-template', 'pj', undefined],
+                ['new-example-template', 'ex', { buildMode: 'legacy' }],
+            ]) {
+                await createSizingProject(mode, replace);
+                const initialSize = (await useEditor.getState().inspectPreview()).viewport;
+                assert(initialSize.width === 960 && initialSize.height === 540,
+                    `${label} did not start at its portable design size.`);
+                await auditViewport(label);
+            }
+
+            const pointerSource = `kaplay({ background: '#253751', pixelDensity: 2 });
+                const status = add([text('0', { size: 24 }), pos(center()), anchor('center'), 'resize-status']);
+                let clicks = 0;
+                for (const [x, y] of [[0.15, 0.15], [0.85, 0.15], [0.15, 0.85], [0.85, 0.85]]) {
+                    const target = add([rect(60, 60), pos(width() * x, height() * y), anchor('center'), area(), color(160, 220, 90), 'resize-target']);
+                    target.onClick(() => { status.text = String(++clicks); });
+                }`;
+            await createSizingProject('ex', { buildMode: 'legacy', files: new Map([
+                ['main.js', { path: 'main.js', kind: 'main', language: 'javascript', value: pointerSource }],
+            ]) });
+            globalThis.__webmcpReadPointerCount = async () => Number(
+                (await useEditor.getState().inspectPreview({ tag: 'resize-status', limit: 1 })).objects[0].text,
+            );
+            await auditViewport('implicit-size-game-pointer-controls', { pointer: true, pixelDensity: 2 });
+
+            // Test the actual standalone HTML build, including its own canvas,
+            // engine initialization, and pointer mapping after it leaves the editor.
+            const { buildProject } = await import('/src/features/Projects/application/buildProject.ts');
+            const exported = document.createElement('iframe');
+            const exportErrors = [];
+            exported.addEventListener('load', () => {
+                exported.contentWindow.addEventListener('error', event => exportErrors.push(event.message));
+                exported.contentWindow.addEventListener('unhandledrejection', event => exportErrors.push(String(event.reason)));
+            }, { once: true });
+            exported.id = 'viewport-export';
+            exported.name = 'viewport-export';
+            exported.style.cssText = 'position:fixed;left:0;top:0;width:100vw;height:100vh;border:0;z-index:99999';
+            exported.srcdoc = await buildProject();
+            document.body.append(exported);
+            try {
+                await waitFor(() => exported.contentWindow?.get?.('resize-target').length === 4,
+                    'the standalone HTML game');
+                globalThis.__webmcpReadPointerCount = async () => Number(exported.contentWindow.get('resize-status')[0].text);
+                await auditViewport('standalone-html-pointer-controls', { pointer: true, pixelDensity: 2, exported, readErrors: () => exportErrors });
+            } finally {
+                exported.remove();
+                delete globalThis.__webmcpReadPointerCount;
+            }
+
+            await createSizingProject('ex', { buildMode: 'legacy', files: new Map([
+                ['main.js', { path: 'main.js', kind: 'main', language: 'javascript', value: `
+                    kaplay({ letterbox: false });
+                    const label = add([text('Responsive'), pos(center()), anchor('center')]);
+                    onResize(() => { label.pos = center(); });
+                ` }],
+            ]) });
+            await auditViewport('explicit-responsive-game', { responsive: true, checkObjects: false });
+
             // Launch the actual game catalog, not only the integration fixture.
             // This also checks loading and visible error capture without WebMCP.
             const gameStarters = demos.filter(isPlayableStartingPoint);
@@ -1171,6 +1292,7 @@ startUnavailableInspection();
                 assert(useWorkspace.getState().activeTab === "assets", `${starter.formattedName} opened the editor while starting.`);
                 assert(useProject.getState().projectKey === null && useProject.getState().saveStatus === "draft", `${starter.formattedName} was saved just by playing.`);
                 assert(useProject.getState().project.kaplayVersion === starter.version, `${starter.formattedName} changed its engine version.`);
+                await auditViewport(starter.key, { checkObjects: starter.key !== 'advancedbinding' });
                 gameStartups.push({ key: starter.key, ready: true, errorCount: errorMessages.length });
             }
             assert((await db.getAllKeys("projects")).length === beforeFeatureCount, "Starting the game catalog created saved projects.");
@@ -1200,6 +1322,10 @@ startUnavailableInspection();
                         startupError = error.message;
                     }
                     assert(useProject.getState().demoKey === sample.key, `The chooser didn't open ${sample.key}.`);
+                    if (!startupError && useEditor.getState().previewReadiness?.status === 'ready'
+                        && !useGameConsole.getState().entries.some(entry => entry.level === 'error')) {
+                        await auditViewport(`catalog:${sample.key}`, { checkObjects: isPlayableStartingPoint(sample) });
+                    }
                     const state = useProject.getState();
                     const preview = useEditor.getState();
                     const guide = createCodexPlayGuideForContext({
@@ -1304,6 +1430,7 @@ startUnavailableInspection();
                 regressionStarterCount: regressionStarters.length,
                 gameStartups,
                 catalogAudit,
+                viewportAudits,
                 catalogExpectedCount: auditCatalog ? demos.length : 0,
                 pendingAssetsStatus: pendingRun.status,
                 inspectionErrorStatus: inspectionErrorRun.status,

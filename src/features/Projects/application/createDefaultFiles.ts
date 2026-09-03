@@ -6,7 +6,12 @@ import { getAssetImportFunction } from "../stores/slices/assets";
 import { useProject } from "../stores/useProject";
 
 const mainExample = `// Starts a new game
-kaplay();
+// Keep the whole game visible when the window or panels change size.
+kaplay({
+    width: 960,
+    height: 540,
+    letterbox: true,
+});
 
 // Load a bean
 loadBean();
@@ -75,7 +80,7 @@ const defaultFiles: File[] = [
         path: "kaplay.js",
         kind: "kaplay",
         value:
-            "kaplay({\n    focus: false,\n    font: \"happy\",\n    background: \"#4a3052\", \n});\n",
+            "// Keep the whole game visible when the window or panels change size.\nkaplay({\n    width: 960,\n    height: 540,\n    letterbox: true,\n    focus: false,\n    font: \"happy\",\n    background: \"#4a3052\",\n});\n",
         language: "javascript",
     },
     {

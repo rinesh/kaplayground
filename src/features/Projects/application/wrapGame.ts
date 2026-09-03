@@ -5,6 +5,7 @@ import {
 import { getVersion, parseAssets } from "../../../util/compiler";
 import { useProject } from "../stores/useProject";
 import { buildCode } from "./buildCode";
+import { fitGameToViewport } from "./gameViewport";
 
 const CONTEXT_CAPTURE_CALLBACK = "__kaplaygroundCaptureContext";
 
@@ -21,8 +22,14 @@ export async function wrapGame(runId: string) {
         import createKaplay from "${
         getVersion(false, projectSnapshot.kaplayVersion)
     }";
-        const kaplay = (...args) => {
-            const context = createKaplay(...args);
+        const kaplay = (options, ...args) => {
+            const context = createKaplay(
+                (${fitGameToViewport.toString()})(options, {
+                    width: window.innerWidth,
+                    height: window.innerHeight,
+                }),
+                ...args,
+            );
             window._k_ctx = context;
             window._k_debug = context?.debug ?? null;
             (${trackPreviewAssets.toString()})(context, (event) => {

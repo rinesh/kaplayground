@@ -227,7 +227,7 @@ async function main() {
 
         const resultPromise = waitForBrowserResult(
             client,
-            auditCatalog ? 600_000 : 120_000,
+            auditCatalog ? 600_000 : 180_000,
         );
         await client.send("Page.bringToFront");
         for (const key of ["bean_voice", "mark_voice", "burp", "kaboom2000"]) {
@@ -389,7 +389,37 @@ async function main() {
             }
             await delay(100);
         };
+        const readCanvasDisplay = async (selector = "#game-view") => {
+            const { frameTree } = await client.send("Page.getFrameTree");
+            const findSandbox = tree =>
+                (selector === "#viewport-export"
+                        ? tree.frame.name === "viewport-export"
+                        : tree.frame.url.startsWith(sandboxUrl))
+                    ? tree.frame
+                    : (tree.childFrames ?? []).map(findSandbox).find(Boolean);
+            const frame = findSandbox(frameTree);
+            assert(frame, "The running sandbox frame is missing.");
+            const { executionContextId } = await client.send(
+                "Page.createIsolatedWorld",
+                {
+                    frameId: frame.id,
+                    worldName: "webmcp-canvas-size-check",
+                },
+            );
+            const response = await client.send("Runtime.evaluate", {
+                contextId: executionContextId,
+                expression: `(() => {
+                    const canvas = document.querySelector('canvas');
+                    if (!canvas) return null;
+                    const r = canvas.getBoundingClientRect();
+                    return { x: r.x, y: r.y, width: r.width, height: r.height, bufferWidth: canvas.width, bufferHeight: canvas.height };
+                })()`,
+                returnByValue: true,
+            });
+            return response.result.value;
+        };
         const canvasResizeChecks = [];
+        let burpLogicalSize;
         const assertCanvasFollowsGame = async label => {
             const deadline = Date.now() + 5_000;
             let state;
@@ -407,10 +437,14 @@ async function main() {
                         columnsSettled,
                     };
                 })()`);
+                state.canvas = await readCanvasDisplay();
+                burpLogicalSize ??= state.viewport;
                 if (
-                    state.viewport && state.columnsSettled
-                    && Math.abs(state.viewport.width - state.game.width) <= 2
-                    && Math.abs(state.viewport.height - state.game.height) <= 2
+                    state.viewport && state.canvas && state.columnsSettled
+                    && Math.abs(state.canvas.width - state.game.width) <= 2
+                    && Math.abs(state.canvas.height - state.game.height) <= 2
+                    && state.viewport.width === burpLogicalSize.width
+                    && state.viewport.height === burpLogicalSize.height
                     && state.instruction
                     && Math.abs(
                             state.instruction.position.x
@@ -975,9 +1009,10 @@ async function main() {
         await clickControl("button[aria-label=\"Restore panels\"]");
         const flappyResizeChecks = [];
         await pageValue("globalThis.__webmcpOpenLayoutSample('flappy')");
-        const flappyRun = await pageValue(
-            "(async () => (await globalThis.__webmcpInspectLayoutPreview()).runId)()",
+        const flappyInitial = await pageValue(
+            "globalThis.__webmcpInspectLayoutPreview()",
         );
+        const flappyRun = flappyInitial.runId;
         const assertFlappyAligned = async label => {
             let state;
             const deadline = Date.now() + 5_000;
@@ -988,12 +1023,16 @@ async function main() {
                     const game = document.querySelector('#game-view').getBoundingClientRect();
                     return { runId: player.runId, scene: player.scene, viewport: player.viewport, player: player.objects[0], score: score.objects[0], game: { width: game.width, height: game.height } };
                 })()`);
+                state.canvas = await readCanvasDisplay();
                 const { viewport, player, score, game } = state;
                 const offset = viewport && Math.min(108, viewport.height * 0.2);
                 if (
                     state.scene === "lose" && viewport && player && score
-                    && Math.abs(viewport.width - game.width) <= 2
-                    && Math.abs(viewport.height - game.height) <= 2
+                    && state.canvas
+                    && Math.abs(state.canvas.width - game.width) <= 2
+                    && Math.abs(state.canvas.height - game.height) <= 2
+                    && viewport.width === flappyInitial.viewport.width
+                    && viewport.height === flappyInitial.viewport.height
                     && Math.abs(player.position.x - viewport.width / 2) <= 1
                     && Math.abs(score.position.x - viewport.width / 2) <= 1
                     && Math.abs(
@@ -1198,6 +1237,210 @@ async function main() {
             expression: "globalThis.__webmcpLayoutChecksComplete?.()",
         });
 
+        const viewportWindows = [[1042, 600], [390, 700], [1440, 900], [
+            1042,
+            936,
+        ]];
+        let lastViewportAudit = -1;
+        while (true) {
+            const progress = await pageValue(`({
+                done: !!globalThis.__webmcpBrowserTestResult,
+                request: globalThis.__webmcpViewportAuditRequest ?? null,
+            })`);
+            if (progress.done) break;
+            const request = progress.request;
+            if (!request || request.id === lastViewportAudit) {
+                await delay(50);
+                continue;
+            }
+            lastViewportAudit = request.id;
+            const checks = [];
+            const positions = state =>
+                state.objects.filter(object => object.position)
+                    .map(object => ({
+                        id: object.id,
+                        position: object.position,
+                    }));
+            let expectedClicks = request.pointer
+                ? await pageValue("globalThis.__webmcpReadPointerCount()")
+                : 0;
+            for (const [width, height] of viewportWindows) {
+                await client.send("Emulation.setDeviceMetricsOverride", {
+                    width,
+                    height,
+                    deviceScaleFactor: 1,
+                    mobile: false,
+                });
+                let state, frame, canvas, bufferMatches;
+                const deadline = Date.now() + 5_000;
+                while (Date.now() < deadline) {
+                    await delay(100);
+                    state = await pageValue(
+                        "globalThis.__webmcpReadViewportAudit()",
+                    );
+                    frame = await pageValue(`(() => {
+                        const r = document.querySelector(${
+                        JSON.stringify(request.frameSelector)
+                    }).getBoundingClientRect();
+                        return { x:r.x, y:r.y, width:r.width, height:r.height };
+                    })()`);
+                    canvas = await readCanvasDisplay(request.frameSelector);
+                    // A resized CSS box can precede the engine's drawing frame.
+                    // Wait for the fixture's high-density buffer before clicking.
+                    bufferMatches = canvas && (!request.pixelDensity || (
+                        Math.abs(
+                                canvas.bufferWidth
+                                    - canvas.width * request.pixelDensity,
+                            ) <= request.pixelDensity
+                        && Math.abs(
+                                canvas.bufferHeight
+                                    - canvas.height * request.pixelDensity,
+                            ) <= request.pixelDensity
+                    ));
+                    if (
+                        canvas && Math.abs(canvas.width - frame.width) <= 2
+                        && Math.abs(canvas.height - frame.height) <= 2
+                        && bufferMatches
+                        && (!request.responsive || (
+                            Math.abs(state.viewport.width - canvas.width) <= 2
+                            && Math.abs(state.viewport.height - canvas.height)
+                                <= 2
+                        ))
+                    ) break;
+                }
+                assert(
+                    canvas && Math.abs(canvas.width - frame.width) <= 2
+                        && Math.abs(canvas.height - frame.height) <= 2,
+                    `${request.label}: canvas did not fill the resized frame: ${
+                        JSON.stringify({ frame, canvas })
+                    }`,
+                );
+                assert(
+                    canvas.bufferWidth > 0 && canvas.bufferHeight > 0,
+                    `${request.label}: the resized canvas has no drawing buffer.`,
+                );
+                assert(
+                    bufferMatches,
+                    `${request.label}: the drawing buffer did not follow the resized canvas: ${
+                        JSON.stringify(canvas)
+                    }`,
+                );
+                assert.deepEqual(
+                    state.errors,
+                    [],
+                    `${request.label}: resizing produced runtime errors.`,
+                );
+                assert.equal(
+                    state.runId,
+                    request.before.runId,
+                    `${request.label}: resizing restarted the game.`,
+                );
+                if (request.responsive) {
+                    assert(
+                        Math.abs(state.viewport.width - canvas.width) <= 2
+                            && Math.abs(state.viewport.height - canvas.height)
+                                <= 2,
+                        `Explicit responsive sizing no longer follows the canvas: ${
+                            JSON.stringify({ viewport: state.viewport, canvas })
+                        }`,
+                    );
+                } else {
+                    assert.deepEqual(
+                        state.viewport,
+                        request.before.viewport,
+                        `${request.label}: resizing changed the game's coordinate system.`,
+                    );
+                    if (request.checkObjects) {
+                        assert.deepEqual(
+                            positions(state),
+                            positions(request.before),
+                            `${request.label}: resizing moved existing game objects.`,
+                        );
+                    }
+                }
+                if (request.pointer) {
+                    const scale = Math.min(
+                        frame.width / state.viewport.width,
+                        frame.height / state.viewport.height,
+                    );
+                    const offsetX = (frame.width - state.viewport.width * scale)
+                        / 2;
+                    const offsetY =
+                        (frame.height - state.viewport.height * scale) / 2;
+                    for (
+                        const [x, y] of [[0.15, 0.15], [0.85, 0.15], [
+                            0.15,
+                            0.85,
+                        ], [0.85, 0.85]]
+                    ) {
+                        const point = {
+                            x: frame.x + offsetX
+                                + state.viewport.width * x * scale,
+                            y: frame.y + offsetY
+                                + state.viewport.height * y * scale,
+                        };
+                        await client.send("Input.dispatchMouseEvent", {
+                            type: "mouseMoved",
+                            ...point,
+                        });
+                        await delay(30);
+                        for (const type of ["mousePressed", "mouseReleased"]) {
+                            await client.send("Input.dispatchMouseEvent", {
+                                type,
+                                button: "left",
+                                clickCount: 1,
+                                ...point,
+                            });
+                        }
+                        expectedClicks++;
+                        const clickDeadline = Date.now() + 2_000;
+                        let count;
+                        do {
+                            await delay(30);
+                            count = await pageValue(
+                                "globalThis.__webmcpReadPointerCount()",
+                            );
+                        } while (
+                            count !== expectedClicks
+                            && Date.now() < clickDeadline
+                        );
+                        assert.equal(
+                            count,
+                            expectedClicks,
+                            `${request.label}: a visible corner target missed the pointer after resizing: ${
+                                JSON.stringify({
+                                    point,
+                                    frame,
+                                    canvas,
+                                    viewport: state.viewport,
+                                })
+                            }`,
+                        );
+                    }
+                }
+                checks.push({
+                    window: { width, height },
+                    frame,
+                    canvas,
+                    logicalSize: state.viewport,
+                    objectsChecked: request.checkObjects
+                        ? positions(state).length
+                        : 0,
+                    pointerHits: request.pointer ? 4 : 0,
+                });
+            }
+            const audit = {
+                label: request.label,
+                mode: request.responsive ? "responsive" : "fit",
+                passed: true,
+                checks,
+            };
+            await pageValue(
+                `globalThis.__webmcpCompleteViewportAudit(${
+                    JSON.stringify(audit)
+                })`,
+            );
+        }
         const result = await resultPromise;
         assert.equal(
             result.passed,
@@ -1258,6 +1501,29 @@ async function main() {
         assert.equal(result.declinedCommitted, false);
         assert.equal(typeof result.opened, "string");
         assert.equal(result.catalogAudit.length, result.catalogExpectedCount);
+        assert.equal(
+            result.viewportAudits.filter(audit =>
+                audit.label.startsWith("catalog:")
+            ).length,
+            result.catalogExpectedCount,
+            "Not every catalog entry was checked after resizing.",
+        );
+        for (
+            const label of [
+                "new-project-template",
+                "new-example-template",
+                "implicit-size-game-pointer-controls",
+                "standalone-html-pointer-controls",
+                "explicit-responsive-game",
+            ]
+        ) {
+            assert(
+                result.viewportAudits.some(audit =>
+                    audit.label === label && audit.passed
+                ),
+                `${label} was not checked.`,
+            );
+        }
         const catalogFailures = result.catalogAudit.filter(sample =>
             sample.startupError || sample.stopped
             || sample.readiness?.status !== "ready" || sample.errors.length > 0
@@ -1629,6 +1895,8 @@ function fixtureHeaders(contentType) {
     return [
         { name: "Content-Type", value: contentType },
         { name: "Access-Control-Allow-Origin", value: "*" },
+        { name: "Access-Control-Allow-Headers", value: "Content-Type" },
+        { name: "Access-Control-Allow-Methods", value: "GET, OPTIONS" },
         { name: "Cache-Control", value: "no-store" },
     ];
 }
@@ -1814,6 +2082,9 @@ async function waitForBrowserResult(cdp, timeoutMs) {
     let lastError;
     while (Date.now() < deadline) {
         if (cdp.eventError) throw cdp.eventError;
+        if (cdp.socket.readyState !== WebSocket.OPEN) {
+            throw new Error("Browser closed before producing a test result.");
+        }
         try {
             const evaluation = await cdp.send("Runtime.evaluate", {
                 expression: "globalThis.__webmcpBrowserTestResult ?? null",
