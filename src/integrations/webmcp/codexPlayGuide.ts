@@ -6,6 +6,7 @@ export type CodexPlayPresentation = "interactive" | "visual" | "output";
 export type CodexPlaySubject = {
     key: string;
     title: string;
+    editorOrigin?: string;
     source?: string;
     isStarter?: boolean;
     prompts?: ExampleCoachPrompts;
@@ -32,13 +33,21 @@ export function createCodexPlayGuide(
     subject: CodexPlaySubject,
 ): CodexPlayGuide {
     const title = cleanText(subject.title) || "this starting point";
+    const editorOrigin = subject.editorOrigin ?? "https://promptmygame.com";
 
     if (subject.isStarter) {
         return {
             key: subject.key,
             subjectTitle: title,
             presentation: "interactive",
-            steps: CODEX_PLAY_STEPS,
+            steps: CODEX_PLAY_STEPS.map((step) =>
+                step.prompt
+                    ? {
+                        ...step,
+                        prompt: promptForOpenEditor(step.prompt, editorOrigin),
+                    }
+                    : step
+            ),
         };
     }
 
@@ -63,7 +72,7 @@ export function createCodexPlayGuide(
                 title: "Understand it, then change it",
                 description: subject.lesson
                     ?? "Ask Codex about this sample's behavior, then use the next ideas to remix it or build on it.",
-                prompt: prompts.explain,
+                prompt: promptForOpenEditor(prompts.explain, editorOrigin),
             },
             {
                 id: "remix",
@@ -71,7 +80,7 @@ export function createCodexPlayGuide(
                 title: "Give it your own look",
                 description:
                     "Keep the useful behavior and give it a concrete new look, reaction, or personality.",
-                prompt: prompts.remix,
+                prompt: promptForOpenEditor(prompts.remix, editorOrigin),
             },
             {
                 id: "build",
@@ -79,7 +88,7 @@ export function createCodexPlayGuide(
                 title: "Turn this idea into a tiny game",
                 description:
                     "Use the starting point as the main mechanic for a short game with a clear finish.",
-                prompt: prompts.build,
+                prompt: promptForOpenEditor(prompts.build, editorOrigin),
             },
             {
                 id: "invent",
@@ -87,10 +96,14 @@ export function createCodexPlayGuide(
                 title: "Describe the version you want",
                 description:
                     "Replace the bracketed parts with your own choices and keep the starting point's central idea.",
-                prompt: prompts.invent,
+                prompt: promptForOpenEditor(prompts.invent, editorOrigin),
             },
         ],
     };
+}
+
+function promptForOpenEditor(prompt: string, editorOrigin: string): string {
+    return `Use the game editor already open at ${editorOrigin} in the in-app browser. Inspect its current game first. ${prompt} Keep any changes in that project and run its preview afterward. Don't create a separate local app; tell me if you can't access the editor.`;
 }
 
 function createFallbackCoachPrompts(

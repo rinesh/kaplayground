@@ -1114,6 +1114,10 @@ startUnavailableInspection();
             navigator.clipboard.writeText = clipboardWrite;
             assert(tipCopies[0] === tipCopies[1], "Clipboard paths copied different prompts.");
             assert(tipCopies[0].includes("dinosaur") && tipCopies[0].includes("frame sequences"), "The prompt is not grounded in the chosen feature sample.");
+            assert(tipCopies[0].startsWith(`Use the game editor already open at ${window.location.origin} in the in-app browser.`), "The copied prompt doesn't target the current editor.");
+            assert(tipCopies[0].includes("Inspect its current game first.") && tipCopies[0].includes("Keep any changes in that project and run its preview afterward."), "The copied prompt doesn't keep inspection, edits, and preview in the open game.");
+            assert(tipCopies[0].endsWith("Don't create a separate local app; tell me if you can't access the editor."), "The copied prompt permits a standalone fallback.");
+            assert(coach.textContent.includes(tipCopies[0]), "The visible prompt differs from the copied prompt.");
 
             // Clipboard denial must leave the complete idea available to select.
             document.execCommand = () => { throw new Error("Legacy clipboard blocked"); };
@@ -1333,6 +1337,7 @@ startUnavailableInspection();
                     const state = useProject.getState();
                     const preview = useEditor.getState();
                     const guide = createCodexPlayGuideForContext({
+                        editorOrigin: window.location.origin,
                         demoKey: state.demoKey,
                         projectKey: state.projectKey,
                         projectName: state.project.name,
@@ -1355,7 +1360,9 @@ startUnavailableInspection();
                             await waitFor(() => tips.textContent.includes(expectedPrompts[index]), `${sample.key} idea ${index + 2}`);
                             [...tips.querySelectorAll("button")].find(button => button.textContent.trim() === "Copy for Codex").click();
                             await waitFor(() => copies.length === index + 1, `copying ${sample.key} idea ${index + 2}`);
-                            assert(copies[index] === expectedPrompts[index], `${sample.key} copied the wrong idea ${index + 2}.`);
+                            assert(copies[index].includes(expectedPrompts[index]), `${sample.key} lost the creative idea ${index + 2}.`);
+                            assert(copies[index] === guide.steps[index + 1].prompt, `${sample.key} copied the wrong idea ${index + 2}.`);
+                            assert(copies[index].startsWith(`Use the game editor already open at ${window.location.origin} in the in-app browser.`), `${sample.key} didn't target the current editor.`);
                         }
                     } finally {
                         document.execCommand = copyCommand;

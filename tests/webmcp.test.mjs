@@ -409,12 +409,54 @@ describe("simple KAPLAYGROUND browser tools", () => {
 });
 
 describe("new-player Codex prompts", () => {
+    function assertOpenEditorPrompt(
+        prompt,
+        idea,
+        editorOrigin = "https://promptmygame.com",
+    ) {
+        assert.ok(prompt.startsWith(
+            `Use the game editor already open at ${editorOrigin} in the in-app browser.`,
+        ));
+        assert.match(prompt, /Inspect its current game first\./);
+        if (idea) assert.ok(prompt.includes(idea), "The creative idea was lost.");
+        assert.match(
+            prompt,
+            /Keep any changes in that project and run its preview afterward\./,
+        );
+        assert.match(
+            prompt,
+            /Don't create a separate local app; tell me if you can't access the editor\.$/,
+        );
+        assert.doesNotMatch(prompt, FRIENDLY_PROMPT_FORBIDDEN);
+        assert.ok(prompt.length < 800);
+    }
+
     it("keeps the starter ideas free of integration jargon", () => {
         for (const step of CODEX_PLAY_STEPS) {
             if (!step.prompt) continue;
             assert.doesNotMatch(step.prompt, FRIENDLY_PROMPT_FORBIDDEN);
             assert.ok(step.prompt.length < 400);
         }
+    });
+
+    it("targets the open editor in every starter idea without changing the source ideas", () => {
+        const originalSteps = structuredClone(CODEX_PLAY_STEPS);
+        const subject = {
+            key: "starter",
+            title: "Moonlit Apple Run",
+            isStarter: true,
+        };
+        const guide = createCodexPlayGuide(subject);
+
+        assert.equal(guide.steps[0].prompt, undefined);
+        for (let index = 1; index < guide.steps.length; index++) {
+            assertOpenEditorPrompt(
+                guide.steps[index].prompt,
+                CODEX_PLAY_STEPS[index].prompt,
+            );
+        }
+        assert.deepEqual(CODEX_PLAY_STEPS, originalSteps);
+        assert.deepEqual(createCodexPlayGuide(subject), guide);
     });
 
     it("creates friendly example-specific prompts", () => {
@@ -429,7 +471,30 @@ describe("new-player Codex prompts", () => {
         for (const step of guide.steps) {
             if (!step.prompt) continue;
             assert.match(step.prompt, /Tiny Platformer/);
-            assert.doesNotMatch(step.prompt, FRIENDLY_PROMPT_FORBIDDEN);
+            assertOpenEditorPrompt(step.prompt);
+        }
+    });
+
+    it("uses the current site for sample, starter, and custom-game prompts", () => {
+        const editorOrigin = "http://127.0.0.1:5173";
+        for (const subject of [
+            { isStarter: true },
+            { prompts: EXAMPLE_COACH_PROMPTS.basicsStart },
+            { source: "add([rect(10, 10)]); onKeyPress('space', jump);" },
+            { source: "add([rect(10, 10)]);" },
+            { source: "console.log('ready');" },
+        ]) {
+            const guide = createCodexPlayGuide({
+                key: "current-game",
+                title: "Signal / Drift",
+                editorOrigin,
+                ...subject,
+            });
+            for (const step of guide.steps) {
+                if (!step.prompt) continue;
+                assertOpenEditorPrompt(step.prompt, undefined, editorOrigin);
+                assert.doesNotMatch(step.prompt, /promptmygame\.com/);
+            }
         }
     });
 
@@ -469,14 +534,15 @@ describe("new-player Codex prompts", () => {
             });
             assert.equal(guide.steps[0].description, lesson);
             assert.equal(guide.steps[1].description, lesson);
-            assert.equal(
-                guide.steps[1].prompt,
-                EXAMPLE_COACH_PROMPTS[key].explain,
-            );
-            assert.equal(
-                guide.steps[2].prompt,
-                EXAMPLE_COACH_PROMPTS[key].remix,
-            );
+            for (
+                const [index, kind] of ["explain", "remix", "build", "invent"]
+                    .entries()
+            ) {
+                assertOpenEditorPrompt(
+                    guide.steps[index + 1].prompt,
+                    EXAMPLE_COACH_PROMPTS[key][kind],
+                );
+            }
         }
         assert.match(
             getExampleLesson("spriteAnim"),
@@ -496,10 +562,9 @@ describe("new-player Codex prompts", () => {
 
         assert.match(prompts.explain, /green canvas/);
         assert.doesNotMatch(prompts.explain, /Create your first game/);
-        assert.deepEqual(
-            guide.steps.slice(1).map(step => step.prompt),
-            [prompts.explain, prompts.remix, prompts.build, prompts.invent],
-        );
+        for (const [index, idea] of Object.values(prompts).entries()) {
+            assertOpenEditorPrompt(guide.steps[index + 1].prompt, idea);
+        }
     });
 
     it("keeps one guide identity when temporary work is saved", () => {
