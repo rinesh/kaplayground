@@ -6,18 +6,24 @@ type LifecycleTarget = Pick<
 >;
 
 type VisibilityTarget = LifecycleTarget & { readonly hidden?: boolean };
+type ContextCheckScheduler = (callback: () => void) => () => void;
+
+const MODEL_CONTEXT_CHECK_INTERVAL_MS = 250;
 
 export interface KaplaygroundWebMCPLifecycleOptions {
     getModelContext?: () => unknown;
     windowTarget?: LifecycleTarget;
     documentTarget?: VisibilityTarget;
     schedule?: (callback: () => void) => void;
+    scheduleContextCheck?: ContextCheckScheduler;
 }
 
 /**
  * Keeps one page-owned WebMCP registration tied to one live document session.
  * Navigating away aborts the old registrations; BFCache restores and a replaced
- * document.modelContext create one fresh registration surface.
+ * document.modelContext create one fresh registration surface. If WebMCP is not
+ * available during startup, a short recurring check detects a browser host that
+ * attaches the context after the page is already open.
  */
 export function installKaplaygroundWebMCPLifecycle(
     register: () => () => void,
@@ -28,12 +34,27 @@ export function installKaplaygroundWebMCPLifecycle(
     const windowTarget = options.windowTarget ?? window;
     const documentTarget = options.documentTarget ?? document;
     const schedule = options.schedule ?? queueMicrotask;
+    const scheduleContextCheck = options.scheduleContextCheck
+        ?? ((callback) => {
+            const timer = globalThis.setTimeout(
+                callback,
+                MODEL_CONTEXT_CHECK_INTERVAL_MS,
+            );
+            return () => globalThis.clearTimeout(timer);
+        });
 
     const unregistered = Symbol("unregistered");
     let registeredContext: unknown | typeof unregistered = unregistered;
     let unregister: (() => void) | null = null;
+    let cancelContextCheck: (() => void) | null = null;
     let disposed = false;
+    let pageActive = true;
     let syncScheduled = false;
+
+    const stopContextCheck = () => {
+        cancelContextCheck?.();
+        cancelContextCheck = null;
+    };
 
     const stopRegistration = () => {
         unregister?.();
@@ -41,14 +62,27 @@ export function installKaplaygroundWebMCPLifecycle(
         registeredContext = unregistered;
     };
 
+    const scheduleNextContextCheck = () => {
+        if (disposed || !pageActive || cancelContextCheck) return;
+        cancelContextCheck = scheduleContextCheck(() => {
+            cancelContextCheck = null;
+            synchronize();
+        });
+    };
+
     const synchronize = () => {
-        if (disposed) return;
+        if (disposed || !pageActive) return;
         const context = getModelContext();
-        if (unregister && registeredContext === context) return;
+        if (unregister && registeredContext === context) {
+            if (context == null) scheduleNextContextCheck();
+            return;
+        }
 
         stopRegistration();
         registeredContext = context;
         unregister = register();
+        if (context == null) scheduleNextContextCheck();
+        else stopContextCheck();
     };
 
     const scheduleSynchronization = () => {
@@ -61,8 +95,15 @@ export function installKaplaygroundWebMCPLifecycle(
     };
 
     // beforeunload can be canceled; keep tools until the document actually leaves.
-    const pageHide: EventListener = () => stopRegistration();
-    const pageShow: EventListener = () => scheduleSynchronization();
+    const pageHide: EventListener = () => {
+        pageActive = false;
+        stopContextCheck();
+        stopRegistration();
+    };
+    const pageShow: EventListener = () => {
+        pageActive = true;
+        scheduleSynchronization();
+    };
     const focus: EventListener = () => synchronize();
     const visibilityChange: EventListener = () => {
         if (documentTarget.hidden !== true) synchronize();
@@ -77,6 +118,7 @@ export function installKaplaygroundWebMCPLifecycle(
     return () => {
         if (disposed) return;
         disposed = true;
+        stopContextCheck();
         stopRegistration();
         removeListener(windowTarget, "pagehide", pageHide);
         removeListener(windowTarget, "pageshow", pageShow);

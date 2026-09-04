@@ -24,6 +24,25 @@ class FakeTarget {
     }
 }
 
+class ManualContextChecks {
+    tasks = [];
+
+    schedule = callback => {
+        const task = { callback, canceled: false };
+        this.tasks.push(task);
+        return () => {
+            task.canceled = true;
+        };
+    };
+
+    runNext() {
+        const task = this.tasks.shift();
+        assert.ok(task, "No context check was scheduled.");
+        if (!task.canceled) task.callback();
+        return task;
+    }
+}
+
 describe("WebMCP document lifecycle", () => {
     it("keeps tools registered when beforeunload is canceled", () => {
         const windowTarget = new EventTarget();
@@ -126,6 +145,46 @@ describe("WebMCP document lifecycle", () => {
         assert.equal(registrations.length, 2);
         assert.equal(registrations[0].stopped, true);
         cleanup();
+    });
+
+    it("detects WebMCP added after an already-open page becomes active", () => {
+        const windowTarget = new FakeTarget();
+        const documentTarget = new FakeTarget();
+        const contextChecks = new ManualContextChecks();
+        let context;
+        const registrations = [];
+        const cleanup = installKaplaygroundWebMCPLifecycle(
+            () => {
+                const registration = { context, stopped: false };
+                registrations.push(registration);
+                return () => {
+                    registration.stopped = true;
+                };
+            },
+            {
+                getModelContext: () => context,
+                windowTarget,
+                documentTarget,
+                scheduleContextCheck: contextChecks.schedule,
+            },
+        );
+
+        assert.equal(registrations.length, 1);
+        assert.equal(registrations[0].context, undefined);
+        assert.equal(contextChecks.tasks.length, 1);
+        context = { id: 1 };
+        contextChecks.runNext();
+        assert.equal(registrations.length, 2);
+        assert.equal(registrations[0].stopped, true);
+        assert.equal(registrations[1].context, context);
+        assert.equal(
+            contextChecks.tasks.length,
+            0,
+            "checks must stop after WebMCP becomes available",
+        );
+
+        cleanup();
+        assert.equal(registrations[1].stopped, true);
     });
 
     it("does not re-register while the same context remains active", () => {
