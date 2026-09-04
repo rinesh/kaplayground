@@ -1281,7 +1281,7 @@ async function main() {
                     deviceScaleFactor: 1,
                     mobile: false,
                 });
-                let state, frame, canvas, bufferMatches;
+                let state, frame, canvas, bufferMatches, pointerFrameVisible;
                 const deadline = Date.now() + 5_000;
                 while (Date.now() < deadline) {
                     await delay(100);
@@ -1307,10 +1307,17 @@ async function main() {
                                     - canvas.height * request.pixelDensity,
                             ) <= request.pixelDensity
                     ));
+                    pointerFrameVisible = !request.pointer || (
+                        frame.x >= -2
+                        && frame.y >= -2
+                        && frame.x + frame.width <= width + 2
+                        && frame.y + frame.height <= height + 2
+                    );
                     if (
                         canvas && Math.abs(canvas.width - frame.width) <= 2
                         && Math.abs(canvas.height - frame.height) <= 2
                         && bufferMatches
+                        && pointerFrameVisible
                         && (!request.responsive || (
                             Math.abs(state.viewport.width - canvas.width) <= 2
                             && Math.abs(state.viewport.height - canvas.height)
@@ -1333,6 +1340,12 @@ async function main() {
                     bufferMatches,
                     `${request.label}: the drawing buffer did not follow the resized canvas: ${
                         JSON.stringify(canvas)
+                    }`,
+                );
+                assert(
+                    pointerFrameVisible,
+                    `${request.label}: pointer checks started before the frame settled inside the resized window: ${
+                        JSON.stringify({ window: { width, height }, frame })
                     }`,
                 );
                 assert.deepEqual(
