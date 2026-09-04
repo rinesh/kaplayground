@@ -147,7 +147,7 @@ describe("WebMCP document lifecycle", () => {
         cleanup();
     });
 
-    it("detects modelContext changes while an already-open page stays active", () => {
+    it("detects WebMCP added after an already-open page becomes active", () => {
         const windowTarget = new FakeTarget();
         const documentTarget = new FakeTarget();
         const contextChecks = new ManualContextChecks();
@@ -171,22 +171,20 @@ describe("WebMCP document lifecycle", () => {
 
         assert.equal(registrations.length, 1);
         assert.equal(registrations[0].context, undefined);
+        assert.equal(contextChecks.tasks.length, 1);
         context = { id: 1 };
         contextChecks.runNext();
         assert.equal(registrations.length, 2);
         assert.equal(registrations[0].stopped, true);
         assert.equal(registrations[1].context, context);
-
-        const replacement = { id: 2 };
-        context = replacement;
-        contextChecks.runNext();
-        assert.equal(registrations.length, 3);
-        assert.equal(registrations[1].stopped, true);
-        assert.equal(registrations[2].context, replacement);
+        assert.equal(
+            contextChecks.tasks.length,
+            0,
+            "checks must stop after WebMCP becomes available",
+        );
 
         cleanup();
-        assert.equal(registrations[2].stopped, true);
-        assert.equal(contextChecks.tasks.at(-1).canceled, true);
+        assert.equal(registrations[1].stopped, true);
     });
 
     it("does not re-register while the same context remains active", () => {

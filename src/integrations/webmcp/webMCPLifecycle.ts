@@ -21,9 +21,9 @@ export interface KaplaygroundWebMCPLifecycleOptions {
 /**
  * Keeps one page-owned WebMCP registration tied to one live document session.
  * Navigating away aborts the old registrations; BFCache restores and a replaced
- * document.modelContext create one fresh registration surface. A short recurring
- * identity check also handles browser hosts that change the context without a
- * page lifecycle event.
+ * document.modelContext create one fresh registration surface. If WebMCP is not
+ * available during startup, a short recurring check detects a browser host that
+ * attaches the context after the page is already open.
  */
 export function installKaplaygroundWebMCPLifecycle(
     register: () => () => void,
@@ -62,23 +62,27 @@ export function installKaplaygroundWebMCPLifecycle(
         registeredContext = unregistered;
     };
 
-    const synchronize = () => {
-        if (disposed || !pageActive) return;
-        const context = getModelContext();
-        if (unregister && registeredContext === context) return;
-
-        stopRegistration();
-        registeredContext = context;
-        unregister = register();
-    };
-
     const scheduleNextContextCheck = () => {
         if (disposed || !pageActive || cancelContextCheck) return;
         cancelContextCheck = scheduleContextCheck(() => {
             cancelContextCheck = null;
             synchronize();
-            scheduleNextContextCheck();
         });
+    };
+
+    const synchronize = () => {
+        if (disposed || !pageActive) return;
+        const context = getModelContext();
+        if (unregister && registeredContext === context) {
+            if (context == null) scheduleNextContextCheck();
+            return;
+        }
+
+        stopRegistration();
+        registeredContext = context;
+        unregister = register();
+        if (context == null) scheduleNextContextCheck();
+        else stopContextCheck();
     };
 
     const scheduleSynchronization = () => {
@@ -99,7 +103,6 @@ export function installKaplaygroundWebMCPLifecycle(
     const pageShow: EventListener = () => {
         pageActive = true;
         scheduleSynchronization();
-        scheduleNextContextCheck();
     };
     const focus: EventListener = () => synchronize();
     const visibilityChange: EventListener = () => {
@@ -111,7 +114,6 @@ export function installKaplaygroundWebMCPLifecycle(
     addListener(windowTarget, "focus", focus);
     addListener(documentTarget, "visibilitychange", visibilityChange);
     synchronize();
-    scheduleNextContextCheck();
 
     return () => {
         if (disposed) return;
