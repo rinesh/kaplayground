@@ -24,6 +24,25 @@ class FakeTarget {
     }
 }
 
+class ManualContextChecks {
+    tasks = [];
+
+    schedule = callback => {
+        const task = { callback, canceled: false };
+        this.tasks.push(task);
+        return () => {
+            task.canceled = true;
+        };
+    };
+
+    runNext() {
+        const task = this.tasks.shift();
+        assert.ok(task, "No context check was scheduled.");
+        if (!task.canceled) task.callback();
+        return task;
+    }
+}
+
 describe("WebMCP document lifecycle", () => {
     it("keeps tools registered when beforeunload is canceled", () => {
         const windowTarget = new EventTarget();
@@ -126,6 +145,48 @@ describe("WebMCP document lifecycle", () => {
         assert.equal(registrations.length, 2);
         assert.equal(registrations[0].stopped, true);
         cleanup();
+    });
+
+    it("detects modelContext changes while an already-open page stays active", () => {
+        const windowTarget = new FakeTarget();
+        const documentTarget = new FakeTarget();
+        const contextChecks = new ManualContextChecks();
+        let context;
+        const registrations = [];
+        const cleanup = installKaplaygroundWebMCPLifecycle(
+            () => {
+                const registration = { context, stopped: false };
+                registrations.push(registration);
+                return () => {
+                    registration.stopped = true;
+                };
+            },
+            {
+                getModelContext: () => context,
+                windowTarget,
+                documentTarget,
+                scheduleContextCheck: contextChecks.schedule,
+            },
+        );
+
+        assert.equal(registrations.length, 1);
+        assert.equal(registrations[0].context, undefined);
+        context = { id: 1 };
+        contextChecks.runNext();
+        assert.equal(registrations.length, 2);
+        assert.equal(registrations[0].stopped, true);
+        assert.equal(registrations[1].context, context);
+
+        const replacement = { id: 2 };
+        context = replacement;
+        contextChecks.runNext();
+        assert.equal(registrations.length, 3);
+        assert.equal(registrations[1].stopped, true);
+        assert.equal(registrations[2].context, replacement);
+
+        cleanup();
+        assert.equal(registrations[2].stopped, true);
+        assert.equal(contextChecks.tasks.at(-1).canceled, true);
     });
 
     it("does not re-register while the same context remains active", () => {
