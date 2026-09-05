@@ -74,6 +74,9 @@ export function createRuntimeInspector({
                     || safeCall(getContext, "isFocused") === true
                 ),
         );
+        const objectsComplete = objectsAvailable && objects.length === objectCount;
+        const layoutComplete = layout.available && objectsComplete
+            && layoutWarnings.length <= MAX_LAYOUT_WARNINGS;
 
         return {
             runId: getRunId(),
@@ -97,6 +100,20 @@ export function createRuntimeInspector({
                 : null,
             objectsAvailable,
             objectCount,
+            inspectionScope: {
+                selection: normalizedTag === undefined ? "scene" : "tag",
+                tag: normalizedTag ?? null,
+                matchingObjectCount: objectCount,
+                returnedObjectCount: objects.length,
+                objects: !objectsAvailable ? "unavailable" : objectsComplete ? "complete" : "partial",
+                layoutSelection: normalizedTag === undefined ? "ui-tagged-objects" : "tagged-objects",
+                layout: layoutComplete ? "complete" : "incomplete",
+                wholeSceneObjects: normalizedTag === undefined && objectsComplete,
+                continuation: !objectsAvailable || objectsComplete ? null : {
+                    mode: "check-current",
+                    guidance: "Use inspectTag for a focused subset (player, hud, or another tag from your source). A complete tag snapshot does not establish whole-scene coverage. Recheck runId; the game may change between calls.",
+                },
+            },
             objects,
             objectsTruncated: objectCount !== null
                 && objects.length < objectCount,

@@ -21,17 +21,24 @@ export function createCodexPlayGuideForContext(
 ): CodexPlayGuide {
     const activeDemo = getDemo(context.demoKey);
     const sourceDemo = activeDemo ?? getDemo(context.sourceDemoKey);
+    // Provenance survives saves and remixes; it is not evidence that the
+    // starter's controls or objectives still describe the current source.
+    const unchangedSource = context.projectSource === undefined
+        || context.projectSource.trim() === sourceDemo?.code.trim();
+    const guideDemo = unchangedSource ? sourceDemo : undefined;
 
     return createCodexPlayGuide({
         key: createCodexPlayGuideKey(
-            sourceDemo?.key,
+            guideDemo?.key,
             context.projectCreatedAt,
             context.projectKey,
         ),
-        title: activeDemo?.formattedName ?? context.projectName,
+        title: unchangedSource
+            ? activeDemo?.formattedName ?? context.projectName
+            : context.projectName === sourceDemo?.formattedName ? "your game" : context.projectName,
         source: context.projectSource ?? sourceDemo?.code,
-        isStarter: sourceDemo?.key === WEBMCP_EXAMPLE_NAME,
-        prompts: getExampleCoachPrompts(sourceDemo?.key),
-        lesson: getExampleLesson(sourceDemo?.key),
+        isStarter: guideDemo?.key === WEBMCP_EXAMPLE_NAME,
+        prompts: getExampleCoachPrompts(guideDemo?.key),
+        lesson: getExampleLesson(guideDemo?.key),
     });
 }

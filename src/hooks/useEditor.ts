@@ -297,6 +297,8 @@ export const useEditor = create<EditorStore>((set, get) => ({
         }
 
         const runId = createRequestId("run");
+        const startedAt = performance.now();
+        let phase = "iframe-ready";
         const sessionSignal = beginPreviewSession();
         clearPreviewAssetSelection();
         set({
@@ -345,6 +347,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
             iframeContentWindow: Window,
             signal: AbortSignal,
         ): Promise<PreviewRunResult> => {
+            phase = "iframe-layout";
             const gameIframe = await waitForIframeLayout(
                 iframeContentWindow,
                 signal,
@@ -355,6 +358,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
 
             signal.throwIfAborted();
             console.log("[game] iframe loaded");
+            phase = "compile";
             const code = await wrapGame(runId);
             signal.throwIfAborted();
 
@@ -378,6 +382,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
                 window.removeEventListener("message", onAssets);
             }, { once: true });
 
+            phase = "sandbox-startup";
             const result = await requestSandbox(
                 iframeContentWindow,
                 {
@@ -401,6 +406,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
                 );
             }
 
+            signal.throwIfAborted();
             set({
                 previewRunId: runId,
                 previewReadiness: result.readiness,
@@ -452,9 +458,21 @@ export const useEditor = create<EditorStore>((set, get) => ({
                             paused: null,
                         });
                     }
-                    if (operation.signal.aborted) throw operation.signal.reason;
-                    if (error instanceof PreviewRunError) throw error;
-                    throw new PreviewRunError(runId, errorMessage(error));
+                    const reason = operation.signal.aborted ? operation.signal.reason : error;
+                    if (reason instanceof DOMException && reason.name === "AbortError") throw reason;
+                    const timedOut = reason instanceof DOMException && reason.name === "TimeoutError";
+                    const failure = {
+                        phase,
+                        elapsedMs: Math.round(performance.now() - startedAt),
+                        timeoutMs: PREVIEW_RUN_TIMEOUT_MS,
+                        code: timedOut ? "PREVIEW_RUN_TIMEOUT" as const : "PREVIEW_RUN_FAILED" as const,
+                        retryable: timedOut,
+                    };
+                    throw new PreviewRunError(runId,
+                        `${errorMessage(reason)} Phase: ${phase}; elapsed: ${failure.elapsedMs} ms.`
+                            + (timedOut ? " Inspect the current game, then explicitly restart if it is unchanged. No automatic retry was attempted." : ""),
+                        failure,
+                    );
                 } finally {
                     operation.dispose();
                 }

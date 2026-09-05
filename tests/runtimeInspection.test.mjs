@@ -328,6 +328,24 @@ function inspectorFor(context, options = {}) {
 }
 
 describe("sandbox runtime inspection", () => {
+    it("separates bounded scene coverage from a complete tag subset", () => {
+        const objects = Array.from({ length: 51 }, (_, id) => ({ id, tags: [id === 0 ? "player" : "tile"] }));
+        const inspect = inspectorFor({ get: tag => tag === "*" ? objects : objects.filter(object => object.tags.includes(tag)) });
+        const scene = inspect({ limit: 50 });
+        assert.equal(scene.inspectionScope.matchingObjectCount, 51);
+        assert.equal(scene.inspectionScope.returnedObjectCount, 50);
+        assert.equal(scene.inspectionScope.objects, "partial");
+        assert.equal(scene.inspectionScope.wholeSceneObjects, false);
+        assert.equal(scene.inspectionScope.continuation.mode, "check-current");
+        const player = inspect({ tag: "player", limit: 50 });
+        assert.equal(player.inspectionScope.selection, "tag");
+        assert.equal(player.inspectionScope.tag, "player");
+        assert.equal(player.inspectionScope.objects, "complete");
+        assert.equal(player.inspectionScope.wholeSceneObjects, false);
+        assert.equal(player.inspectionScope.layout, "incomplete", "Missing geometry must not imply layout coverage.");
+        assert.equal(inspectorFor({})({ limit: 50 }).inspectionScope.objects, "unavailable");
+    });
+
     it("reads modern camera getters without calling deprecated aliases", () => {
         const deprecated = () => {
             throw new Error("Deprecated getter called");

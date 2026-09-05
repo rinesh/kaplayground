@@ -68,9 +68,11 @@ export const GameView: FC = () => {
     }, [updateFrameSize]);
 
     useEffect(() => {
-        setTimeout(() => setIframeHidden(stopped));
-        if (stopped) setRuntime({ iframe: null });
-    }, [stopped, setIframeHidden]);
+        // The ref callback owns the mounted frame identity. Clearing it here
+        // loses console capture when a quick restart keeps that frame mounted.
+        const timeout = window.setTimeout(() => setIframeHidden(stopped));
+        return () => window.clearTimeout(timeout);
+    }, [stopped]);
 
     return (
         <div

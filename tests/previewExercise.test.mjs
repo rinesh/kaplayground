@@ -4,6 +4,7 @@ import {
     MAX_PREVIEW_EXERCISE_DURATION_MS,
     normalizePreviewKey,
     parsePreviewExerciseActions,
+    PreviewExerciseLimitError,
     PREVIEW_PROTOCOL_VERSION,
 } from "../shared/previewProtocol.ts";
 import {
@@ -68,7 +69,7 @@ describe("preview exercise contract", () => {
     });
 
     it("uses one shared protocol version and normalizes common game keys", () => {
-        assert.equal(PREVIEW_PROTOCOL_VERSION, 3);
+        assert.equal(PREVIEW_PROTOCOL_VERSION, 4);
         assert.deepEqual(normalizePreviewKey("Space"), {
             key: " ",
             code: "Space",
@@ -107,6 +108,58 @@ describe("preview exercise contract", () => {
             ]),
             /between 0 and 1/i,
         );
+    });
+
+    it("advertises and enforces exact scheduled duration and checkpoint boundaries", () => {
+        const schema = KAPLAYGROUND_WEBMCP_TOOL_SURFACE.find(tool => tool.name === "kaplayground_run_game").inputSchema.properties.actions;
+        for (const text of ["5000", "12 checkpoints", "press costs 68", "click costs 102", "check-current"]) {
+            assert(schema.description.includes(text), text);
+        }
+        assert.match(schema.items.oneOf[0].properties.key.description, /ArrowLeft.*Space/);
+        for (const [action, cost] of [
+            [{ type: "press", key: "Space" }, 68],
+            [{ type: "click", x: 0.5, y: 0.5 }, 102],
+            [{ type: "hold", key: "ArrowLeft", durationMs: 100 }, 134],
+        ]) {
+            const actions = [action, { type: "wait", durationMs: 2000 }, { type: "wait", durationMs: 2000 }, { type: "wait", durationMs: 1000 - cost }];
+            assert.equal(parsePreviewExerciseActions(actions).length, 4);
+            actions[3].durationMs++;
+            assert.throws(() => parsePreviewExerciseActions(actions), error => {
+                assert(error instanceof PreviewExerciseLimitError);
+                assert.deepEqual(error.details, { field: "durationMs", requested: 5001, limit: 5000 });
+                return true;
+            });
+        }
+        const checkpoints = Array.from({ length: 12 }, (_, i) => ({ type: "checkpoint", name: `p${i}` }));
+        assert.equal(parsePreviewExerciseActions(checkpoints).length, 12);
+        assert.throws(() => parsePreviewExerciseActions([...checkpoints, { type: "checkpoint", name: "p12" }]), error => {
+            assert.deepEqual(error.details, { field: "checkpointCount", requested: 13, limit: 12 });
+            return true;
+        });
+    });
+
+    it("uses tri-state gameplay evidence without penalizing observation baselines", async () => {
+        const { canvas } = canvasFixture();
+        const snapshot = { available: true, objectsAvailable: true, scene: "game", objects: [{ id: 1, position: { x: 30, y: 0 } }] };
+        for (const [actions, expectedStatus, expectedPassed] of [
+            [[{ type: "checkpoint", name: "baseline" }], "not-requested", null],
+            [[{ type: "press", key: "r" }, { type: "checkpoint", name: "empty", expect: {} }], "incomplete", null],
+            [[{ type: "checkpoint", name: "no-evidence", expect: { textIncludes: ["missing"] } }], "incomplete", null],
+            [[{ type: "checkpoint", name: "wrong", expect: { scene: "wrong" } }], "failed", false],
+            [[{ type: "checkpoint", name: "before" }, { type: "press", key: "r" }, { type: "checkpoint", name: "after", expect: { firstObjectMovedFrom: { checkpoint: "before", minDistance: 10 } } }], "passed", true],
+        ]) {
+            let index = 0;
+            const exercise = exerciseFixture({
+                getRunId: () => "run-1", findCanvas: () => canvas,
+                createKeyboardEvent: event, sleep: async () => {},
+                inspectRuntime: () => expectedStatus === "incomplete"
+                    ? { ...snapshot, objects: [], objectsTruncated: true }
+                    : { ...snapshot, objects: [{ id: 1, position: { x: index++ * 30, y: 0 } }] },
+            });
+            const result = await exercise({ runId: "run-1", actions });
+            assert.equal(result.status, expectedStatus);
+            assert.equal(result.passed, expectedPassed);
+        }
     });
 
     it("dispatches bounded input and returns checkpoint evidence", async () => {
@@ -366,6 +419,13 @@ describe("preview exercise contract", () => {
             inspection: { objects: [{ id: 1, position: { x: 0, y: 0 } }] },
         }]);
         assert.equal(movement.passed, null, "Different objects must not count as movement.");
+        assert.equal(movement.actual.beforeId, 1);
+        assert.equal(movement.actual.afterId, 2);
+        assert.equal(movement.actual.reason, "OBJECT_IDENTITY_CHANGED");
+        const [absolute] = evaluateCheckpoint({ objects: [{ id: 2, position: { x: 100, y: 0 } }] }, {
+            firstObjectPosition: { xAtLeast: 100 },
+        });
+        assert.equal(absolute.passed, true);
     });
 
     it("requires game-state assertions after the input being verified", async () => {
@@ -383,6 +443,8 @@ describe("preview exercise contract", () => {
             { type: "checkpoint", name: "focus", expect: { canvasFocused: true } },
         ] });
         assert.equal(result.unassertedInputActionCount, 1);
+        assert.equal(result.passed, null);
+        assert.equal(result.status, "incomplete");
     });
 
     it("cancels a held key and always releases it", async () => {

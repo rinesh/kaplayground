@@ -22,6 +22,7 @@ import { getVersion } from "../../util/compiler";
 import type { File } from "../../features/Projects/models/File";
 import { useProject } from "../../features/Projects/stores/useProject";
 import { useEditor } from "../../hooks/useEditor";
+import { PreviewRunError } from "../../hooks/previewProtocol";
 import { gameConsoleCapture } from "../../hooks/useGameConsole";
 import { useWorkspace } from "../../hooks/useWorkspace";
 import { confirm } from "../../util/confirm";
@@ -46,6 +47,7 @@ import {
     prepareGameUpdate,
     registerGameToolDefinitions,
     requiresExampleDiscardConfirmation,
+    validateGameToolInput,
 } from "./gameTools.ts";
 import {
     KAPLAYGROUND_BUILD_IDENTITY,
@@ -198,14 +200,14 @@ export function registerKaplaygroundWebMCP(): () => void {
                 const invocation: KaplaygroundWebMCPInvocation = {
                     id: `${startedAt}-${++invocationSerial}`,
                     toolName: tool.name,
-                    input: toRecord(input),
+                    input: {},
                     startedAt,
                     status: "running",
                 };
-                useWebMCPActivity.getState().recordInvocation(invocation);
-
                 try {
                     throwIfAborted(signal);
+                    invocation.input = validateGameToolInput(tool.name, input);
+                    useWebMCPActivity.getState().recordInvocation(invocation);
                     const rawResult = await tool.execute(
                         invocation.input,
                         signal,
@@ -223,6 +225,8 @@ export function registerKaplaygroundWebMCP(): () => void {
                     return result;
                 } catch (error) {
                     const normalized = normalizeToolError(error, tool.name);
+                    // Invalid inputs still get a bounded activity receipt.
+                    useWebMCPActivity.getState().recordInvocation(invocation);
                     useWebMCPActivity.getState().recordInvocation({
                         ...invocation,
                         status: "failed",
@@ -543,6 +547,7 @@ function createTools(
                             focusRequested,
                             summary: "The game could not start.",
                             error: errorMessage(error),
+                            failure: error instanceof PreviewRunError ? error.failure : undefined,
                             notChecked: [
                                 "Playing the controls",
                                 "Visual quality",
@@ -672,6 +677,7 @@ function createTools(
                             assertionCount: exercised.assertionCount,
                             unassertedInputActionCount: exercised.unassertedInputActionCount,
                             incompleteReasons: exercised.incompleteReasons,
+                            status: exercised.status,
                             passed: exercised.passed,
                             checkpoints: exercised.checkpoints.map(checkpoint => ({
                                 name: checkpoint.name,
@@ -686,6 +692,8 @@ function createTools(
                         gameplayError = errorMessage(error);
                         gameplay = {
                             available: false,
+                            status: "incomplete",
+                            passed: null,
                             error: gameplayError,
                         };
                     }
@@ -849,14 +857,6 @@ function createTools(
                         (reason): reason is string => typeof reason === "string",
                     ));
                 }
-                if (
-                    gameplay
-                    && Number(gameplay.unassertedInputActionCount) > 0
-                ) {
-                    incompleteReasons.push(
-                        "Some controls were sent without a later checkpoint asserting a game-state result.",
-                    );
-                }
                 const failedGameplayCheckpoints = gameplay
                     && Array.isArray(gameplay.checkpoints)
                     ? gameplay.checkpoints.filter((checkpoint) =>
@@ -888,7 +888,7 @@ function createTools(
                     },
                     summary: status === "passed"
                         ? gameplay && Number(gameplay.assertionCount) > 0
-                            ? "The game loaded, has no detected code or console errors, and every requested gameplay checkpoint passed."
+                            ? "The game loaded, has no detected code or console errors, and every requested gameplay assertion passed."
                             : mode === "restart-and-check"
                             ? "The game loaded its assets, rendered a frame, and has no detected code or console errors."
                             : "The current game run is ready and has no detected code or console errors."
@@ -1481,6 +1481,7 @@ function failedRunResult({
     canvasFocused = false,
     summary,
     error,
+    failure,
     runIdentity,
     notChecked,
 }: {
@@ -1492,6 +1493,7 @@ function failedRunResult({
     canvasFocused?: boolean;
     summary: string;
     error?: string;
+    failure?: PreviewRunError["failure"];
     runIdentity?: {
         contentRevision: string | null;
         runtimeFingerprint: string | null;
@@ -1512,6 +1514,7 @@ function failedRunResult({
         },
         summary,
         error: error ?? null,
+        failure: failure ?? null,
         runIdentity: runIdentity ?? null,
         diagnostics: {
             available: false,

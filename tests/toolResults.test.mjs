@@ -10,6 +10,7 @@ import {
     normalizeToolError,
     withToolResultEnvelope,
 } from "../src/integrations/webmcp/toolResults.ts";
+import { parsePreviewExerciseActions } from "../shared/previewProtocol.ts";
 
 describe("WebMCP result contract", () => {
     it("adds one backward-compatible versioned envelope", () => {
@@ -54,6 +55,21 @@ describe("WebMCP result contract", () => {
         );
         assert.equal(invalid.code, "INVALID_TOOL_INPUT");
         assert.equal(invalid.retryable, true);
+        assert.match(invalid.message, /INVALID_TOOL_INPUT; retryable=true/);
+        assert.match(stale.message, /STALE_CONTENT_REVISION; retryable=true/);
+    });
+
+    it("preserves requested and maximum duration in structured validation errors", () => {
+        let failure;
+        try {
+            parsePreviewExerciseActions([2000, 2000, 1001].map(durationMs => ({ type: "wait", durationMs })));
+        } catch (error) {
+            failure = normalizeToolError(error, "kaplayground_run_game");
+        }
+        assert.deepEqual(failure.toJSON().details, {
+            tool: "kaplayground_run_game", field: "durationMs", requested: 5001, limit: 5000,
+        });
+        assert.match(failure.message, /5001.*5000/);
     });
 
     it("stores verification receipts without source or raw scene objects", () => {

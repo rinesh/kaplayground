@@ -43,6 +43,9 @@ export function summarizeWebMCPActivityResult(
             ...common,
             mode: result.mode,
             readiness: summarizeReadiness(result.readiness),
+            failure: asRecord(result.failure)
+                ? pick(result.failure as Record<string, unknown>, ["phase", "elapsedMs", "timeoutMs", "code", "retryable"])
+                : undefined,
             focus: summarizeValue(result.focus, 0),
             diagnostics: diagnostics
                 ? pick(diagnostics, [
@@ -69,6 +72,12 @@ export function summarizeWebMCPActivityResult(
                     scene: scene.scene,
                     objectCount: scene.objectCount,
                     objectsTruncated: scene.objectsTruncated,
+                    inspectionScope: asRecord(scene.inspectionScope)
+                        ? pick(scene.inspectionScope as Record<string, unknown>, [
+                            "selection", "tag", "matchingObjectCount", "returnedObjectCount",
+                            "objects", "layoutSelection", "layout", "wholeSceneObjects",
+                        ])
+                        : undefined,
                     layoutWarningCount: Array.isArray(scene.layoutWarnings)
                         ? scene.layoutWarnings.length
                         : undefined,
@@ -215,6 +224,7 @@ function summarizeGameplay(
         checkpointCount: gameplay.checkpointCount,
         assertionCount: gameplay.assertionCount,
         unassertedInputActionCount: gameplay.unassertedInputActionCount,
+        status: gameplay.status,
         passed: gameplay.passed,
         checkpoints,
     });

@@ -143,6 +143,14 @@ export function createRuntimeExercise({
         throwIfAborted(signal);
         assertActiveRun(getRunId, runId);
         const finalInspection = inspectRuntime({ limit: 0 });
+        const unassertedInputActionCount = inputActionCount - assertedInputActionCount;
+        if (unassertedInputActionCount > 0) {
+            incompleteReasons.push("Some controls were sent without a later checkpoint asserting a game-state result.");
+        }
+        const status = checkpoints.some(checkpoint => checkpoint.passed === false)
+            ? "failed"
+            : incompleteReasons.length > 0 ? "incomplete"
+            : assertionCount === 0 ? "not-requested" : "passed";
         return {
             runId,
             inputProvenance: INPUT_PROVENANCE,
@@ -150,9 +158,10 @@ export function createRuntimeExercise({
             inputActionCount,
             checkpointCount: checkpoints.length,
             assertionCount,
-            unassertedInputActionCount: inputActionCount - assertedInputActionCount,
+            unassertedInputActionCount,
             incompleteReasons,
-            passed: checkpoints.every(checkpoint => checkpoint.passed !== false),
+            status,
+            passed: status === "passed" ? true : status === "failed" ? false : null,
             checkpoints,
             finalInspection,
         };
@@ -270,7 +279,14 @@ export function evaluateCheckpoint(
             typeof distance === "number"
                 && distance >= expectation.firstObjectMovedFrom.minDistance,
             expectation.firstObjectMovedFrom,
-            { before, after, distance },
+            {
+                before, after, beforeId: beforeId ?? null, afterId: afterId ?? null, distance,
+                ...(!sameObject ? {
+                    reason: beforeId != null && afterId != null
+                        ? "OBJECT_IDENTITY_CHANGED" : "OBJECT_IDENTITY_UNAVAILABLE",
+                    guidance: "Use firstObjectPosition after redraws, or preserve the object's runtime ID and select it with a unique tag.",
+                } : {}),
+            },
             objectsAvailable && sameObject && typeof distance === "number",
         ));
     }

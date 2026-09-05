@@ -29,6 +29,7 @@ import {
     prepareGameUpdate,
     registerGameToolDefinitions,
     requiresExampleDiscardConfirmation,
+    validateGameToolInput,
 } from "../src/integrations/webmcp/gameTools.ts";
 import {
     calculateSpriteFrameDimensions,
@@ -38,6 +39,17 @@ import { collectMonacoDiagnostics } from "../src/integrations/webmcp/monacoDiagn
 
 const FRIENDLY_PROMPT_FORBIDDEN =
     /@Browser|WebMCP|kaplayground_|contract|revision|\btool\b/i;
+
+it("enforces each published top-level tool surface without rejecting optional defaults", () => {
+    for (const tool of KAPLAYGROUND_WEBMCP_TOOL_SURFACE) {
+        assert.deepEqual(validateGameToolInput(tool.name, {}), {});
+        for (const input of [{ unexpected: true }, JSON.parse('{"__proto__": {}}'), { constructor: "bad" }, null, [], "bad"]) {
+            assert.throws(() => validateGameToolInput(tool.name, input), TypeError);
+        }
+        const known = Object.fromEntries(Object.keys(tool.inputSchema.properties).map(key => [key, undefined]));
+        assert.equal(validateGameToolInput(tool.name, known), known);
+    }
+});
 
 class FakeModelContext {
     constructor(failOnName = null) {

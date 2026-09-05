@@ -8,10 +8,10 @@ import { WebMCPTutorial } from "./WebMCPTutorial";
 
 const statusDetails = {
     ready: {
-        label: "Game tools are ready",
+        label: "Page ready for an agent",
         dot: "bg-success",
         description:
-            "Keep this page open, then ask Codex to change your game. Activity appears here when it starts.",
+            "This page is ready. Remixing also depends on your connected agent and model supporting this browser. Successful activity below confirms a call reached the game.",
     },
     registering: {
         label: "Getting ready",
@@ -45,6 +45,7 @@ export const WebMCPDialog = () => {
         state.clearInvocations
     );
     const details = statusDetails[status];
+    const lastSuccess = entries.find(entry => entry.status === "succeeded");
     const guide = useCodexPlayGuide();
 
     const copyPageLink = async () => {
@@ -153,6 +154,12 @@ export const WebMCPDialog = () => {
                                         <p className="text-xs text-white/50">
                                             {details.description}
                                         </p>
+                                        {lastSuccess && (
+                                            <p className="mt-1 text-xs text-white/50">
+                                                Last successful agent activity: {new Date(lastSuccess.startedAt).toLocaleTimeString()}.
+                                                This confirms that call, not compatibility with every model.
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
                             </div>

@@ -1,4 +1,4 @@
-export const PREVIEW_PROTOCOL_VERSION = 3;
+export const PREVIEW_PROTOCOL_VERSION = 4;
 export const MAX_PREVIEW_EXERCISE_ACTIONS = 30;
 export const MAX_PREVIEW_EXERCISE_DURATION_MS = 5_000;
 export const MAX_PREVIEW_ACTION_DURATION_MS = 2_000;
@@ -6,6 +6,15 @@ export const MAX_PREVIEW_CHECKPOINTS = 12;
 export const MAX_PREVIEW_CHECKPOINT_OBJECTS = 20;
 export const MAX_PREVIEW_EXPECTED_TEXT = 10;
 export const PREVIEW_PRESS_DURATION_MS = 34;
+
+export class PreviewExerciseLimitError extends RangeError {
+    readonly details: { field: string; requested: number; limit: number };
+
+    constructor(message: string, field: string, requested: number, limit: number) {
+        super(message);
+        this.details = { field, requested, limit };
+    }
+}
 
 export type PreviewExerciseInputAction =
     | { type: "press"; key: string }
@@ -124,7 +133,7 @@ export function parsePreviewExerciseActions(
             assertKeys(action, ["type", "key"], `actions[${index}]`);
             const key = boundedString(action.key, `actions[${index}].key`, 32);
             normalizePreviewKey(key);
-            totalDurationMs += PREVIEW_PRESS_DURATION_MS * 3;
+            totalDurationMs += PREVIEW_PRESS_DURATION_MS * 2;
             return { type, key };
         }
 
@@ -155,7 +164,7 @@ export function parsePreviewExerciseActions(
             const button = action.button === undefined
                 ? 0
                 : integer(action.button, `actions[${index}].button`, 0, 2);
-            totalDurationMs += PREVIEW_PRESS_DURATION_MS * 2;
+            totalDurationMs += PREVIEW_PRESS_DURATION_MS * 3;
             return {
                 type,
                 x: unitNumber(action.x, `actions[${index}].x`),
@@ -184,8 +193,11 @@ export function parsePreviewExerciseActions(
             );
             checkpoints++;
             if (checkpoints > MAX_PREVIEW_CHECKPOINTS) {
-                throw new RangeError(
+                throw new PreviewExerciseLimitError(
                     `actions may contain at most ${MAX_PREVIEW_CHECKPOINTS} checkpoints.`,
+                    "checkpointCount", value.filter(item =>
+                        typeof item === "object" && item !== null && item.type === "checkpoint"
+                    ).length, MAX_PREVIEW_CHECKPOINTS,
                 );
             }
             const tag = action.tag === undefined
@@ -231,8 +243,9 @@ export function parsePreviewExerciseActions(
     });
 
     if (totalDurationMs > MAX_PREVIEW_EXERCISE_DURATION_MS) {
-        throw new RangeError(
+        throw new PreviewExerciseLimitError(
             `actions request ${totalDurationMs} ms of input time, above the ${MAX_PREVIEW_EXERCISE_DURATION_MS} ms sequence limit.`,
+            "durationMs", totalDurationMs, MAX_PREVIEW_EXERCISE_DURATION_MS,
         );
     }
     return actions;
@@ -249,14 +262,14 @@ export function previewExerciseActionsSchema(): object {
         minLength: 1,
         maxLength: 32,
         description:
-            "A letter, digit, arrow, Space, Enter, Escape, Tab, Backspace, Delete, Home, End, PageUp, or PageDown.",
+            "A letter or digit, or an exact named key: ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Space, Enter, Escape, Tab, Backspace, Delete, Home, End, PageUp, PageDown. Names are case-sensitive.",
     };
     return {
         type: "array",
         minItems: 1,
         maxItems: MAX_PREVIEW_EXERCISE_ACTIONS,
         description:
-            "Optional bounded controls and verification checkpoints. Input is sandbox-simulated and explicitly identified as such in the result.",
+            `Optional sandbox-simulated controls and checkpoints: at most ${MAX_PREVIEW_EXERCISE_ACTIONS} actions, ${MAX_PREVIEW_CHECKPOINTS} checkpoints, and ${MAX_PREVIEW_EXERCISE_DURATION_MS} ms total scheduled input time. A wait costs durationMs; a hold costs durationMs + ${PREVIEW_PRESS_DURATION_MS} ms; a press costs ${PREVIEW_PRESS_DURATION_MS * 2} ms; a click costs ${PREVIEW_PRESS_DURATION_MS * 3} ms. Each wait/hold duration is at most ${MAX_PREVIEW_ACTION_DURATION_MS} ms. Checkpoints cost no scheduled input time; frame processing may add wall time. Split longer sequences into check-current calls, each with its own baseline and assertions. Movement references must name an earlier checkpoint in the same call.`,
         items: {
             oneOf: [
                 actionSchema("press", { key }, ["key"]),
@@ -362,6 +375,8 @@ function checkpointExpectationSchema(): object {
             },
             firstObjectMovedFrom: {
                 type: "object",
+                description:
+                    "Compares the first object with the same stable runtime ID in an earlier checkpoint. Recreating an object makes this inconclusive (OBJECT_IDENTITY_CHANGED); use firstObjectPosition for games that redraw objects. Prefer a unique tag.",
                 properties: {
                     checkpoint: {
                         type: "string",

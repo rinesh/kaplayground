@@ -131,6 +131,16 @@
             const { confirmNavigate } = await import("/src/util/confirmNavigate.tsx");
             await waitFor(() => useEditor.getState().previewReadiness, "initial preview startup");
             const initial = await invoke("kaplayground_inspect_game", {});
+            for (const toolName of tools.keys()) {
+                let rejection;
+                try {
+                    await invoke(toolName, { unexpected: true });
+                } catch (error) { rejection = error; }
+                assert(rejection?.code === "INVALID_TOOL_INPUT", `${toolName} accepted an unknown top-level property.`);
+                assert(/INVALID_TOOL_INPUT; retryable=true/.test(rejection.message), "Error code was lost in the string transport fallback.");
+                assert(useProject.getState().projectRevision === Number(initial.revision.split(":")[1]), "Invalid input changed the project.");
+                assert(useEditor.getState().previewRunId === initial.activeRunId, "Invalid input restarted the preview.");
+            }
             const initialIframe = document.querySelector("#game-view");
             // The preview is intentionally allowed to start before Monaco.
             const initialEditor = await waitFor(() => useEditor.getState().runtime.editor, "the hidden code editor");
@@ -522,6 +532,17 @@ export function startFixture() {
                 focusPath: "main.js",
             });
             assert(updated.committed === true, "update_game was not committed.");
+            const { createCodexPlayGuideForContext } = await import("/src/integrations/webmcp/codexPlayContext.ts");
+            const { getDemo } = await import("/src/data/demos.ts");
+            const coachingContext = {
+                demoKey: "webmcpAgent", sourceDemoKey: "webmcpAgent", projectKey: null,
+                projectName: getDemo("webmcpAgent").formattedName, projectCreatedAt: "2026-09-05T00:00:00Z",
+            };
+            const originalGuide = createCodexPlayGuideForContext({ ...coachingContext, projectSource: getDemo("webmcpAgent").code });
+            const remixedGuide = createCodexPlayGuideForContext({ ...coachingContext, projectSource: healthyMain });
+            assert(originalGuide.key !== remixedGuide.key, "Replacing a game retained stale coaching progress.");
+            assert(!/apple|collect snacks/i.test(JSON.stringify(remixedGuide)), "A replacement game retained apple-specific coaching.");
+            assert(createCodexPlayGuideForContext({ ...coachingContext, demoKey: null, projectKey: "saved", projectSource: healthyMain }).key === remixedGuide.key, "Saving a remix changed its coaching identity.");
             assert(useWorkspace.getState().activeTab === "assets", "focusPath activated Code.");
             assert(useEditor.getState().previewRunId === initial.activeRunId, "Updating hidden code restarted gameplay.");
             await waitFor(() => useProject.getState().saveStatus === "saved", "hidden-editor update autosave");
@@ -676,6 +697,8 @@ export function startFixture() {
                 actions: [{ type: "checkpoint", name: "partial-layout", tag: "webmcp-player", limit: 0, expect: { layoutWarningsEmpty: true } }],
             });
             assert(partialCheckpoint.status === "incomplete" && partialCheckpoint.gameplay.checkpoints[0].passed === null, "An empty bounded snapshot falsely passed its layout assertion.");
+            assert(partialCheckpoint.gameplay.status === "incomplete" && partialCheckpoint.gameplay.passed === null, "Incomplete gameplay exposed a positive verdict.");
+            assert(partialCheckpoint.scene.inspectionScope.selection === "tag" && partialCheckpoint.scene.inspectionScope.wholeSceneObjects === false, "A tag snapshot claimed whole-scene coverage.");
             const uncheckedInput = await invoke("kaplayground_run_game", {
                 expectedContentRevision: updated.contentRevision,
                 mode: "check-current",
@@ -686,6 +709,7 @@ export function startFixture() {
                 ],
             });
             assert(uncheckedInput.status === "incomplete" && uncheckedInput.notChecked.includes("Control effects"), "A checkpoint before input falsely verified its effect.");
+            assert(uncheckedInput.gameplay.status === "incomplete" && uncheckedInput.gameplay.passed === null, "Unasserted controls exposed a positive gameplay verdict.");
 
             // Cancel the navigation event without issuing a pagehide or pageshow.
             const cancelUnload = event => event.preventDefault();
@@ -785,6 +809,24 @@ startPendingAssets();
                 "Pending assets did not report a loading timeout.",
             );
 
+            // Shorten only the startup deadline to exercise the real timeout
+            // path without a 30-second test. Restore it before the recovery run.
+            const nativeSetTimeout = window.setTimeout;
+            let startupTimeout;
+            try {
+                window.setTimeout = (callback, milliseconds, ...args) =>
+                    nativeSetTimeout(callback, milliseconds === 30_000 ? 1 : milliseconds, ...args);
+                startupTimeout = await invoke("kaplayground_run_game", {
+                    expectedContentRevision: pendingUpdate.contentRevision,
+                });
+            } finally {
+                window.setTimeout = nativeSetTimeout;
+            }
+            assert(startupTimeout.status === "failed" && startupTimeout.failure?.code === "PREVIEW_RUN_TIMEOUT", "Startup timeout lost its failure code.");
+            assert(startupTimeout.runId && startupTimeout.failure.phase && startupTimeout.failure.elapsedMs >= 0, "Startup timeout lost its run/phase evidence.");
+            assert(startupTimeout.failure.retryable === true && /No automatic retry/.test(startupTimeout.error), "Startup timeout must guide explicit recovery.");
+            assert(useEditor.getState().previewRunId === null && useEditor.getState().stopped, "A timed-out run retained active readiness.");
+
             const inspectionErrorSource = `
 function startInspectionError() {
     const k = kaplay({ global: false, width: 320, height: 240 });
@@ -820,6 +862,7 @@ startInspectionError();
                 inspectTag: "inspection-error",
                 objectLimit: 10,
             });
+            assert(useEditor.getState().runtime.iframe === document.querySelector("#game-view"), "Timeout recovery lost the mounted iframe identity and console capture.");
             assert(
                 inspectionErrorRun.status === "failed",
                 `Inspection-time console errors should fail, got ${inspectionErrorRun.status}.`,

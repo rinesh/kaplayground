@@ -1,4 +1,5 @@
 import type { KaplaygroundToolName } from "./gameTools.ts";
+import { PreviewExerciseLimitError } from "../../../shared/previewProtocol.ts";
 
 export const KAPLAYGROUND_WEBMCP_CONTRACT_VERSION = 1;
 
@@ -17,7 +18,9 @@ export class KaplaygroundToolError extends Error {
             cause?: unknown;
         } = {},
     ) {
-        super(message);
+        // Some browser hosts serialize only Error.message. Preserve the recovery
+        // code and hint there while retaining structured fields for richer hosts.
+        super(`[${code}; retryable=${options.retryable ?? false}] ${message}`);
         this.name = "KaplaygroundToolError";
         this.cause = options.cause;
         this.code = code;
@@ -72,7 +75,10 @@ export function normalizeToolError(
             error.message,
             {
                 retryable: true,
-                details: { tool },
+                details: {
+                    tool,
+                    ...(error instanceof PreviewExerciseLimitError ? error.details : {}),
+                },
                 cause: error,
             },
         );

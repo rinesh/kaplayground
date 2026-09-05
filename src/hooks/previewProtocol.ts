@@ -109,6 +109,17 @@ export interface PreviewInspection {
     camera: PreviewCameraSnapshot | null;
     objectsAvailable: boolean;
     objectCount: number | null;
+    inspectionScope: {
+        selection: "scene" | "tag";
+        tag: string | null;
+        matchingObjectCount: number | null;
+        returnedObjectCount: number;
+        objects: "unavailable" | "complete" | "partial";
+        layoutSelection: "ui-tagged-objects" | "tagged-objects";
+        layout: "complete" | "incomplete";
+        wholeSceneObjects: boolean;
+        continuation: { mode: "check-current"; guidance: string } | null;
+    };
     objects: PreviewObjectSnapshot[];
     objectsTruncated: boolean;
     layoutWarnings: PreviewLayoutWarning[];
@@ -139,7 +150,8 @@ export interface PreviewExerciseResult {
     assertionCount: number;
     unassertedInputActionCount: number;
     incompleteReasons: string[];
-    passed: boolean;
+    status: "passed" | "failed" | "incomplete" | "not-requested";
+    passed: boolean | null;
     checkpoints: PreviewExerciseCheckpointResult[];
     finalInspection: PreviewInspection;
 }
@@ -184,10 +196,18 @@ export interface PreviewExerciseRequest {
 
 export class PreviewRunError extends Error {
     readonly runId: string;
+    readonly failure?: {
+        phase: string;
+        elapsedMs: number;
+        timeoutMs: number;
+        code: "PREVIEW_RUN_TIMEOUT" | "PREVIEW_RUN_FAILED";
+        retryable: boolean;
+    };
 
-    constructor(runId: string, message: string) {
+    constructor(runId: string, message: string, failure?: PreviewRunError["failure"]) {
         super(message);
         this.name = "PreviewRunError";
         this.runId = runId;
+        this.failure = failure;
     }
 }

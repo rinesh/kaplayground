@@ -112,6 +112,26 @@ export function kaplaygroundToolSurface<Name extends KaplaygroundToolName>(
     >;
 }
 
+/** Enforce the published top-level keys even when the browser skips validation. */
+export function validateGameToolInput(
+    name: KaplaygroundToolName,
+    input: unknown,
+): Record<string, unknown> {
+    if (typeof input !== "object" || input === null || Array.isArray(input)) {
+        throw new TypeError("Tool input must be an object.");
+    }
+    const schema = kaplaygroundToolSurface(name).inputSchema as {
+        properties: Record<string, unknown>;
+    };
+    const unsupported = Object.keys(input).filter(key =>
+        !Object.prototype.hasOwnProperty.call(schema.properties, key)
+    );
+    if (unsupported.length > 0) {
+        throw new TypeError(`Tool input contains unsupported property "${unsupported[0].slice(0, 128)}".`);
+    }
+    return input as Record<string, unknown>;
+}
+
 /** Registers one complete surface in order using a shared lifecycle signal. */
 export async function registerGameToolDefinitions(
     context: Pick<WebMCP.ModelContext, "registerTool">,
@@ -288,7 +308,7 @@ function runGameSchema(): object {
                 minLength: 1,
                 maxLength: 128,
                 description:
-                    "Optional KAPLAY tag used to filter the final scene snapshot.",
+                    "Optional KAPLAY tag used to filter the final scene snapshot. For large scenes, use check-current with a focused tag (for example player or hud); this verifies that subset only. scene.inspectionScope reports coverage and follow-up guidance.",
             },
             consoleLimit: {
                 type: "integer",
