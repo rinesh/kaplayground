@@ -1,9 +1,75 @@
+import { Encode } from "console-feed/lib/Transform/index.js";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { decodeConsoleLog } from "../src/hooks/decodeConsoleLog.ts";
 import { createBoundedConsoleCapture } from "../src/integrations/webmcp/boundedConsoleCapture.ts";
 
 const byteSize = value =>
     new TextEncoder().encode(JSON.stringify(value)).byteLength;
+
+describe("untrusted console decoding", () => {
+    it("reads real wire messages and circular references as display data", () => {
+        const cyclic = { score: 3 };
+        cyclic.self = cyclic;
+        const result = decodeConsoleLog(
+            Encode({
+                method: "error",
+                data: ["boom", new Error("game failed"), cyclic],
+            }),
+        );
+        assert.equal(result.method, "error");
+        assert.equal(result.data.length, 3);
+        assert.equal(result.data[0], "boom");
+        assert.match(JSON.stringify(result.data[1]), /game failed/);
+        assert.equal(result.data[2].score, 3);
+        assert.equal(result.data[2].self, "[circular]");
+    });
+
+    it("never executes constructor payloads sent by the active game", () => {
+        const encoded = [{
+            method: "error",
+            data: [{
+                "@t": "[[Error]]",
+                data: {
+                    name: "Error",
+                    message: {
+                        toString: {
+                            "@t": "[[TypedArray]]",
+                            data: {
+                                ctorName: "Function",
+                                arr: "globalThis.__consoleDecodeExecuted = true; return \"probe\";",
+                            },
+                        },
+                    },
+                    stack: "probe",
+                },
+            }, "__console_feed_remaining__0"],
+        }];
+        delete globalThis.__consoleDecodeExecuted;
+        const result = decodeConsoleLog(encoded);
+        assert.equal(globalThis.__consoleDecodeExecuted, undefined);
+        assert.equal(result.data[0].type, "[[Error]]");
+        assert.equal(typeof result.data[0].value.message.toString, "object");
+        assert.doesNotThrow(() => JSON.stringify(result));
+    });
+
+    it("bounds work before retaining deep, large, or malformed wire data", () => {
+        let nested = "end";
+        for (let index = 0; index < 100; index++) nested = { nested };
+        const result = decodeConsoleLog([{
+            method: "log",
+            data: [nested, "x".repeat(1_000_000), Array(10_000).fill(1), {
+                "@r": -1,
+            }],
+        }]);
+        assert.ok(JSON.stringify(result).length < 20_000);
+        assert.match(JSON.stringify(result), /truncated/);
+        assert.equal(result.data[3], "[invalid reference]");
+        for (const malformed of [null, {}, [], [null], [{ data: {} }]]) {
+            assert.equal(decodeConsoleLog(malformed), null);
+        }
+    });
+});
 
 describe("byte-bounded console capture", () => {
     it("copies and truncates values before retaining them", () => {

@@ -5,6 +5,7 @@ import { toast } from "react-toastify";
 import { create } from "zustand";
 import { SANDBOX_ORIGIN, SANDBOX_URL } from "../config/common";
 import { kaplayVersions } from "../data/kaplayVersions.json";
+import { ensureProjectFileModel } from "../features/Editor/application/projectModels";
 import { wrapGame } from "../features/Projects/application/wrapGame";
 import { useProject } from "../features/Projects/stores/useProject";
 import { parseAssetPath } from "../util/assetsParsing";
@@ -198,18 +199,9 @@ export const useEditor = create<EditorStore>((set, get) => ({
         viewStates[currentFile] = editor.saveViewState();
 
         // Model changing logic
-        let currentFileModel = monaco.editor.getModel(
-            monaco.Uri.file(newCurrentFile),
-        );
-
-        if (!currentFileModel) {
-            currentFileModel = monaco.editor.createModel(
-                useProject.getState().getFile(newCurrentFile)?.value ?? "",
-                useProject.getState().getFile(newCurrentFile)?.language
-                    ?? "javascript",
-                monaco.Uri.file(newCurrentFile),
-            );
-        }
+        const file = useProject.getState().getFile(newCurrentFile);
+        if (!file) return;
+        const currentFileModel = ensureProjectFileModel(monaco, file);
 
         editor.setModel(currentFileModel);
 
@@ -601,7 +593,9 @@ export const useEditor = create<EditorStore>((set, get) => ({
         const runId = get().previewRunId;
         if (runId === null) throw new Error("The preview has no active run.");
         if (expectedRunId !== undefined && runId !== expectedRunId) {
-            throw new Error("The preview run changed before the input sequence could start.");
+            throw new Error(
+                "The preview run changed before the input sequence could start.",
+            );
         }
         const requestId = createRequestId("exercise");
         const operation = createOperationSignal(

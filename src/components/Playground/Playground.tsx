@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useMediaQuery } from "react-responsive";
 import { Slide, ToastContainer } from "react-toastify";
 import { Tooltip } from "react-tooltip";
-import { WEBMCP_EXAMPLE_NAME } from "../../data/demos";
+import { getDemo, WEBMCP_EXAMPLE_NAME } from "../../data/demos";
 import { connectDB } from "../../db/client/db";
 import { loadProject } from "../../features/Projects/application/loadProject";
 import {
@@ -63,6 +63,7 @@ const Playground = () => {
     const isPortrait = useMediaQuery({ query: "(orientation: portrait)" });
     const [loadingProject, setLoadingProject] = useState<boolean>(true);
     const [loadingEditor, setLoadingEditor] = useState<boolean>(true);
+    const [startupError, setStartupError] = useState<string | null>(null);
 
     const handleMount = () => {
         markPlaygroundEditorReady();
@@ -75,6 +76,9 @@ const Playground = () => {
     };
 
     const loadDemo = async (demo: string) => {
+        if (!getDemo(demo)) {
+            throw new Error("That starting point is unavailable.");
+        }
         debug(0, "[init] Loading demo...", demo);
         await createNewProject("ex", undefined, demo);
     };
@@ -154,6 +158,9 @@ const Playground = () => {
                 error instanceof Error ? error.message : String(error),
             );
             failPlaygroundInitialization(error);
+            setStartupError(
+                "We couldn't open this game. Try again, or open the starter game.",
+            );
         });
 
         return () => {
@@ -166,6 +173,7 @@ const Playground = () => {
             {loadingProject
                 ? (
                     <LoadingPlayground
+                        error={startupError}
                         isLoading={loadingEditor}
                         isPortrait={isPortrait}
                         isProject={projectMode === "pj"}

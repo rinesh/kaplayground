@@ -86,6 +86,9 @@ export const FileEntry: FC<FileEntryProps> = ({ file }) => {
         ) {
             removeFile(file.path);
             setCurrentFile("main.js");
+            const { monaco, viewStates } = useEditor.getState().runtime;
+            monaco?.editor.getModel(monaco.Uri.file(file.path))?.dispose();
+            delete viewStates[file.path];
         }
     };
 

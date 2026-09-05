@@ -62,6 +62,16 @@ export const generatePublicAssets = async (
 
     const assets = getAssetsRecursively(examplesPath);
 
+    // Preview runs use served assets. Keep small root metadata inline because
+    // the sandbox's public copy deliberately excludes those files.
+    fs.writeFileSync(
+        path.join(distPath, "publicAssetPaths.json"),
+        JSON.stringify(Object.fromEntries(assets.map(asset => [
+            asset.filename,
+            asset.filename.includes("/") ? null : asset.base64,
+        ]))),
+    );
+
     // Write a JSON file with the examples
     fs.writeFileSync(
         path.join(distPath, "publicAssets.json"),

@@ -747,11 +747,14 @@ function createTools(
                 }));
 
                 const currentIdentity = currentGameIdentity();
+                const currentEditor = useEditor.getState();
                 if (
                     currentIdentity.contentRevision
                         !== requestedIdentity.contentRevision
                     || currentIdentity.runtimeFingerprint
                         !== requestedIdentity.runtimeFingerprint
+                    || currentEditor.stopped
+                    || currentEditor.previewRunId !== runId
                 ) {
                     return failedRunResult({
                         mode,
@@ -761,7 +764,7 @@ function createTools(
                         focusRequested,
                         canvasFocused: scene.canvasFocused === true,
                         summary:
-                            "The executable game changed while checks were running, so the results are no longer current.",
+                            "The executable game or active preview changed while checks were running, so the results are no longer current.",
                         notChecked: runNotChecked(gameplay),
                     });
                 }

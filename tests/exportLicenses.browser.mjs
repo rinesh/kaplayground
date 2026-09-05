@@ -56,7 +56,8 @@ export async function verifyExportLicenses() {
                             path: "main.js",
                             kind: "main",
                             language: "javascript",
-                            value: "kaplay(); add([rect(20, 20)]);",
+                            value:
+                                "kaplay(); loadSprite(\"apple\", \"/sprites/apple.png\"); add([rect(20, 20)]);",
                         }]]),
                     },
                 });
@@ -65,6 +66,10 @@ export async function verifyExportLicenses() {
                     type: "text/html",
                 });
                 const html = await artifact.text();
+                assert(
+                    html.includes("data:image/png;base64,"),
+                    "Exported games must keep built-in art embedded for offline use.",
+                );
                 assertExportNotices(
                     html,
                     version === "master"

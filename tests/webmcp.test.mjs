@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import { virtualResolveDirectory } from "../src/features/Projects/application/virtualPaths.ts";
+import {
+    resolveVirtualPath,
+    virtualResolveDirectory,
+} from "../src/features/Projects/application/virtualPaths.ts";
 import { summarizeWebMCPActivityInput } from "../src/integrations/webmcp/activitySummary.ts";
 import { CODEX_PLAY_STEPS } from "../src/integrations/webmcp/agentGuide.ts";
 import { createBoundedConsoleCapture } from "../src/integrations/webmcp/boundedConsoleCapture.ts";
@@ -367,6 +370,25 @@ describe("simple KAPLAYGROUND browser tools", () => {
     });
 
     it("resolves imports from each virtual importing directory", () => {
+        assert.equal(
+            resolveVirtualPath("./utils/helper.js", "/"),
+            "/utils/helper.js",
+        );
+        assert.equal(
+            resolveVirtualPath("../utils/helper.js", "/scenes"),
+            "/utils/helper.js",
+        );
+        for (
+            const path of [
+                "scenes/Level 1.js",
+                "utils/café.ts",
+                "utils/helper#v2.js",
+                "utils/a?b.js",
+                "utils/a%20b.js",
+            ]
+        ) {
+            assert.equal(resolveVirtualPath(`./${path}`, "/"), `/${path}`);
+        }
         assert.equal(virtualResolveDirectory("/main.js"), "/");
         assert.equal(
             virtualResolveDirectory("/scenes/game.js"),
@@ -463,13 +485,15 @@ describe("new-player Codex prompts", () => {
     });
 
     it("always targets promptmygame.com for sample, starter, and custom-game prompts", () => {
-        for (const subject of [
-            { isStarter: true },
-            { prompts: EXAMPLE_COACH_PROMPTS.basicsStart },
-            { source: "add([rect(10, 10)]); onKeyPress('space', jump);" },
-            { source: "add([rect(10, 10)]);" },
-            { source: "console.log('ready');" },
-        ]) {
+        for (
+            const subject of [
+                { isStarter: true },
+                { prompts: EXAMPLE_COACH_PROMPTS.basicsStart },
+                { source: "add([rect(10, 10)]); onKeyPress('space', jump);" },
+                { source: "add([rect(10, 10)]);" },
+                { source: "console.log('ready');" },
+            ]
+        ) {
             const guide = createCodexPlayGuide({
                 key: "current-game",
                 title: "Signal / Drift",

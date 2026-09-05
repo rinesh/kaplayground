@@ -1,9 +1,7 @@
-import type { Decode } from "console-feed";
-
 type ConsoleMessage = {
     type: "CONSOLE";
     runId: string | null;
-    log: Parameters<typeof Decode>[0];
+    log: unknown[];
 };
 
 export function isActiveGameConsoleMessage(

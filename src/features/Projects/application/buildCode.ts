@@ -3,7 +3,7 @@ import type { File } from "../models/File";
 import type { Project } from "../models/Project";
 import { useProject } from "../stores/useProject";
 import { buildCodeLegacy } from "./buildCodeLegacy";
-import { virtualResolveDirectory } from "./virtualPaths";
+import { resolveVirtualPath, virtualResolveDirectory } from "./virtualPaths";
 
 /**
  * Build code using esbuild.
@@ -44,10 +44,10 @@ function createVirtualPlugin(files: ReadonlyMap<string, File>): esbuild.Plugin {
         name: "virtual-fs",
         setup(build) {
             build.onResolve({ filter: /.*/ }, args => {
-                const resolvedPath = new URL(
+                const resolvedPath = resolveVirtualPath(
                     args.path,
-                    "file://" + args.resolveDir + "/",
-                ).pathname;
+                    args.resolveDir,
+                );
 
                 return { path: resolvedPath, namespace: "virtual" };
             });

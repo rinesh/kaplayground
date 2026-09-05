@@ -8,9 +8,10 @@ import { WebMCPTutorial } from "./WebMCPTutorial";
 
 const statusDetails = {
     ready: {
-        label: "Codex is ready",
+        label: "Game tools are ready",
         dot: "bg-success",
-        description: "Keep this page open while Codex changes your game.",
+        description:
+            "Keep this page open, then ask Codex to change your game. Activity appears here when it starts.",
     },
     registering: {
         label: "Getting ready",

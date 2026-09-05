@@ -8,20 +8,21 @@ others are assumed as our hosted assets in public
 */
 
 import { assets } from "@kaplayjs/crew";
-import publicAssets from "../data/publicAssets.json";
+import { SANDBOX_URL } from "../config/common";
+import publicAssetPaths from "../data/publicAssetPaths.json";
 import type { Asset } from "../features/Projects/models/Asset";
 import { useProject } from "../features/Projects/stores/useProject";
 
-type PublicAssets = Record<"assets", {
-    filename: string;
-    base64: string;
-}[]>;
+const builtInPaths = new Map<string, string | null>(
+    Object.entries(publicAssetPaths),
+);
 
 export const parseAssetPath = (
     path: string,
     match?: string,
     projectAssets: ReadonlyMap<string, Asset> =
         useProject.getState().project.assets,
+    embeddedAssets?: ReadonlyMap<string, string>,
 ) => {
     let normalPath = normalize(path);
 
@@ -38,14 +39,10 @@ export const parseAssetPath = (
         return path;
     }
 
-    const pathInPublic =
-        (publicAssets as PublicAssets).assets.filter((asset) => {
-            if (asset.filename == normalPath) return asset;
-        })[0];
-
-    if (pathInPublic) {
-        path = pathInPublic.base64;
-        return path;
+    if (builtInPaths.has(normalPath)) {
+        return embeddedAssets?.get(normalPath)
+            ?? builtInPaths.get(normalPath)
+            ?? new URL(normalPath, SANDBOX_URL).href;
     }
 
     const isCrew = normalPath.startsWith("crew/");

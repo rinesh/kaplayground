@@ -56,11 +56,12 @@ const transformAssetUrl = (
     regex: RegExp,
     code: string,
     projectAssets: ReadonlyMap<string, Asset>,
+    embeddedAssets?: ReadonlyMap<string, string>,
 ) => {
     const parsed = code.replace(regex, (match, asset: string) => {
         return match.replace(
             asset,
-            parseAssetPath(asset, match, projectAssets),
+            parseAssetPath(asset, match, projectAssets, embeddedAssets),
         );
     });
 
@@ -71,13 +72,15 @@ export const parseAssets = (
     code: string,
     projectAssets: ReadonlyMap<string, Asset> =
         useProject.getState().project.assets,
+    embeddedAssets?: ReadonlyMap<string, string>,
 ) => {
     const regexComment = /\/\/\s*kaplay-transformation-asset\s*(.*)/g;
 
     const codeTransformed = transformAssetUrl(
         MATCH_ASSET_URL_REGEX,
-        transformAssetUrl(regexComment, code, projectAssets),
+        transformAssetUrl(regexComment, code, projectAssets, embeddedAssets),
         projectAssets,
+        embeddedAssets,
     );
 
     return codeTransformed;

@@ -1,4 +1,3 @@
-import { Decode } from "console-feed";
 import { create } from "zustand";
 import { SANDBOX_ORIGIN } from "../config/common";
 import { useProject } from "../features/Projects/stores/useProject";
@@ -6,6 +5,7 @@ import { createBoundedConsoleCapture } from "../integrations/webmcp/boundedConso
 import type { KaplaygroundConsoleEntry } from "../integrations/webmcp/kaplaygroundWebMCP";
 import { resetWebMCPActivityOnProjectReplacement } from "../integrations/webmcp/webMCPActivity";
 import { isActiveGameConsoleMessage } from "./consoleMessages";
+import { decodeConsoleLog } from "./decodeConsoleLog";
 import { useEditor } from "./useEditor";
 import { useWorkspace } from "./useWorkspace";
 
@@ -56,13 +56,8 @@ export function installGameConsoleCapture(): () => void {
         const iframe = useEditor.getState().runtime.iframe?.contentWindow;
         if (!isActiveGameConsoleMessage(event, SANDBOX_ORIGIN, iframe)) return;
 
-        let decoded: { method?: string; data?: unknown[] };
-        try {
-            decoded = Decode(event.data.log) as typeof decoded;
-        } catch {
-            return;
-        }
-        if (!decoded || !Array.isArray(decoded.data)) return;
+        const decoded = decodeConsoleLog(event.data.log);
+        if (!decoded) return;
         const values = decoded.data;
         if (
             values.some(value =>

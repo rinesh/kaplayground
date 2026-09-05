@@ -20,11 +20,13 @@ export async function buildProject() {
         files: new Map(activeProject.files),
         assets: new Map(activeProject.assets),
     };
-    const [code, kaplayLib, engineLicense] = await Promise.all([
-        buildCode(project),
-        getVersion(true, project.kaplayVersion),
-        getKaplayLicense(project.kaplayVersion),
-    ]);
+    const [code, kaplayLib, engineLicense, { default: publicAssets }] =
+        await Promise.all([
+            buildCode(project),
+            getVersion(true, project.kaplayVersion),
+            getKaplayLicense(project.kaplayVersion),
+            import("../../../data/publicAssets.json"),
+        ]);
 
     if (!kaplayLib) {
         throw new Error("Failed to fetch the library");
@@ -77,7 +79,17 @@ ${engineLicense}`;
             }),
             ...args,
         );
-        ${parseAssets(code, project.assets)}
+        ${
+        parseAssets(
+            code,
+            project.assets,
+            new Map(
+                publicAssets.assets.map(
+                    asset => [asset.filename, asset.base64]
+                ),
+            ),
+        )
+    }
     </script>
 </body>
 </html>`;

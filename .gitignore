@@ -38,4 +38,5 @@ neutralinojs.log
 src/data/exampleList.json
 src/data/kaplayVersions.json
 src/data/publicAssets.json
+src/data/publicAssetPaths.json
 src/data/kaplayChangelog.html

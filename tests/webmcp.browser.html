@@ -194,7 +194,15 @@
             const { parseAssetPath } = await import("/src/util/assetsParsing.ts");
             const { parseAssets } = await import("/src/util/compiler.ts");
             const appleData = parseAssetPath("/sprites/apple.png", undefined, new Map());
-            assert(appleData.startsWith("data:image/png;base64,"), "Built-in art must remain embeddable.");
+            const sandboxOrigin = new URL(useEditor.getState().getIframeSrc()).origin;
+            assert(appleData === `${sandboxOrigin}/sprites/apple.png`, "Preview art must use the served sandbox asset without downloading the export catalog.");
+            assert((await fetch(appleData)).ok, "Served preview art must load.");
+            assert(parseAssetPath("examples.json", undefined, new Map()).startsWith("data:"), "Unserved root metadata must remain available.");
+            const { default: embeddedCatalog } = await import('/src/data/publicAssets.json');
+            const embeddedAssets = new Map(embeddedCatalog.assets.map(asset => [asset.filename, asset.base64]));
+            const exportedApple = parseAssetPath("/sprites/apple.png", undefined, new Map(), embeddedAssets);
+            assert(exportedApple.startsWith("data:image/png;base64,"), "HTML exports must embed built-in art.");
+            assert(parseAssets('loadSprite("apple", "/sprites/apple.png");', new Map(), embeddedAssets).includes(exportedApple), "The export compiler must embed built-in art.");
             for (const path of ["sprites/apple.png", "/sprites/apple.png", "./sprites/apple.png", "././sprites/apple.png"]) {
                 assert(parseAssetPath(path, undefined, new Map()) === appleData, `Local asset prefix was not normalized: ${path}`);
                 assert(parseAssets(`loadSprite("apple", "${path}");`, new Map()).includes(appleData), `The compiler did not embed ${path}.`);
@@ -840,6 +848,14 @@ startInspectionError();
             window.dispatchEvent(new MessageEvent("message", { origin: "https://foreign.invalid", source: sourceFrame, data: { type: "CONSOLE", runId: inspectionErrorRun.runId, log: encoded } }));
             foreignFrame.remove();
             assert(gameConsoleCapture.snapshot().entries.length === beforeForeign, "Foreign iframe messages entered the shared capture.");
+            const hostileLog = [{ method: "error", data: [{ "@t": "[[Error]]", data: {
+                name: "Error", message: { toString: { "@t": "[[TypedArray]]", data: {
+                    ctorName: "Function", arr: 'globalThis.__consoleDecodeExecuted = true; return "probe";'
+                } } }, stack: "probe"
+            } }, "__console_feed_remaining__0"] }];
+            delete globalThis.__consoleDecodeExecuted;
+            window.dispatchEvent(new MessageEvent("message", { origin: consoleOrigin, source: sourceFrame, data: { type: "CONSOLE", runId: null, log: hostileLog } }));
+            assert(globalThis.__consoleDecodeExecuted === undefined, "Console decoding executed game-controlled code in the editor.");
 
             const diagnosticUpdate = await invoke("kaplayground_update_game", {
                 expectedRevision: inspectionErrorUpdate.revision,
@@ -867,6 +883,29 @@ add([rect(16, 16), pos(20, 20), "type-error"]);
             await activate("Code");
             const diagnosticCheck = await invoke("kaplayground_run_game", { expectedRevision: diagnosticUpdate.revision, mode: "check-current" });
             assert(diagnosticCheck.status === "failed" && diagnosticCheck.runId === diagnosticRun.runId, "Opening Code changed the run or its diagnostics.");
+            for (const interruption of ["stop", "restart"]) {
+                const originalMonaco = useEditor.getState().runtime.monaco;
+                const api = originalMonaco.languages.typescript;
+                let interrupted = false;
+                useEditor.getState().setRuntime({ monaco: {
+                    ...originalMonaco, languages: { ...originalMonaco.languages, typescript: {
+                        ...api, getJavaScriptWorker: async () => {
+                            if (!interrupted) {
+                                interrupted = true;
+                                if (interruption === "stop") useEditor.getState().stop();
+                                else await useEditor.getState().runWithSignal();
+                            }
+                            return api.getJavaScriptWorker();
+                        }
+                    } }
+                } });
+                try {
+                    const result = await invoke("kaplayground_run_game", { expectedRevision: diagnosticUpdate.revision });
+                    assert(interrupted && result.status === "failed" && result.complete === false && /active preview changed/.test(result.summary), `A ${interruption} during diagnostics returned current run evidence.`);
+                } finally {
+                    useEditor.getState().setRuntime({ monaco: originalMonaco });
+                }
+            }
             const filesButton = document.querySelector('[aria-controls="workspace-files"]');
             filesButton.click();
             await waitFor(() => document.querySelector("#workspace-files"), "Files popover");
@@ -1483,8 +1522,14 @@ startUnavailableInspection();
             assert((await db.getAllKeys("projects")).length === beforeFeatureCount + 1, "Going home created extra saved projects.");
             assert(useProject.getState().projectKey === null && useProject.getState().saveStatus === "draft", "Going home saved the untouched Codex starting point.");
 
+            const { verifyFileRegressions } = await import('/tests/projectReview.browser.mjs');
+            const fileRegressionsConfirmed = await verifyFileRegressions();
+
             finish({
                 passed: true,
+                fileRegressionsConfirmed,
+                consoleDecoderSafetyConfirmed: true,
+                interruptedRunRejectedConfirmed: true,
                 registered: registeredNames,
                 runStatus: run.status,
                 currentCheckStatus: checked.status,

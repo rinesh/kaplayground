@@ -1387,13 +1387,18 @@ async function main() {
                         let input;
                         do {
                             await delay(16);
-                            input = await readCanvasDisplay(request.frameSelector);
+                            input = await readCanvasDisplay(
+                                request.frameSelector,
+                            );
                         } while (
                             input.inputFrame <= input.eventFrame
                             && Date.now() < frameDeadline
                         );
-                        assert(input.eventFrame >= 0 && input.inputFrame > input.eventFrame,
-                            `${request.label}: the game did not process native pointer input.`);
+                        assert(
+                            input.eventFrame >= 0
+                                && input.inputFrame > input.eventFrame,
+                            `${request.label}: the game did not process native pointer input.`,
+                        );
                     };
                     const scale = Math.min(
                         frame.width / state.viewport.width,
@@ -1783,6 +1788,51 @@ async function main() {
                 value: "no-preference",
             }],
         });
+
+        await client.send("Page.navigate", {
+            url: new URL("/?example=review-unavailable-starting-point", appUrl)
+                .href,
+        });
+        const errorDeadline = Date.now() + 30_000;
+        let recoverable = false;
+        while (Date.now() < errorDeadline) {
+            const response = await client.send("Runtime.evaluate", {
+                expression:
+                    `Boolean(document.querySelector('[role="alert"] a[href="?example=webmcpAgent"]'))`,
+                returnByValue: true,
+            });
+            if (response.result?.value === true) {
+                recoverable = true;
+                break;
+            }
+            await delay(100);
+        }
+        assert(
+            recoverable,
+            "Startup errors must show a recovery action instead of an endless spinner.",
+        );
+        await client.send("Runtime.evaluate", {
+            expression: `document.querySelector('[role="alert"] a').click()`,
+        });
+        const recoveryDeadline = Date.now() + 30_000;
+        let recovered = false;
+        while (Date.now() < recoveryDeadline) {
+            const response = await client.send("Runtime.evaluate", {
+                expression:
+                    `Boolean(document.querySelector('#game-view') && !document.querySelector('[role="alert"]'))`,
+                returnByValue: true,
+            });
+            if (response.result?.value === true) {
+                recovered = true;
+                break;
+            }
+            await delay(100);
+        }
+        assert(
+            recovered,
+            "The startup recovery link must open a usable workspace.",
+        );
+        result.startupRecoveryConfirmed = true;
 
         console.log("WebMCP browser integration passed:");
         console.log(JSON.stringify(result, null, 2));
