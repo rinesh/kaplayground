@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useEditor } from "../../hooks/useEditor";
 import { FocusFrame, useFocusFrameRef } from "../UI/FocusFrame";
+import { CanvasBuildOverlay } from "./CanvasBuildOverlay";
 
 export const GameView: FC = () => {
     const stopped = useEditor((s) => s.stopped);
@@ -125,6 +126,7 @@ export const GameView: FC = () => {
                 )}
 
             <FocusFrame ref={focusFrameRef} className="border-primary" />
+            <CanvasBuildOverlay />
         </div>
     );
 };

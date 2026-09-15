@@ -1,6 +1,7 @@
 /// <reference types="webmcp-types" preserve="true" />
 
 import { previewExerciseActionsSchema } from "../../../shared/previewProtocol.ts";
+import { MAX_CHECKPOINT_LABEL_LENGTH, validateCheckpointLabel } from "./checkpointLabel.ts";
 import { KaplaygroundToolError } from "./toolResults.ts";
 
 export const MAX_GAME_CHANGES = 20;
@@ -29,7 +30,7 @@ export const KAPLAYGROUND_WEBMCP_TOOL_SURFACE = [
         name: "kaplayground_inspect_game",
         title: "Inspect the open KAPLAYGROUND game",
         description:
-            "Use this before changing the game. Returns bounded file metadata, the project revision used by metadata mutations, an executable content revision for reads, updates, and runs, and a runtime fingerprint tied to the application build, engine reference, and sandbox protocol.",
+            "Use this before changing the game. Returns bounded file metadata, the project revision used by metadata mutations, an executable content revision for reads, updates, and runs, and a runtime fingerprint tied to the application build, engine reference, and sandbox protocol. For larger visual remixes, plan two to four coherent playable checkpoints and deliver the smallest useful visible change first; simple edits need only one checkpoint.",
         inputSchema: inspectGameSchema(),
         annotations: readAnnotations(),
     },
@@ -45,14 +46,14 @@ export const KAPLAYGROUND_WEBMCP_TOOL_SURFACE = [
         name: "kaplayground_update_game",
         title: "Update the KAPLAYGROUND game",
         description:
-            "Apply related file replacements, creations, and removals atomically. Use either the project revision or executable content revision. It does not run the game; call run_game afterward with the returned content revision.",
+            "Apply related file replacements, creations, and removals atomically. Use either the project revision or executable content revision. It does not run the game; call run_game afterward with the returned content revision. For a larger remix, submit one complete runnable checkpoint at a time, then run and check it before the next. Keep related files together and preserve controls and scoring unless the user asks to change them. Use checkpointLabel for a short user-facing description of this intended change, without code or technical details. Never submit partial JavaScript or make empty updates just to animate progress.",
         inputSchema: updateGameSchema(),
     },
     {
         name: "kaplayground_run_game",
         title: "Run and check the KAPLAYGROUND game",
         description:
-            "Restart or inspect the requested executable content. Optionally send a bounded sandbox-simulated input sequence with named checkpoints. Returns readiness, diagnostics, run-specific console errors, gameplay evidence, focus, objective layout warnings, and a bounded scene snapshot; visual quality remains unjudged.",
+            "Restart or inspect the requested executable content. Optionally send a bounded sandbox-simulated input sequence with named checkpoints. Returns readiness, diagnostics, run-specific console errors, gameplay evidence, focus, objective layout warnings, and a bounded scene snapshot; visual quality remains unjudged. After each meaningful runnable checkpoint, use restart-and-check with relevant assertions so the user sees the game evolve. Do not restart per token or keystroke. Use check-current for repeated inspection of unchanged code, and do not describe a passed checkpoint as completion of the entire request.",
         inputSchema: runGameSchema(),
         annotations: { untrustedContentHint: true },
     },
@@ -128,6 +129,9 @@ export function validateGameToolInput(
     );
     if (unsupported.length > 0) {
         throw new TypeError(`Tool input contains unsupported property "${unsupported[0].slice(0, 128)}".`);
+    }
+    if (name === "kaplayground_update_game") {
+        validateCheckpointLabel((input as Record<string, unknown>).checkpointLabel);
     }
     return input as Record<string, unknown>;
 }
@@ -256,6 +260,13 @@ function updateGameSchema(): object {
                         },
                     ],
                 },
+            },
+            checkpointLabel: {
+                type: "string",
+                minLength: 1,
+                maxLength: MAX_CHECKPOINT_LABEL_LENGTH,
+                description:
+                    "Optional short user-facing intention for this playable checkpoint, such as Candy theme or Collection effect. This label is not evidence that the game works. Do not include source code.",
             },
             focusPath: {
                 type: "string",
